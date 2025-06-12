@@ -1,0 +1,1 @@
+{"version":3,"file":"ai.js","sourceRoot":"","sources":["../../src/configs/ai.ts"],"names":[],"mappings":";;AAAA,kBAAe,GAAG,EAAE,CAAC,CAAC;IACpB,MAAM,EAAE;QACN,GAAG,EAAE,OAAO,CAAC,GAAG,CAAC,cAAc;QAC/B,KAAK,EAAE,OAAO,CAAC,GAAG,CAAC,YAAY,IAAI,eAAe;KACnD;CACF,CAAC,CAAC"}

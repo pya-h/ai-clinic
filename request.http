@@ -1,1 +1,8 @@
-GET http://localhost:3000/
+
+POST http://localhost:8080/chat
+Content-Type: application/json
+
+{
+    "userId": 1,
+    "message": "what action do you suggest for me to take?"
+}
