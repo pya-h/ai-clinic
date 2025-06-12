@@ -10,6 +10,7 @@ async function bootstrap() {
     AppModule,
     new FastifyAdapter(),
   );
+  app.enableCors(); // TODO: U may remove this.
   await app.listen(process.env.PORT ?? 3000, '0.0.0.0');
 }
 bootstrap();

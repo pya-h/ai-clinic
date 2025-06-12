@@ -6,10 +6,66 @@
 
 generator client {
   provider = "prisma-client-js"
-  output   = "../generated/prisma"
 }
 
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
+}
+
+enum UserRoles {
+  NONE // ordinary or guest user
+  DOCTOR
+  NURSE
+  ASSISTANT
+  PATIENT
+  STAFF
+}
+
+model User {
+  id        Int      @id @default(autoincrement())
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  email       String            @unique
+  firstname   String
+  lastname    String
+  role        UserRoles         @map("user_role")
+  isAdmin     Boolean           @map("is_admin")
+  isPrivate   Boolean           @map("is_private")
+  chatHistory ChatParticipant[]
+}
+
+model Chat {
+  id        String    @id @default(uuid())
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  closedAt  DateTime? @map("closed_at")
+
+  topic    String?
+  messages Message[]
+  parties  ChatParticipant[]
+}
+
+model Message {
+  id        BigInt   @id @default(autoincrement())
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  chatId      String    @map("chat_id")
+  chat        Chat      @relation(fields: [chatId], references: [id])
+
+  repliedToId BigInt?   @map("replied_to_id")
+  repliedTo   Message?  @relation("MessageReply", fields: [repliedToId], references: [id])
+
+  replies     Message[] @relation("MessageReply")
+}
+
+model ChatParticipant {
+  userId Int    @map("user_id")
+  user   User   @relation(fields: [userId], references: [id])
+  chatId String @map("chat_id")
+  chat   Chat   @relation(fields: [chatId], references: [id])
+
+  @@id([chatId, userId])
 }
