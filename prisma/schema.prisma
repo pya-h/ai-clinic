@@ -33,6 +33,8 @@ model User {
   role        UserRoles         @map("user_role")
   isAdmin     Boolean           @map("is_admin")
   isPrivate   Boolean           @map("is_private")
+  avatar      String?           @map("avatar")
+  password    String
   chatHistory ChatParticipant[]
 }
 
@@ -52,13 +54,13 @@ model Message {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  chatId      String    @map("chat_id")
-  chat        Chat      @relation(fields: [chatId], references: [id])
+  chatId String @map("chat_id")
+  chat   Chat   @relation(fields: [chatId], references: [id])
 
-  repliedToId BigInt?   @map("replied_to_id")
-  repliedTo   Message?  @relation("MessageReply", fields: [repliedToId], references: [id])
+  repliedToId BigInt?  @map("replied_to_id")
+  repliedTo   Message? @relation("MessageReply", fields: [repliedToId], references: [id])
 
-  replies     Message[] @relation("MessageReply")
+  replies Message[] @relation("MessageReply")
 }
 
 model ChatParticipant {
