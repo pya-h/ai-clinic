@@ -17,6 +17,9 @@ import * as chat from '@botpress/chat';
 import { ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from 'src/auth/guards/jwt.guard';
 
+// TODO: Improve Re-connection mechanism
+// TODO: Improve the keep alive mechanism and remove setInterval usage.
+
 @ApiTags('Ai Agents')
 @Controller('ai-agents')
 export class AiAgentsController {

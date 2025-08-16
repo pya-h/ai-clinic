@@ -27,17 +27,19 @@ model User {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  email       String            @unique
-  firstname   String
-  lastname    String
-  role        UserRoles         @map("user_role")
-  isAdmin     Boolean           @map("is_admin")
-  isPrivate   Boolean           @map("is_private")
-  avatar      String?           @map("avatar")
-  password    String
-  chatHistory ChatParticipant[]
+  email           String            @unique
+  firstname       String
+  lastname        String
+  role            UserRoles         @map("user_role")
+  isAdmin         Boolean           @map("is_admin")
+  isPrivate       Boolean           @map("is_private")
+  avatar          String?           @map("avatar")
+  password        String
+  chatHistory     ChatParticipant[]
+  conversationsWithAI AiConversations[]
 }
 
+// Human-to-Human Interactions:
 model Chat {
   id        String    @id @default(uuid())
   createdAt DateTime  @default(now()) @map("created_at")
@@ -70,4 +72,14 @@ model ChatParticipant {
   chat   Chat   @relation(fields: [chatId], references: [id])
 
   @@id([chatId, userId])
+}
+
+// Ai Interactions:
+model AiConversations {
+  id        String   @id  // Agent's generated Id = convesationId
+  userId Int  @map("user_id")
+  user   User @relation(fields: [userId], references: [id])
+
+  topic    String?
+  createdAt DateTime @default(now()) @map("created_at")
 }

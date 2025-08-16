@@ -9,6 +9,11 @@ interface UserContext {
   conversationId?: string;
 }
 
+// TODO: Save conversationId in the database per user
+// TODO: Add multi conversations per user support
+// TODO: Add File Communications.
+
+// TODO: Add Http Polling mechanism as A Plan B in case SSE not works well for a client.
 @Injectable()
 export class BotpressService {
   private readonly logger = new Logger(BotpressService.name);
