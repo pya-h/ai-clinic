@@ -12,7 +12,6 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.ChatService = void 0;
 const common_1 = require("@nestjs/common");
 const config_1 = require("@nestjs/config");
-const openai_1 = require("openai");
 const openai_roles_enum_1 = require("./enums/openai-roles.enum");
 let ChatService = class ChatService {
     constructor(configService) {
@@ -20,9 +19,6 @@ let ChatService = class ChatService {
         this.primaryPrompt = 'You are a medical assistant. Your job is to talk to patients, ask questions, and build a SOAP note. After gathering enough data, diagnose the illness or suggest further testing. Format your answer clearly with sections for Subjective, Objective, Assessment, and Plan.';
         this.tempHistory = {};
         this.modelName = configService.getOrThrow('openai.model');
-        this.openaiClient = new openai_1.default({
-            apiKey: configService.getOrThrow('openai.key'),
-        });
     }
     async getChatHistory(chatId) {
         let chat = this.tempHistory?.[chatId];

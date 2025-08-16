@@ -3,7 +3,6 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { PrismaModule } from './prisma/prisma.module';
 import { ConfigModule } from '@nestjs/config';
-import { ChatModule } from './chat/chat.module';
 import { UtilsModule } from './utils/utils.module';
 import { AiAgentsModule } from './ai-agents/ai-agents.module';
 import { ApiModule } from './api/api.module';
@@ -17,7 +16,7 @@ import aiConfigs from './configs/ai';
     ConfigModule.forRoot({
       load: [appGeneralConfigs, authConfigs, aiConfigs],
     }),
-    ChatModule,
+    // ChatModule,
     UtilsModule,
     AiAgentsModule,
     ApiModule,

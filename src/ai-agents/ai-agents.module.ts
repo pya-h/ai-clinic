@@ -1,10 +1,12 @@
 import { Module } from '@nestjs/common';
 import { BotpressService } from './botpress.service';
-import { ApiModule } from 'src/api/api.module';
+import { AiAgentsController } from './ai-agents.controller';
+import { ConfigModule } from '@nestjs/config';
 
 @Module({
-  imports: [ApiModule],
+  imports: [ConfigModule],
   providers: [BotpressService],
   exports: [BotpressService],
+  controllers: [AiAgentsController],
 })
 export class AiAgentsModule {}

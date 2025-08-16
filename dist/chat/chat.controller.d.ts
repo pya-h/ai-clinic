@@ -5,5 +5,5 @@ export declare class ChatController {
     openNewChat({ message, userId }: {
         message: string;
         userId: number;
-    }): Promise<string>;
+    }): Promise<any>;
 }

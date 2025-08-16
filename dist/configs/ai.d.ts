@@ -1,7 +1,6 @@
 declare const _default: () => {
-    openai: {
-        key: string;
-        model: string;
+    botpress: {
+        webhookId: string;
     };
 };
 export default _default;

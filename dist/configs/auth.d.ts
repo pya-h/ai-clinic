@@ -3,6 +3,7 @@ declare const _default: () => {
         jwtSecret: string;
         jwtExpiry: string;
         jwtIssuer: string;
+        saltRounds: string;
     };
 };
 export default _default;
