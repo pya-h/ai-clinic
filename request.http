@@ -1,8 +1,11 @@
 
-POST http://localhost:8080/chat
+POST http://localhost:8080/auth/register
 Content-Type: application/json
 
 {
-    "userId": 1,
-    "message": "what action do you suggest for me to take?"
+    "email": "email@yahoo.com",
+    "password": "PassW0rd",
+    "firstname": "first",
+    "lastname": "last",
+    "role": "DOCTOR"
 }

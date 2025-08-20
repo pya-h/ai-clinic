@@ -9,6 +9,8 @@ import { ApiModule } from './api/api.module';
 import appGeneralConfigs from './configs/general';
 import authConfigs from './configs/auth';
 import aiConfigs from './configs/ai';
+import { AuthModule } from './auth/auth.module';
+import { UserModule } from './user/user.module';
 
 @Module({
   imports: [
@@ -20,6 +22,8 @@ import aiConfigs from './configs/ai';
     UtilsModule,
     AiAgentsModule,
     ApiModule,
+    AuthModule,
+    UserModule,
   ],
   controllers: [AppController],
   providers: [AppService],

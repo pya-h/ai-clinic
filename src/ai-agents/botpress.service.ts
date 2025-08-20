@@ -18,7 +18,7 @@ interface UserContext {
 export class BotpressService {
   private readonly logger = new Logger(BotpressService.name);
   private readonly webhookId: string;
-  private readonly users = new Map<number, UserContext>();
+  private readonly users = new Map<string, UserContext>();
 
   constructor(readonly configService: ConfigService) {
     this.webhookId = configService.get<string>('botpress.webhookId');

@@ -14,13 +14,13 @@ import { UtilsService } from 'src/utils/utils.service';
 export class UserService {
   constructor(private readonly prisma: PrismaService, private readonly utilsService: UtilsService) {}
 
-  getById(id: number) {
+  getById(id: string) {
     return this.prisma.user.findUnique({
       where: { id },
     });
   }
 
-  async userExists(userId: number): Promise<boolean> {
+  async userExists(userId: string): Promise<boolean> {
     return Boolean(await this.getById(userId));
   }
 
@@ -28,7 +28,7 @@ export class UserService {
     return Boolean(await this.getBy({ email }));
   }
 
-  getBy(identifier: { id?: number; email?: string }) {
+  getBy(identifier: { id?: string; email?: string }) {
     const { id, email } = identifier;
 
     if (id != null)

@@ -65,9 +65,9 @@ export class UserController {
     // TODO: Implement the user data serialization for current user ad other users.
     // returns the full displayable data if the id === currentId, o.w. return the serialized data.
 
-    if (+id == currentUser.id) return currentUser;
+    if (id == currentUser.id) return currentUser;
 
-    const user = await this.userService.getById(+id);
+    const user = await this.userService.getById(id);
     if (!user) throw new NotFoundException('User Not Found!');
     return user;
   }

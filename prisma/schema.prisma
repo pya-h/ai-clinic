@@ -23,19 +23,19 @@ enum UserRoles {
 }
 
 model User {
-  id        Int      @id @default(autoincrement())
+  id        String   @id @default(uuid())
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  email           String            @unique
-  firstname       String
-  lastname        String
-  role            UserRoles         @map("user_role")
-  isAdmin         Boolean           @map("is_admin")
-  isPrivate       Boolean           @map("is_private")
-  avatar          String?           @map("avatar")
-  password        String
-  chatHistory     ChatParticipant[]
+  email               String            @unique
+  firstname           String
+  lastname            String
+  role                UserRoles         @map("user_role")
+  isAdmin             Boolean           @map("is_admin")
+  isPrivate           Boolean           @map("is_private")
+  avatar              String?           @map("avatar")
+  password            String
+  chatHistory         ChatParticipant[]
   conversationsWithAI AiConversations[]
 }
 
@@ -66,7 +66,7 @@ model Message {
 }
 
 model ChatParticipant {
-  userId Int    @map("user_id")
+  userId String @map("user_id")
   user   User   @relation(fields: [userId], references: [id])
   chatId String @map("chat_id")
   chat   Chat   @relation(fields: [chatId], references: [id])
@@ -76,10 +76,10 @@ model ChatParticipant {
 
 // Ai Interactions:
 model AiConversations {
-  id        String   @id  // Agent's generated Id = convesationId
-  userId Int  @map("user_id")
-  user   User @relation(fields: [userId], references: [id])
+  id     String @id // Agent's generated Id = convesationId
+  userId String @map("user_id")
+  user   User   @relation(fields: [userId], references: [id])
 
-  topic    String?
+  topic     String?
   createdAt DateTime @default(now()) @map("created_at")
 }

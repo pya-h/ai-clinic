@@ -8,7 +8,7 @@ export class JwtTokenPayloadDto {
   })
   @IsNotEmpty()
   @IsNumber()
-  sub: number;
+  sub: string;
 
   @ApiProperty({ required: true })
   @IsNotEmpty()

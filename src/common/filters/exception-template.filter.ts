@@ -20,7 +20,17 @@ export class ExceptionTemplateFilter implements ExceptionFilter {
       console.error(exception, host);
     }
 
-    const response = host.switchToHttp().getResponse();
-    response.status(status).json({ status, message, data: null });
+    const ctx = host.switchToHttp();
+    const response = ctx.getResponse();
+    const request = ctx.getRequest();
+    
+    // Fastify-specific response handling
+    response.status(status).send({
+      status,
+      message,
+      data: null,
+      timestamp: new Date().toISOString(),
+      path: request.url,
+    });
   }
 }

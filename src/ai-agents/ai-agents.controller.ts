@@ -3,6 +3,7 @@ import {
   Controller,
   Get,
   HttpCode,
+  HttpStatus,
   Param,
   Post,
   Req,
@@ -14,8 +15,9 @@ import { CurrentUser } from '../user/decorators/current-user.decorator';
 import { User } from '@prisma/client';
 import { BotpressService } from './botpress.service';
 import * as chat from '@botpress/chat';
-import { ApiTags } from '@nestjs/swagger';
+import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from 'src/auth/guards/jwt.guard';
+import { ApiStandardOkResponse } from 'src/common/decorators/api-standard-ok-response.decorator';
 
 // TODO: Improve Re-connection mechanism
 // TODO: Improve the keep alive mechanism and remove setInterval usage.
@@ -26,9 +28,11 @@ export class AiAgentsController {
   constructor(private readonly aiService: BotpressService) {}
 
   @Post('start')
-  @UseGuards(JwtAuthGuard)
-  @HttpCode(200)
+  @ApiOperation({ description: 'Used for logging in the user' })
+  @ApiStandardOkResponse('void')
+  @HttpCode(HttpStatus.OK)
   async start(@CurrentUser() user: User) {
+    console.log('called')
     const { conversationId } = await this.aiService.start(user);
     return { conversationId };
   }
