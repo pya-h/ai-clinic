@@ -1,7 +1,12 @@
-import { Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as chat from '@botpress/chat';
-import { User } from '@prisma/client';
+import { User, AiConversations } from '@prisma/client';
+import { PrismaService } from '../prisma/prisma.service';
 
 interface UserContext {
   client: chat.AuthenticatedClient;
@@ -20,7 +25,10 @@ export class BotpressService {
   private readonly webhookId: string;
   private readonly users = new Map<string, UserContext>();
 
-  constructor(readonly configService: ConfigService) {
+  constructor(
+    readonly configService: ConfigService,
+    private readonly prismaService: PrismaService,
+  ) {
     this.webhookId = configService.get<string>('botpress.webhookId');
     if (!this.webhookId) {
       throw new ServiceUnavailableException('Bot Agent Key is missing');
@@ -42,19 +50,23 @@ export class BotpressService {
     return ctx;
   }
 
-  async ensureConversation(user: User): Promise<{ conversationId: string }> {
+  async ensureConversation(user: User): Promise<AiConversations> {
     const ctx = await this.getClient(user);
-    if (ctx.conversationId) return { conversationId: ctx.conversationId };
-
-    const { conversation } = await ctx.client.createConversation({});
-    ctx.conversationId = conversation.id;
-    this.logger.debug(
-      `created conversation=${conversation.id} for user=${user}`,
-    );
-    return { conversationId: conversation.id };
+    if (!ctx.conversationId) {
+      const { conversation } = await ctx.client.createConversation({});
+      ctx.conversationId = conversation.id;
+      this.logger.debug(
+        `created conversation=${conversation.id} for user=${user}`,
+      );
+    }
+    return this.prismaService.aiConversations.upsert({
+      where: { userId: user.id, id: ctx.conversationId },
+      create: { userId: user.id, id: ctx.conversationId },
+      update: {},
+    });
   }
 
-  async start(user: User) {
+  start(user: User) {
     return this.ensureConversation(user);
   }
 

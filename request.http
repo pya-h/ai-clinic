@@ -1,11 +1,46 @@
+@host = http://localhost:8080
+@token = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI3MjUwZmQzYi05ZmNkLTRiMWMtYTcyZS04NDhiYTc1YjQ5MzAiLCJlbWFpbCI6ImVtYWlsQHQuY29tIiwiaWF0IjoxNzU2NTA1MTQ1LCJleHAiOjE3NTY1OTE1NDUsImlzcyI6IkFpQ2xpbmlDbyJ9.FAgMpFXNS59fRPUv3LHCRGXQT4Chw-A7DVFNMOM67Dk
 
-POST http://localhost:8080/auth/register
+POST {{host}}/chat
 Content-Type: application/json
 
 {
-    "email": "email@yahoo.com",
-    "password": "PassW0rd",
+    "userId": 1,
+    "message": "what action do you suggest for me to take?"
+}
+
+
+### Register
+POST {{host}}/auth/register
+Content-Type: application/json
+
+{
+    "email": "email@t.com",
     "firstname": "first",
     "lastname": "last",
-    "role": "DOCTOR"
+    "password": "PassWord1",
+    "role": "PATIENT"
 }
+
+### start conversation
+POST {{host}}/ai-agents/start
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{}
+
+
+### start conversation
+POST {{host}}/ai-agents/message
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+    "conversationId": "conv_01K3WAFQMCY0ZQS181NTG803KG",
+    "text": "I have headache."
+}
+
+### Get stream
+GET {{host}}/ai-agents/stream/conv_01K3WAFQMCY0ZQS181NTG803KG
+Content-Type: application/json
+Authorization: Bearer {{token}}

@@ -27,14 +27,13 @@ import { ApiStandardOkResponse } from 'src/common/decorators/api-standard-ok-res
 export class AiAgentsController {
   constructor(private readonly aiService: BotpressService) {}
 
-  @Post('start')
   @ApiOperation({ description: 'Used for logging in the user' })
   @ApiStandardOkResponse('void')
+  @UseGuards(JwtAuthGuard)
   @HttpCode(HttpStatus.OK)
+  @Post('start')
   async start(@CurrentUser() user: User) {
-    console.log('called')
-    const { conversationId } = await this.aiService.start(user);
-    return { conversationId };
+    return this.aiService.start(user);
   }
 
   @UseGuards(JwtAuthGuard)

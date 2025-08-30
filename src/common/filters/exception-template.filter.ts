@@ -13,6 +13,7 @@ export class ExceptionTemplateFilter implements ExceptionFilter {
 
     if (exception instanceof HttpException) {
       status = exception.getStatus();
+      console.log(exception.getResponse())
       message = exception.getResponse()['message'] || 'Unknown Error';
     } else {
       status = HttpStatus.INTERNAL_SERVER_ERROR;
