@@ -8,6 +8,7 @@ import { ExceptionTemplateFilter } from './common/filters/exception-template.fil
 import { ResponseTemplateInterceptor } from './common/interceptors/response-template.interceptor';
 import { ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { setupSwagger } from './configs';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestFastifyApplication>(
@@ -22,7 +23,7 @@ async function bootstrap() {
   const configService = app.get(ConfigService);
   const appPort = configService.getOrThrow<number>('general.appPort'),
     appIsInDebugMode = configService.get<boolean>('general.debug');
-
+  setupSwagger(app);
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
