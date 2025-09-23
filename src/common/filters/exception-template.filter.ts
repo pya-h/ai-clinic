@@ -29,7 +29,7 @@ export class ExceptionTemplateFilter implements ExceptionFilter {
     response.status(status).send({
       status,
       message,
-      data: null,
+      contents: null,
       timestamp: new Date().toISOString(),
       path: request.url,
     });

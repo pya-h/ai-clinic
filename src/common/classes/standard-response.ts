@@ -18,7 +18,7 @@ export class StandardResponse<T> {
     description: 'Response actual data',
     nullable: true,
   })
-  data?: T;
+  contents?: T;
 
   @ApiPropertyOptional({
     description:
@@ -41,7 +41,7 @@ export class StandardResponse<T> {
     fields?: object,
   ) {
     this.status = status;
-    this.data = data ?? null;
+    this.contents = data ?? null;
     this.message = message ?? null;
     this.fields = fields ?? null;
   }

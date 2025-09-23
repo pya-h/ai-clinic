@@ -25,7 +25,7 @@ export class ResponseTemplateInterceptor<T> implements NestInterceptor<T, any> {
           }
           return {
             message: response.message,
-            data,
+            contents: data,
             status: response.statusCode,
           };
         } catch (ex) {
@@ -33,7 +33,7 @@ export class ResponseTemplateInterceptor<T> implements NestInterceptor<T, any> {
         }
         return {
           message: 'Unknown Error',
-          data: null,
+          contents: null,
           status: HttpStatus.INTERNAL_SERVER_ERROR,
         };
       }),
