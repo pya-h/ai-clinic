@@ -63,7 +63,8 @@ export class AiAgentsController {
       Connection: 'keep-alive',
       // (optional) Allow proxies/CDNs to pass through streaming
       'X-Accel-Buffering': 'no',
-      'Access-Control-Allow-Origin': 'http://localhost:5173'
+      'Access-Control-Allow-Origin': 'http://localhost:5173',
+      'Access-Control-Allow-Credentials': 'true',
     });
 
     const { listener } = await this.aiService.listen(user, conversationId);
