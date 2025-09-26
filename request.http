@@ -15,17 +15,31 @@ POST {{host}}/auth/register
 Content-Type: application/json
 
 {
-    "email": "email@t.com",
+    "email": "emasi2l@t.com",
     "firstname": "first",
     "lastname": "last",
     "password": "PassWord1",
     "role": "PATIENT"
 }
 
+### login
+POST {{host}}/auth/login
+Content-Type: application/json
+
+{
+    "email": "email@t.com",
+    "password": "PassWord1"
+}
+
+### logout
+POST {{host}}/auth/logout
+Content-Type: application/json
+
+{}
+
 ### start conversation
 POST {{host}}/ai-agents/start
 Content-Type: application/json
-Authorization: Bearer {{token}}
 
 {}
 
@@ -33,7 +47,6 @@ Authorization: Bearer {{token}}
 ### start conversation
 POST {{host}}/ai-agents/message
 Content-Type: application/json
-Authorization: Bearer {{token}}
 
 {
     "conversationId": "conv_01K3WAFQMCY0ZQS181NTG803KG",
@@ -43,4 +56,8 @@ Authorization: Bearer {{token}}
 ### Get stream
 GET {{host}}/ai-agents/stream/conv_01K3WAFQMCY0ZQS181NTG803KG
 Content-Type: application/json
-Authorization: Bearer {{token}}
+
+
+### Get stream
+GET {{host}}/user/7250fd3b-9fcd-4b1c-a72e-848ba75b4930
+Content-Type: application/json

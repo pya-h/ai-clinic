@@ -16,7 +16,7 @@ import { User } from '@prisma/client';
 import { BotpressService } from './botpress.service';
 import * as chat from '@botpress/chat';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
-import { JwtAuthGuard } from 'src/auth/guards/jwt.guard';
+import { CookieAuthGuard } from 'src/auth/guards/jwt.guard';
 import { ApiStandardOkResponse } from 'src/common/decorators/api-standard-ok-response.decorator';
 
 // TODO: Improve Re-connection mechanism
@@ -29,14 +29,14 @@ export class AiAgentsController {
 
   @ApiOperation({ description: 'Used for logging in the user' })
   @ApiStandardOkResponse('void')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(CookieAuthGuard)
   @HttpCode(HttpStatus.OK)
   @Post('start')
   async start(@CurrentUser() user: User) {
     return this.aiService.start(user);
   }
 
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(CookieAuthGuard)
   @Post('message')
   @HttpCode(204)
   async send(
@@ -46,7 +46,7 @@ export class AiAgentsController {
     await this.aiService.send(user, body.conversationId, body.text);
   }
 
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(CookieAuthGuard)
   @Get('stream/:conversationId')
   async stream(
     @Req() req: FastifyRequest,
@@ -63,6 +63,7 @@ export class AiAgentsController {
       Connection: 'keep-alive',
       // (optional) Allow proxies/CDNs to pass through streaming
       'X-Accel-Buffering': 'no',
+      'Access-Control-Allow-Origin': 'http://localhost:5173'
     });
 
     const { listener } = await this.aiService.listen(user, conversationId);

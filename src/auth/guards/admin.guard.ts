@@ -1,8 +1,8 @@
+import { UnauthorizedError } from '@botpress/chat';
 import {
   Injectable,
   CanActivate,
   ExecutionContext,
-  ForbiddenException,
 } from '@nestjs/common';
 import { User } from '@prisma/client';
 
@@ -16,6 +16,6 @@ export class AdminGuard implements CanActivate {
       return true;
     }
 
-    throw new ForbiddenException('Access denied.');
+    throw new UnauthorizedError('Access denied.');
   }
 }

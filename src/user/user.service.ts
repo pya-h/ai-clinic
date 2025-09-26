@@ -9,14 +9,19 @@ import { Prisma, User, UserRoles } from '@prisma/client';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { RegisterationDto } from 'src/auth/dto/register.dto';
 import { UtilsService } from 'src/utils/utils.service';
+import { DefaultArgs } from '@prisma/client/runtime/library';
 
 @Injectable()
 export class UserService {
-  constructor(private readonly prisma: PrismaService, private readonly utilsService: UtilsService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly utilsService: UtilsService,
+  ) {}
 
-  getById(id: string) {
+  getById(id: string, select?: Prisma.UserSelect<DefaultArgs>) {
     return this.prisma.user.findUnique({
       where: { id },
+      ...(select ? { select } : { select: { password: false } }),
     });
   }
 
@@ -28,17 +33,27 @@ export class UserService {
     return Boolean(await this.getBy({ email }));
   }
 
-  getBy(identifier: { id?: string; email?: string }) {
+  getBy(
+    identifier: { id?: string; email?: string },
+    {
+      select = undefined,
+    }: {
+      select?: Prisma.UserSelect<DefaultArgs>;
+      includePassword?: boolean;
+    } = {},
+  ) {
     const { id, email } = identifier;
 
     if (id != null)
       return this.prisma.user.findUnique({
         where: { id },
+        ...(select ? { select } : {}),
       });
 
     if (email)
       return this.prisma.user.findFirst({
         where: { email: { equals: email, mode: 'insensitive' } },
+        ...(select ? { select } : {}),
       });
 
     throw new BadRequestException('Invalid arguments for finding a user');
@@ -70,10 +85,7 @@ export class UserService {
     return user;
   }
 
-  async updateUser(
-    user: User,
-    updateUserData: UpdateUserDto,
-  ) {
+  async updateUser(user: User, updateUserData: UpdateUserDto) {
     if (!Object.keys(updateUserData)?.length)
       throw new BadRequestException(
         'Provide some new data to continue modifying user data.',
@@ -96,6 +108,14 @@ export class UserService {
   getUsers() {
     return this.prisma.user.findMany({
       where: { isAdmin: false },
+      select: {
+        avatar: true,
+        createdAt: true,
+        firstname: true,
+        lastname: true,
+        isPrivate: true,
+        role: true,
+      },
     });
   }
 }

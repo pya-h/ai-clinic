@@ -11,7 +11,7 @@ import {
 import { UserService } from './user.service';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { UpdateUserDto } from './dto/update-user.dto';
-import { JwtAuthGuard } from '../auth/guards/jwt.guard';
+import { CookieAuthGuard } from '../auth/guards/jwt.guard';
 import { CurrentUser } from './decorators/current-user.decorator';
 import { AdminGuard } from '../auth/guards/admin.guard';
 import { User } from '@prisma/client';
@@ -24,7 +24,7 @@ export class UserController {
   @ApiOperation({
     description: 'Get the current user data.',
   })
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(CookieAuthGuard)
   @Get()
   getMe(@CurrentUser() user: User) {
     return user;
@@ -33,7 +33,7 @@ export class UserController {
   @ApiOperation({
     description: 'Get users',
   })
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(CookieAuthGuard)
   @Get('all')
   getUsers() {
     return this.userService.getUsers();
@@ -42,7 +42,7 @@ export class UserController {
   @ApiOperation({
     description: 'Update/Modify user profile data.',
   })
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(CookieAuthGuard)
   @Patch('profile')
   async updateUserData(
     @CurrentUser() user: User,
@@ -56,11 +56,11 @@ export class UserController {
   @ApiOperation({
     description: 'Get the current user data.',
   })
-  @UseGuards(JwtAuthGuard, AdminGuard)
+  @UseGuards(CookieAuthGuard)
   @Get(':id')
   async getUser(
     @CurrentUser() currentUser: User,
-    @Param('id', ParseIntPipe) id: string,
+    @Param('id') id: string,
   ) {
     // TODO: Implement the user data serialization for current user ad other users.
     // returns the full displayable data if the id === currentId, o.w. return the serialized data.
