@@ -38,7 +38,7 @@ Content-Type: application/json
 {}
 
 ### start conversation
-POST {{host}}/ai-agents/start
+POST {{host}}/ai-agents/test
 Content-Type: application/json
 
 {}
