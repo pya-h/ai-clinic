@@ -77,11 +77,6 @@ export class BotpressService {
     ctx.conversationId = conversation.id;
     this.logger.debug(`Created new conversation=${conversation.id} for user=${user.id}`);
     
-    // Clean up old conversations for this user (optional)
-    await this.prismaService.aiConversations.deleteMany({
-      where: { userId: user.id }
-    });
-    
     return this.prismaService.aiConversations.create({
       data: { userId: user.id, id: ctx.conversationId }
     });
