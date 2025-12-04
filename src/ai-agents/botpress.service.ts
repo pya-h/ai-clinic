@@ -39,7 +39,10 @@ export class BotpressService {
     }
 
     this.logger.debug(`Creating new Botpress client for user ${user.id}`);
-    const client = await chat.Client.connect({ webhookId: this.webhookId });
+    const client = await chat.Client.connect({
+      webhookId: this.webhookId,
+      debug: true,
+    });
 
     const ctx: UserContext = { client };
     this.users.set(user.id, ctx);
@@ -90,7 +93,13 @@ export class BotpressService {
   }
 
   start(user: User) {
-    return this.ensureConversation(user);
+    return this.ensureConversation(user).catch((error) => {
+      this.logger.error(
+        `Failed to ensure conversation for user ${user.id}:`,
+        error,
+      );
+      throw error;
+    });
   }
 
   async getConversationId(user: User): Promise<string> {
@@ -119,37 +128,87 @@ export class BotpressService {
     }
   }
 
-  async listen(user: User, conversationId: string): Promise<{ client: chat.AuthenticatedClient; listener: ConversationListener }> {
+  async listen(
+    user: User,
+    conversationId: string,
+  ): Promise<{ client: chat.AuthenticatedClient; listener: ConversationListener }> {
     const ctx = await this.getClient(user);
-    
-    // Reuse existing listener if available and for the same conversation
-    if (ctx.listener && ctx.conversationId === conversationId) {
+
+    // If we already have a listener but it's for another conversation, disconnect it
+    if (ctx.listener && ctx.conversationId && ctx.conversationId !== conversationId) {
+      this.logger.debug(
+        `Existing listener is bound to conversation ${ctx.conversationId}, disconnecting before switching to ${conversationId}`,
+      );
+      await this.releaseListener(user.id, ctx.listener);
+    }
+
+    // Reuse existing listener if it's still connected
+    if (ctx.listener && ctx.listener.status === 'connected') {
       this.logger.debug(`Reusing existing listener for conversation ${conversationId}`);
       return { client: ctx.client, listener: ctx.listener };
     }
-    
+
     try {
+      if (ctx.listener && ctx.listener.status !== 'connected') {
+        this.logger.debug(`Reconnecting listener for conversation ${conversationId}`);
+        await ctx.listener.connect();
+        this.logger.debug(
+          `Listener reconnected for conversation ${conversationId}, status: ${ctx.listener.status}`,
+        );
+        return { client: ctx.client, listener: ctx.listener };
+      }
+
       this.logger.debug(`Creating listener for conversation ${conversationId}`);
       const listener = await ctx.client.listenConversation({ id: conversationId });
-      
-      // Store listener in context
+      this.logger.debug(
+        `Listener status for conversation ${conversationId}: ${listener.status}`,
+      );
+
       ctx.listener = listener;
       ctx.conversationId = conversationId;
-      
-      // Set up error handler to clean up on errors
+
       listener.on('error', (error) => {
         this.logger.error(`Listener error for conversation ${conversationId}:`, error);
-        // Clear listener from context on error
         if (ctx.listener === listener) {
           ctx.listener = undefined;
         }
       });
-      
+
       this.logger.log(`Listener established for conversation ${conversationId}`);
       return { client: ctx.client, listener };
     } catch (error) {
       this.logger.error(`Failed to establish listener for conversation ${conversationId}:`, error);
       throw error;
+    }
+  }
+
+  async releaseListener(userId: string, listener?: ConversationListener) {
+    const ctx = this.users.get(userId);
+    if (!listener || !ctx) {
+      try {
+        await listener?.disconnect?.();
+      } catch (error) {
+        this.logger.warn('Error disconnecting orphan listener:', error);
+      }
+      return;
+    }
+
+    if (ctx.listener !== listener) {
+      // Listener not tracked anymore, just disconnect
+      try {
+        await listener.disconnect?.();
+      } catch (error) {
+        this.logger.warn(`Error disconnecting listener for user ${userId}:`, error);
+      }
+      return;
+    }
+
+    try {
+      await listener.disconnect?.();
+    } catch (error) {
+      this.logger.warn(`Error disconnecting listener for user ${userId}:`, error);
+    } finally {
+      ctx.listener = undefined;
     }
   }
 

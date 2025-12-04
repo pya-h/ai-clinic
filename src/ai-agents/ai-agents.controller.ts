@@ -105,9 +105,29 @@ export class AiAgentsController {
         sendEvent('error', { message: String(err) });
       };
 
+      const onUnknown = (payload: unknown) => {
+        this.logger.warn('Botpress emitted unknown signal:', payload);
+        let normalized: any = payload;
+        if (typeof payload === 'string') {
+          try {
+            normalized = JSON.parse(payload);
+          } catch (error) {
+            this.logger.warn('Failed to parse unknown Botpress payload as JSON:', error);
+          }
+        }
+
+        if (normalized?.type && normalized.data) {
+          sendEvent(normalized.type, normalized.data);
+          return;
+        }
+
+        sendEvent('unknown', payload);
+      };
+
       // Attach event handlers
       listener.on('message_created', onMessage);
       listener.on('error', onError);
+      listener.on('unknown', onUnknown);
 
       // Heartbeat to keep connection alive (every 30 seconds)
       const heartbeatInterval = setInterval(() => {
@@ -122,12 +142,13 @@ export class AiAgentsController {
       this.logger.log(`SSE stream established for conversation ${actualConversationId}`);
 
       // Cleanup function
-      const cleanup = () => {
+      const cleanup = async () => {
         clearInterval(heartbeatInterval);
         try {
           listener.off('message_created', onMessage);
           listener.off('error', onError);
-          listener.disconnect?.();
+          listener.off('unknown', onUnknown);
+          await this.aiService.releaseListener(user.id, listener);
         } catch (error) {
           this.logger.warn('Error during listener cleanup:', error);
         }
