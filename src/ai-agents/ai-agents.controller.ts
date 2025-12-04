@@ -4,6 +4,7 @@ import {
   Get,
   HttpCode,
   HttpStatus,
+  Logger,
   Param,
   Post,
   Req,
@@ -19,12 +20,11 @@ import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { CookieAuthGuard } from 'src/auth/guards/jwt.guard';
 import { ApiStandardOkResponse } from 'src/common/decorators/api-standard-ok-response.decorator';
 
-// TODO: Improve Re-connection mechanism
-// TODO: Improve the keep alive mechanism and remove setInterval usage.
-
 @ApiTags('Ai Agents')
 @Controller('ai-agents')
 export class AiAgentsController {
+  private readonly logger = new Logger(AiAgentsController.name);
+
   constructor(private readonly aiService: BotpressService) {}
 
   @ApiOperation({ description: 'Used for logging in the user' })
@@ -43,32 +43,8 @@ export class AiAgentsController {
     @CurrentUser() user: User,
     @Body() body: { conversationId: string; text: string },
   ) {
-    // Use the conversation ID from the service to ensure consistency
     const actualConversationId = await this.aiService.getConversationId(user);
-    console.log(`[Controller] Using conversation ID: ${actualConversationId} (client sent: ${body.conversationId})`);
     await this.aiService.send(user, actualConversationId, body.text);
-  }
-
-  @UseGuards(CookieAuthGuard)
-  @Post('test')
-  async testBotpress(@CurrentUser() user: User) {
-    return this.aiService.testBotpress(user);
-  }
-
-  @UseGuards(CookieAuthGuard)
-  @Get('poll/:conversationId')
-  async pollMessages(
-    @CurrentUser() user: User,
-    @Param('conversationId') conversationId: string,
-  ) {
-    const actualConversationId = await this.aiService.getConversationId(user);
-    return this.aiService.pollForNewMessages(user, actualConversationId);
-  }
-
-  @UseGuards(CookieAuthGuard)
-  @Post('test-listener')
-  async testListener(@CurrentUser() user: User) {
-    return this.aiService.testListener(user);
   }
 
   @UseGuards(CookieAuthGuard)
@@ -79,112 +55,113 @@ export class AiAgentsController {
     @CurrentUser() user: User,
     @Param('conversationId') conversationId: string,
   ) {
-    try {
-      // Take full control of the underlying socket (required for long-lived streams in Fastify)
-      reply.hijack();
+    // Take full control of the underlying socket (required for long-lived streams in Fastify)
+    reply.hijack();
 
+    const actualConversationId = await this.aiService.getConversationId(user);
+    this.logger.log(`Setting up SSE stream for conversation ${actualConversationId}`);
+
+    try {
+      // Set SSE headers before any writes
       reply.raw.writeHead(200, {
         'Content-Type': 'text/event-stream',
         'Cache-Control': 'no-cache, no-transform',
-        Connection: 'keep-alive',
-        // (optional) Allow proxies/CDNs to pass through streaming
-        'X-Accel-Buffering': 'no',
+        'Connection': 'keep-alive',
+        'X-Accel-Buffering': 'no', // Disable buffering in nginx
         'Access-Control-Allow-Origin': 'http://localhost:5173',
         'Access-Control-Allow-Credentials': 'true',
       });
 
-      // Use the conversation ID from the service to ensure consistency
-      const actualConversationId = await this.aiService.getConversationId(user);
-      console.log(`[Controller] Streaming conversation ID: ${actualConversationId} (client requested: ${conversationId})`);
-      
+      // Helper to send SSE events with proper formatting
+      const sendEvent = (event: string, data: unknown): boolean => {
+        try {
+          const payload = JSON.stringify(data);
+          reply.raw.write(`event: ${event}\n`);
+          reply.raw.write(`data: ${payload}\n\n`);
+          return true;
+        } catch (error) {
+          this.logger.error(`Failed to send SSE event ${event}:`, error);
+          return false;
+        }
+      };
+
+      // Send initial connection confirmation
+      sendEvent('connected', { 
+        conversationId: actualConversationId, 
+        timestamp: new Date().toISOString() 
+      });
+
+      // Get listener from service
       const { listener } = await this.aiService.listen(user, actualConversationId);
 
-    const send = (event: string, data: unknown) => {
-      const payload = { type: event, data };
-      console.log(`[SSE] Sending event: ${event}`, payload);
-      reply.raw.write(`event: ${event}\n`);
-      reply.raw.write(`data: ${JSON.stringify(payload)}\n\n`);
-    };
-
-    // Heartbeat to keep intermediaries from closing the stream
-    const heartbeat = setInterval(() => {
-      reply.raw.write(`: keepalive ${Date.now()}\n\n`);
-    }, 15000);
-
-    // Send initial connection confirmation
-    send('connected', { conversationId: actualConversationId, timestamp: new Date().toISOString() });
-
-    // Wire Botpress realtime signals → browser
-    const onMessage = (ev: chat.Signals['message_created']) => {
-      console.log('[Botpress] Message received:', ev);
-      send('message_created', ev);
-    };
-    
-    const onError = (err: unknown) => {
-      console.error('[Botpress] Error:', err);
-      send('error', { message: String(err) });
-    };
-
-    // SIMPLE approach - just listen to the events we need
-    listener.on('message_created', onMessage);
-    listener.on('error', onError);
-    
-    // Force the listener to connect if it's not already connected
-    console.log('[Botpress] Forcing listener connection...');
-    try {
-      if (typeof (listener as any).connect === 'function') {
-        await (listener as any).connect();
-        console.log('[Botpress] Listener connect() called successfully');
-      }
-    } catch (e) {
-      console.error('[Botpress] Error calling connect():', e);
-    }
-    
-    // Check if the listener is actually connected
-    setTimeout(async () => {
-      console.log('[Botpress] Checking listener status...');
-      const state = (listener as any)._state;
-      console.log('[Botpress] Listener _state:', state);
+      // Set up event handlers BEFORE the listener starts receiving events
+      const onMessage = (ev: chat.Signals['message_created']) => {
+        this.logger.debug('Botpress message received:', ev);
+        sendEvent('message_created', ev);
+      };
       
-      // If not connected, try to connect
-      if (state !== 'connected') {
-        console.log('[Botpress] Listener not connected, attempting to connect...');
+      const onError = (err: unknown) => {
+        this.logger.error('Botpress listener error:', err);
+        sendEvent('error', { message: String(err) });
+      };
+
+      // Attach event handlers
+      listener.on('message_created', onMessage);
+      listener.on('error', onError);
+
+      // Heartbeat to keep connection alive (every 30 seconds)
+      const heartbeatInterval = setInterval(() => {
         try {
-          if (typeof (listener as any)._connect === 'function') {
-            await (listener as any)._connect();
-            console.log('[Botpress] _connect() called successfully');
-          }
-        } catch (e) {
-          console.error('[Botpress] Error calling _connect():', e);
+          reply.raw.write(`: heartbeat ${Date.now()}\n\n`);
+        } catch (error) {
+          this.logger.warn('Failed to send heartbeat:', error);
+          clearInterval(heartbeatInterval);
         }
-      }
-    }, 1000);
-    
-    console.log(`[SSE] Stream established for conversation: ${actualConversationId}`);
+      }, 30000);
 
-    const cleanup = () => {
-      clearInterval(heartbeat);
-      console.log('[SSE] Cleaned up heartbeat interval');
-      try {
-        listener.off('message_created', onMessage);
-        listener.off('error', onError);
-        listener.disconnect?.();
-      } catch {}
-      try {
-        reply.raw.end();
-      } catch {}
-    };
+      this.logger.log(`SSE stream established for conversation ${actualConversationId}`);
 
-      // Fastify exposes the underlying Node req/res; either close event is fine.
+      // Cleanup function
+      const cleanup = () => {
+        clearInterval(heartbeatInterval);
+        try {
+          listener.off('message_created', onMessage);
+          listener.off('error', onError);
+          listener.disconnect?.();
+        } catch (error) {
+          this.logger.warn('Error during listener cleanup:', error);
+        }
+        try {
+          if (!reply.raw.destroyed) {
+            reply.raw.end();
+          }
+        } catch (error) {
+          this.logger.warn('Error closing SSE connection:', error);
+        }
+        this.logger.debug(`SSE stream closed for conversation ${actualConversationId}`);
+      };
+
+      // Handle client disconnect
       req.raw.on('close', cleanup);
+      req.raw.on('aborted', cleanup);
       reply.raw.on('close', cleanup);
+      reply.raw.on('finish', cleanup);
+
+      // Handle errors on the response stream
+      reply.raw.on('error', (error) => {
+        this.logger.error('SSE stream error:', error);
+        cleanup();
+      });
+
     } catch (error) {
-      console.error('[Controller] Error setting up SSE stream:', error);
+      this.logger.error('Error setting up SSE stream:', error);
       try {
-        reply.raw.writeHead(500, { 'Content-Type': 'application/json' });
+        if (!reply.raw.headersSent) {
+          reply.raw.writeHead(500, { 'Content-Type': 'application/json' });
+        }
         reply.raw.end(JSON.stringify({ error: 'Failed to establish stream' }));
       } catch (writeError) {
-        console.error('[Controller] Error writing error response:', writeError);
+        this.logger.error('Error writing error response:', writeError);
       }
     }
   }
