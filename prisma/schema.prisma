@@ -37,6 +37,7 @@ model User {
   password            String
   chatHistory         ChatParticipant[]
   conversationsWithAI AiConversations[]
+  patientSOAPs        PatientSOAP[]
 }
 
 // Human-to-Human Interactions:
@@ -74,12 +75,38 @@ model ChatParticipant {
   @@id([chatId, userId])
 }
 
+enum AiAgentsEnum {
+  BOTPRESS
+  OPENAI
+  GEMENI
+  DEEPSEEK
+  KIMI
+  CLAUDE
+  GROK
+}
+
 // Ai Interactions:
 model AiConversations {
   id     String @id // Agent's generated Id = convesationId
   userId String @map("user_id")
   user   User   @relation(fields: [userId], references: [id])
 
-  topic     String?
+  topic        String?
+  agentType    AiAgentsEnum  @default(BOTPRESS)
+  createdAt    DateTime      @default(now()) @map("created_at")
+  patientSOAPs PatientSOAP[]
+}
+
+model PatientSOAP {
+  id        String   @id @default(uuid())
   createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  userId String @map("user_id")
+  user   User   @relation(fields: [userId], references: [id])
+
+  conversationId String          @map("conversation_id")
+  conversation   AiConversations @relation(fields: [conversationId], references: [id])
+
+  note String @map("note")
 }
