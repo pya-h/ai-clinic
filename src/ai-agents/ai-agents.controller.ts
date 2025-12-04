@@ -7,6 +7,7 @@ import {
   Logger,
   Param,
   Post,
+  Query,
   Req,
   Res,
   UseGuards,
@@ -17,8 +18,8 @@ import { User } from '@prisma/client';
 import { BotpressService } from './botpress.service';
 import * as chat from '@botpress/chat';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
-import { CookieAuthGuard } from 'src/auth/guards/jwt.guard';
-import { ApiStandardOkResponse } from 'src/common/decorators/api-standard-ok-response.decorator';
+import { CookieAuthGuard } from '../auth/guards/jwt.guard';
+import { ApiStandardOkResponse } from '../common/decorators/api-standard-ok-response.decorator';
 
 @ApiTags('Ai Agents')
 @Controller('ai-agents')
@@ -48,6 +49,21 @@ export class AiAgentsController {
   }
 
   @UseGuards(CookieAuthGuard)
+  @Get('messages/:conversationId')
+  async pollMessages(
+    @CurrentUser() user: User,
+    @Param('conversationId') conversationId: string,
+    @Query('dateOffset') dateOffset?: string,
+  ) {
+    const actualConversationId = await this.aiService.getConversationId(user);
+    return this.aiService.pollForNewMessages(
+      user,
+      actualConversationId,
+      dateOffset ? new Date(dateOffset) : undefined,
+    );
+  }
+
+  @UseGuards(CookieAuthGuard)
   @Get('stream/:conversationId')
   async stream(
     @Req() req: FastifyRequest,
@@ -59,14 +75,16 @@ export class AiAgentsController {
     reply.hijack();
 
     const actualConversationId = await this.aiService.getConversationId(user);
-    this.logger.log(`Setting up SSE stream for conversation ${actualConversationId}`);
+    this.logger.log(
+      `Setting up SSE stream for conversation ${actualConversationId}`,
+    );
 
     try {
       // Set SSE headers before any writes
       reply.raw.writeHead(200, {
         'Content-Type': 'text/event-stream',
         'Cache-Control': 'no-cache, no-transform',
-        'Connection': 'keep-alive',
+        Connection: 'keep-alive',
         'X-Accel-Buffering': 'no', // Disable buffering in nginx
         'Access-Control-Allow-Origin': 'http://localhost:5173',
         'Access-Control-Allow-Credentials': 'true',
@@ -86,20 +104,23 @@ export class AiAgentsController {
       };
 
       // Send initial connection confirmation
-      sendEvent('connected', { 
-        conversationId: actualConversationId, 
-        timestamp: new Date().toISOString() 
+      sendEvent('connected', {
+        conversationId: actualConversationId,
+        timestamp: new Date().toISOString(),
       });
 
       // Get listener from service
-      const { listener } = await this.aiService.listen(user, actualConversationId);
+      const { listener } = await this.aiService.listen(
+        user,
+        actualConversationId,
+      );
 
       // Set up event handlers BEFORE the listener starts receiving events
       const onMessage = (ev: chat.Signals['message_created']) => {
         this.logger.debug('Botpress message received:', ev);
         sendEvent('message_created', ev);
       };
-      
+
       const onError = (err: unknown) => {
         this.logger.error('Botpress listener error:', err);
         sendEvent('error', { message: String(err) });
@@ -112,7 +133,10 @@ export class AiAgentsController {
           try {
             normalized = JSON.parse(payload);
           } catch (error) {
-            this.logger.warn('Failed to parse unknown Botpress payload as JSON:', error);
+            this.logger.warn(
+              'Failed to parse unknown Botpress payload as JSON:',
+              error,
+            );
           }
         }
 
@@ -139,7 +163,9 @@ export class AiAgentsController {
         }
       }, 30000);
 
-      this.logger.log(`SSE stream established for conversation ${actualConversationId}`);
+      this.logger.log(
+        `SSE stream established for conversation ${actualConversationId}`,
+      );
 
       // Cleanup function
       const cleanup = async () => {
@@ -159,7 +185,9 @@ export class AiAgentsController {
         } catch (error) {
           this.logger.warn('Error closing SSE connection:', error);
         }
-        this.logger.debug(`SSE stream closed for conversation ${actualConversationId}`);
+        this.logger.debug(
+          `SSE stream closed for conversation ${actualConversationId}`,
+        );
       };
 
       // Handle client disconnect
@@ -173,7 +201,6 @@ export class AiAgentsController {
         this.logger.error('SSE stream error:', error);
         cleanup();
       });
-
     } catch (error) {
       this.logger.error('Error setting up SSE stream:', error);
       try {
