@@ -1,11 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-// import OpenAI from 'openai';
+import OpenAI from 'openai';
 import { TOpenAiMessage } from './types/openai-message.type';
 import { OpenAiChatRoles } from './enums/openai-roles.enum';
 
 @Injectable()
-export class ChatService {
+export class OpenAiService {
   private openaiClient: any;
   private readonly modelName: string;
   private readonly primaryPrompt =
@@ -13,9 +13,9 @@ export class ChatService {
 
   constructor(readonly configService: ConfigService) {
     this.modelName = configService.getOrThrow<string>('openai.model');
-    // this.openaiClient = new OpenAI({
-    //   apiKey: configService.getOrThrow<string>('openai.key'),
-    // });
+    this.openaiClient = new OpenAI({
+      apiKey: configService.getOrThrow<string>('openai.key'),
+    });
   }
 
   private tempHistory: Record<string, TOpenAiMessage[]> = {};
