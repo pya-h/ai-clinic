@@ -12,6 +12,7 @@ import aiConfigs from './configs/ai';
 import { AuthModule } from './auth/auth.module';
 import { UserModule } from './user/user.module';
 import { CacheModule } from './cache/cache.module';
+import { ScheduleModule } from '@nestjs/schedule';
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { CacheModule } from './cache/cache.module';
     AuthModule,
     UserModule,
     CacheModule,
+    ScheduleModule.forRoot(),
   ],
   controllers: [AppController],
   providers: [AppService],

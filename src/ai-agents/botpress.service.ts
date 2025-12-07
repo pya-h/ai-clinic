@@ -20,7 +20,7 @@ import { CacheService } from '../cache/cache.service';
 export class BotpressService {
   private readonly logger = new Logger(BotpressService.name);
   private readonly webhookId: string;
-  private readonly cachingOptions = { group: 'bp-ctx', ttl: 120000 }; // 2secs
+  private readonly cachingOptions = { group: 'bp-ctx', ttl: 300000 }; // 5 secs
 
   constructor(
     readonly configService: ConfigService,
@@ -33,14 +33,15 @@ export class BotpressService {
     }
     this.cacheService.registerDelEvent(
       this.cachingOptions.group,
-      this.cleanupUserContext,
+      this.cleanupUserContext.bind(this),
     );
   }
 
-  private async getClient(user: User): Promise<IUserContext> {
+  private async getClient(user: User, updateCacheDeadline?: boolean): Promise<IUserContext> {
     const existing = await this.cacheService.get<IUserContext>(
       this.cachingOptions.group,
       user.id,
+      updateCacheDeadline,
     );
     if (existing) {
       return existing;
@@ -63,8 +64,8 @@ export class BotpressService {
     return ctx;
   }
 
-  async getConversation(user: User): Promise<AiConversations> {
-    const ctx = await this.getClient(user);
+  async getConversation(user: User, updateCacheDeadline?: boolean): Promise<AiConversations> {
+    const ctx = await this.getClient(user, updateCacheDeadline);
 
     if (ctx.conversationId) {
       const existing = await this.prismaService.aiConversations.findUnique({

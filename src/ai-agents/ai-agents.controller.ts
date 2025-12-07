@@ -44,8 +44,9 @@ export class AiAgentsController {
     @CurrentUser() user: User,
     @Body() body: { conversationId?: string; text: string },
   ) {
-    const actualConversationId =
-      body?.conversationId ?? (await this.aiService.getConversation(user)).id;
+    const actualConversationId = (
+      await this.aiService.getConversation(user, true)
+    ).id; // FIXME: Found the root cause of frontend sometimes creating more than 1 conversation or selecting invalid one.
     await this.aiService.send(user, actualConversationId, body.text);
   }
 
@@ -74,7 +75,8 @@ export class AiAgentsController {
     // Take full control of the underlying socket (required for long-lived streams in Fastify)
     reply.hijack();
 
-    const actualConversationId = (await this.aiService.getConversation(user)).id;
+    const actualConversationId = (await this.aiService.getConversation(user))
+      .id;
     this.logger.log(
       `Setting up SSE stream for conversation ${actualConversationId}`,
     );
