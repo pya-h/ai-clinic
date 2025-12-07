@@ -11,6 +11,7 @@ import authConfigs from './configs/auth';
 import aiConfigs from './configs/ai';
 import { AuthModule } from './auth/auth.module';
 import { UserModule } from './user/user.module';
+import { CacheModule } from './cache/cache.module';
 
 @Module({
   imports: [
@@ -18,12 +19,13 @@ import { UserModule } from './user/user.module';
     ConfigModule.forRoot({
       load: [appGeneralConfigs, authConfigs, aiConfigs],
     }),
-    // ChatModule,
+    CacheModule,
     UtilsModule,
     AiAgentsModule,
     ApiModule,
     AuthModule,
     UserModule,
+    CacheModule,
   ],
   controllers: [AppController],
   providers: [AppService],

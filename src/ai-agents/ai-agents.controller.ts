@@ -42,9 +42,10 @@ export class AiAgentsController {
   @HttpCode(204)
   async send(
     @CurrentUser() user: User,
-    @Body() body: { conversationId: string; text: string },
+    @Body() body: { conversationId?: string; text: string },
   ) {
-    const actualConversationId = await this.aiService.getConversationId(user);
+    const actualConversationId =
+      body?.conversationId ?? (await this.aiService.getConversation(user)).id;
     await this.aiService.send(user, actualConversationId, body.text);
   }
 
@@ -55,10 +56,9 @@ export class AiAgentsController {
     @Param('conversationId') conversationId: string,
     @Query('dateOffset') dateOffset?: string,
   ) {
-    const actualConversationId = await this.aiService.getConversationId(user);
     return this.aiService.pollForNewMessages(
       user,
-      actualConversationId,
+      conversationId,
       dateOffset ? new Date(dateOffset) : undefined,
     );
   }
@@ -74,7 +74,7 @@ export class AiAgentsController {
     // Take full control of the underlying socket (required for long-lived streams in Fastify)
     reply.hijack();
 
-    const actualConversationId = await this.aiService.getConversationId(user);
+    const actualConversationId = (await this.aiService.getConversation(user)).id;
     this.logger.log(
       `Setting up SSE stream for conversation ${actualConversationId}`,
     );
