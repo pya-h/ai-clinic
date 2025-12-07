@@ -36,8 +36,12 @@ model User {
   avatar              String?           @map("avatar")
   password            String
   chatHistory         ChatParticipant[]
-  conversationsWithAI AiConversations[]
+  conversationsWithAI AiConversation[]
   patientSOAPs        PatientSOAP[]
+  doctorProfile       DoctorProfile?
+  reviewsOnDoctors    DoctorReview[]
+
+  @@map("user")
 }
 
 // Human-to-Human Interactions:
@@ -50,6 +54,8 @@ model Chat {
   topic    String?
   messages Message[]
   parties  ChatParticipant[]
+
+  @@map("chat")
 }
 
 model Message {
@@ -64,6 +70,8 @@ model Message {
   repliedTo   Message? @relation("MessageReply", fields: [repliedToId], references: [id])
 
   replies Message[] @relation("MessageReply")
+
+  @@map("message")
 }
 
 model ChatParticipant {
@@ -73,6 +81,7 @@ model ChatParticipant {
   chat   Chat   @relation(fields: [chatId], references: [id])
 
   @@id([chatId, userId])
+  @@map("chat_participant")
 }
 
 enum AiAgentsEnum {
@@ -86,7 +95,7 @@ enum AiAgentsEnum {
 }
 
 // Ai Interactions:
-model AiConversations {
+model AiConversation {
   id     String @id // Agent's generated Id = convesationId
   userId String @map("user_id")
   user   User   @relation(fields: [userId], references: [id])
@@ -95,6 +104,8 @@ model AiConversations {
   agentType    AiAgentsEnum  @default(BOTPRESS)
   createdAt    DateTime      @default(now()) @map("created_at")
   patientSOAPs PatientSOAP[]
+
+  @@map("ai_conversation")
 }
 
 model PatientSOAP {
@@ -105,8 +116,58 @@ model PatientSOAP {
   userId String @map("user_id")
   user   User   @relation(fields: [userId], references: [id])
 
-  conversationId String          @map("conversation_id")
-  conversation   AiConversations @relation(fields: [conversationId], references: [id])
+  conversationId String         @map("conversation_id")
+  conversation   AiConversation @relation(fields: [conversationId], references: [id])
 
   note String @map("note")
+
+  @@map("patient_soap")
+}
+
+enum VisitMethods {
+  CHAT
+  VOICE_CALL
+  VIDEO_CALL
+  ON_SITE
+}
+
+model DoctorProfile {
+  id        Int      @id @default(autoincrement())
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  userId String @unique @map("user_id")
+  user   User   @relation(fields: [userId], references: [id])
+
+  university     String?
+  location       String?
+  clinicLocation String?        @map("clinic_location")
+  visitMethods   VisitMethods[] @map("visit_methods")
+  bio            String?
+
+  verified        Boolean        @default(false)
+  platformSummary String?        @map("platform_summuary")
+  reviewsAbout    DoctorReview[]
+
+  @@map("doctor_profile")
+}
+
+model DoctorReview {
+  id        Int      @id @default(autoincrement())
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  reviewerId String @map("reviewer_id")
+  reviewer   User   @relation(fields: [reviewerId], references: [id])
+
+  doctorId Int           @map("doctor_id")
+  doctor   DoctorProfile @relation(fields: [doctorId], references: [id])
+
+  title    String?
+  overview String? @map("overview")
+
+  verified Boolean @default(false)
+  rating   Int
+
+  @@map("doctor_review")
 }
