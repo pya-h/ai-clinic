@@ -31,8 +31,8 @@ model User {
   firstname           String
   lastname            String
   role                UserRoles         @map("user_role")
-  isAdmin             Boolean           @map("is_admin")
-  isPrivate           Boolean           @map("is_private")
+  isAdmin             Boolean           @default(false) @map("is_admin")
+  isPrivate           Boolean           @default(false) @map("is_private")
   avatar              String?           @map("avatar")
   password            String
   chatHistory         ChatParticipant[]
@@ -40,6 +40,8 @@ model User {
   patientSOAPs        PatientSOAP[]
   doctorProfile       DoctorProfile?
   reviewsOnDoctors    DoctorReview[]
+  patientProfile      PatientProfile?
+  visitsAttended      Visit[]
 
   @@map("user")
 }
@@ -124,11 +126,31 @@ model PatientSOAP {
   @@map("patient_soap")
 }
 
-enum VisitMethods {
+enum VisitMethod {
   CHAT
   VOICE_CALL
   VIDEO_CALL
   ON_SITE
+}
+
+enum VisitStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+  COMPLETED
+}
+
+enum VisitType {
+  CONSULTATION
+  EXAMINATION
+  SURGERY
+  LABORATORY
+  RADIOLOGY
+  PHARMACY
+  DENTISTRY
+  THERAPY
+  NUTRITION
+  OTHER
 }
 
 model DoctorProfile {
@@ -141,13 +163,16 @@ model DoctorProfile {
 
   university     String?
   location       String?
-  clinicLocation String?        @map("clinic_location")
-  visitMethods   VisitMethods[] @map("visit_methods")
+  clinicLocation String? @map("clinic_location")
   bio            String?
+
+  visitMethods VisitMethod[] @map("visit_methods")
+  visitTypes   VisitType[]   @map("visit_types")
 
   verified        Boolean        @default(false)
   platformSummary String?        @map("platform_summuary")
   reviewsAbout    DoctorReview[]
+  visits          Visit[]
 
   @@map("doctor_profile")
 }
@@ -170,4 +195,53 @@ model DoctorReview {
   rating   Int
 
   @@map("doctor_review")
+}
+
+model PatientProfile {
+  id String @id @default(uuid())
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  userId String @unique @map("user_id")
+  user   User   @relation(fields: [userId], references: [id])
+
+  location     String?
+  visitMethods VisitMethod[] @map("visit_methods")
+  bio          String?
+
+  medicalHistory String[] @map("medical_history")
+  allergies      String[] @map("allergies")
+  medications    String[] @map("medications")
+  surgeries      String[] @map("surgeries")
+  familyHistory  String[] @map("family_history")
+
+  @@map("patient_profile")
+}
+
+model Visit {
+  id        Int      @id @default(autoincrement())
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  patientId String @map("patient_id")
+  patient   User   @relation(fields: [patientId], references: [id])
+
+  doctorId String        @map("doctor_id")
+  doctor   DoctorProfile @relation(fields: [doctorId], references: [id])
+
+  date      DateTime @map("date")
+  startTime Int      @map("start_time") // in ms
+  endTime   Int?     @map("end_time") // in ms
+
+  method VisitMethod @map("method")
+  type   VisitType   @map("type")
+  status VisitStatus @map("status")
+
+  notes       String[] @map("notes")
+  attachments String[] @map("attachments")
+
+  scheduled Boolean @default(false) @map("scheduled")
+
+  @@map("visit")
 }

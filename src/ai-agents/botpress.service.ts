@@ -270,7 +270,7 @@ export class BotpressService {
     this.logger.debug(`Cleaned up context for user ${userId}`);
   }
 
-  // Method to poll for new messages (workaround for SSE issues)
+  // workaround for SSE issues
   async pollForNewMessages(
     user: User,
     conversationId: string,
