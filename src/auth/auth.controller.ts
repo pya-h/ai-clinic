@@ -11,7 +11,7 @@ import { AuthService } from './auth.service';
 import { UserLoginDto } from './dto/login.dto';
 import { RegisterationDto } from './dto/register.dto';
 import { AuthenticatedUserDto } from './dto/responses/auth-responses.dto';
-import { ApiStandardOkResponse } from 'src/common/decorators/api-standard-ok-response.decorator';
+import { ApiStandardOkResponse } from '../common/decorators/api-standard-ok-response.decorator';
 import { FastifyReply } from 'fastify';
 
 @ApiTags('Authentication')

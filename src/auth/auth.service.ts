@@ -2,7 +2,7 @@ import { BadRequestException, Injectable } from '@nestjs/common';
 import { UserLoginDto } from './dto/login.dto';
 import { UserService } from '../user/user.service';
 import { RegisterationDto } from './dto/register.dto';
-import { UtilsService } from 'src/utils/utils.service';
+import { UtilsService } from '../utils/utils.service';
 import { FastifyReply } from 'fastify';
 
 @Injectable()

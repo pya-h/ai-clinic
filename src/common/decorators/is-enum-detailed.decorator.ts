@@ -1,7 +1,11 @@
 import { applyDecorators } from '@nestjs/common';
 import { IsEnum } from 'class-validator';
 
-export function IsEnumDetailed(enumModel: object, title: string = '') {
+export function IsEnumDetailed(
+  enumModel: object,
+  title: string = '',
+  isArray = false,
+) {
   if (title?.length) {
     title = `'${title}'`;
   }
@@ -12,6 +16,7 @@ export function IsEnumDetailed(enumModel: object, title: string = '') {
         Object.values(enumModel)
           .map((x) => `'${x}'`)
           .join(', '),
+      ...(isArray ? { each: true } : {}),
     }),
   );
 }

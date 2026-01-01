@@ -51,7 +51,6 @@ export class UserController {
     return this.userService.updateUser(user, updateUserData);
   }
 
-
   // TODO: Implement the serialize user data INTERCEPTOR.
   @ApiOperation({
     description: 'Get the current user data.',
@@ -71,4 +70,6 @@ export class UserController {
     if (!user) throw new NotFoundException('User Not Found!');
     return user;
   }
+
+
 }

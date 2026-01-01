@@ -5,7 +5,7 @@ import {
   Injectable,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { Prisma, User, UserRoles } from '@prisma/client';
+import { Prisma, User, UserRolesEnum } from '@prisma/client';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { RegisterationDto } from 'src/auth/dto/register.dto';
 import { UtilsService } from 'src/utils/utils.service';
@@ -63,7 +63,7 @@ export class UserService {
     if (await this.emailExists(userData.email)) {
       throw new ForbiddenException('Email is unavailable!');
     }
-    if (!this.utilsService.isEnumElement(UserRoles, userData.role)) {
+    if (!this.utilsService.isEnumElement(UserRolesEnum, userData.role)) {
       throw new BadRequestException('Invalid role!');
     }
 
@@ -74,7 +74,7 @@ export class UserService {
         firstname: userData.firstname,
         lastname: userData.lastname,
         email: userData.email,
-        role: userData.role || UserRoles.PATIENT,
+        role: userData.role || UserRolesEnum.PATIENT,
         isAdmin: false,
         password: hashedPassword,
         isPrivate: userData.isPrivate || false,

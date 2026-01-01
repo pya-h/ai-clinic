@@ -13,6 +13,7 @@ import { AuthModule } from './auth/auth.module';
 import { UserModule } from './user/user.module';
 import { CacheModule } from './cache/cache.module';
 import { ScheduleModule } from '@nestjs/schedule';
+import { DoctorModule } from './doctor/doctor.module';
 
 @Module({
   imports: [
@@ -28,6 +29,7 @@ import { ScheduleModule } from '@nestjs/schedule';
     UserModule,
     CacheModule,
     ScheduleModule.forRoot(),
+    DoctorModule,
   ],
   controllers: [AppController],
   providers: [AppService],

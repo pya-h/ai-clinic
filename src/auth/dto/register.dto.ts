@@ -10,8 +10,8 @@ import {
 } from 'class-validator';
 import { Transform } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsEnumDetailed } from 'src/common/decorators/is-enum-detailed.decorator';
-import { BasicUserRoles } from 'src/user/enums/basic-user-roles.enum';
+import { IsEnumDetailed } from '../../common/decorators/is-enum-detailed.decorator';
+import { BasicUserRoles } from '../../user/enums/basic-user-roles.enum';
 
 export class RegisterationDto {
   @ApiProperty({

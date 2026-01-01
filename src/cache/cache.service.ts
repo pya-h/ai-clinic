@@ -2,7 +2,7 @@ import { CACHE_MANAGER, Cache } from '@nestjs/cache-manager';
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { ICacheItemIdentifier } from './types/cache-item-ident.type';
 import { Cron, CronExpression } from '@nestjs/schedule';
-import { splitIn2, splitIn2Set } from 'src/common/tools/arrays';
+import { splitIn2, splitIn2Set } from '../common/tools/arrays';
 
 @Injectable()
 export class CacheService {
