@@ -22,7 +22,7 @@ export class IntroduceDoctorDto {
   @IsNotEmpty()
   @IsDate()
   @Type(() => Date)
-  startData: Date;
+  startedAt: Date;
 
   @ApiProperty({
     description:
@@ -33,18 +33,19 @@ export class IntroduceDoctorDto {
   })
   @IsNotEmpty()
   @IsEnumDetailed(DoctorSpecialtiesEnum, 'Specialty')
-  speciality: DoctorSpecialtiesEnum;
+  specialty: DoctorSpecialtiesEnum;
 
   @ApiPropertyOptional({
     description: 'Secondary specialties of the doctor, if any.',
-    required: true,
+    required: false,
     enum: DoctorSpecialtiesEnum,
     enumName: 'DoctorSpecialtiesEnum',
     isArray: true,
   })
+  @IsOptional()
   @IsArray()
   @IsEnumDetailed(DoctorSpecialtiesEnum, 'Specialty', true)
-  otherSpecialities?: DoctorSpecialtiesEnum[];
+  secondarySpecialties?: DoctorSpecialtiesEnum[];
 
   @ApiProperty({
     description: 'The address of the clinic where the doctor works',

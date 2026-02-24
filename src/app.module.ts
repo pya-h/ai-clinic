@@ -27,7 +27,6 @@ import { DoctorModule } from './doctor/doctor.module';
     ApiModule,
     AuthModule,
     UserModule,
-    CacheModule,
     ScheduleModule.forRoot(),
     DoctorModule,
   ],

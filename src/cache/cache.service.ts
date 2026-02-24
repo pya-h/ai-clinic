@@ -169,7 +169,7 @@ export class CacheService {
       this.keysWithDelEvent,
       (item) => item.deadline < exactTime,
     );
-    console.log({ remaining, passedDues });
+    this.logger.debug({ remaining: remaining.length, passedDues: passedDues.length });
     this.keysWithDelEvent = new Set(remaining); // TODO: Think about Data_Racing?
 
     await Promise.all(

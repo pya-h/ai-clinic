@@ -7,8 +7,6 @@ import {
   MaxLength,
   MinLength,
 } from 'class-validator';
-import { BasicUserRoles } from '../enums/basic-user-roles.enum';
-import { IsEnumDetailed } from 'src/common/decorators/is-enum-detailed.decorator';
 
 export class UpdateUserDto {
   @ApiProperty({ description: 'User email' })
@@ -36,7 +34,7 @@ export class UpdateUserDto {
   })
   @IsOptional()
   @IsBoolean()
-  isPrivate: boolean;
+  isPrivate?: boolean;
 
   @ApiPropertyOptional({
     description: 'User avatar',
@@ -46,15 +44,4 @@ export class UpdateUserDto {
   @IsOptional()
   @IsUrl()
   avatar?: string;
-
-  @ApiPropertyOptional({
-    enum: BasicUserRoles,
-    enumName: 'BasicUserRoles',
-    example: BasicUserRoles.PATIENT,
-    default: BasicUserRoles.PATIENT,
-  })
-  @IsOptional()
-  @IsEnumDetailed(BasicUserRoles, 'role')
-  role?: BasicUserRoles;
-
 }

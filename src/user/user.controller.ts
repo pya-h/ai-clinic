@@ -11,7 +11,7 @@ import {
 import { UserService } from './user.service';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { UpdateUserDto } from './dto/update-user.dto';
-import { CookieAuthGuard } from '../auth/guards/jwt.guard';
+import { CookieAuthGuard } from '../auth/guards/cookie-auth.guard';
 import { CurrentUser } from './decorators/current-user.decorator';
 import { AdminGuard } from '../auth/guards/admin.guard';
 import { User } from '@prisma/client';
@@ -31,9 +31,9 @@ export class UserController {
   }
 
   @ApiOperation({
-    description: 'Get users',
+    description: 'Get users (admin only)',
   })
-  @UseGuards(CookieAuthGuard)
+  @UseGuards(CookieAuthGuard, AdminGuard)
   @Get('all')
   getUsers() {
     return this.userService.getUsers();
@@ -64,7 +64,7 @@ export class UserController {
     // TODO: Implement the user data serialization for current user ad other users.
     // returns the full displayable data if the id === currentId, o.w. return the serialized data.
 
-    if (id == currentUser.id) return currentUser;
+    if (id === currentUser.id) return currentUser;
 
     const user = await this.userService.getById(id);
     if (!user) throw new NotFoundException('User Not Found!');

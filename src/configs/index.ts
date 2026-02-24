@@ -1,6 +1,8 @@
-import { INestApplication } from '@nestjs/common';
+import { INestApplication, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+
+const logger = new Logger('SwaggerSetup');
 
 export const setupSwagger = (app: INestApplication) => {
   const configService = app.get<ConfigService>(ConfigService);
@@ -19,7 +21,7 @@ export const setupSwagger = (app: INestApplication) => {
 
     const document = SwaggerModule.createDocument(app, config);
     SwaggerModule.setup('docs', app, document);
-    console.log(`Swagger docs: http://localhost:${appPort}/docs`);
-    console.log(`Swagger docs as JSON: http://localhost:${appPort}/docs-json`);
+    logger.log(`Swagger docs: http://localhost:${appPort}/docs`);
+    logger.log(`Swagger docs as JSON: http://localhost:${appPort}/docs-json`);
   }
 };

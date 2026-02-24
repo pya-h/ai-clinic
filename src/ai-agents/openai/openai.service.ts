@@ -49,7 +49,7 @@ export class OpenAiService {
     await this.updateChat(chatId, [
       { role: OpenAiChatRoles.USER, content: prompt },
       {
-        role: OpenAiChatRoles.SYSTEM,
+        role: OpenAiChatRoles.ASSISTANT,
         content: result.choices[0].message.content,
       },
     ]);

@@ -18,7 +18,7 @@ import { User } from '@prisma/client';
 import { BotpressService } from './botpress.service';
 import * as chat from '@botpress/chat';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
-import { CookieAuthGuard } from '../auth/guards/jwt.guard';
+import { CookieAuthGuard } from '../auth/guards/cookie-auth.guard';
 import { ApiStandardOkResponse } from '../common/decorators/api-standard-ok-response.decorator';
 
 @ApiTags('Ai Agents')
@@ -88,8 +88,6 @@ export class AiAgentsController {
         'Cache-Control': 'no-cache, no-transform',
         Connection: 'keep-alive',
         'X-Accel-Buffering': 'no', // Disable buffering in nginx
-        'Access-Control-Allow-Origin': 'http://localhost:5173',
-        'Access-Control-Allow-Credentials': 'true',
       });
 
       // Helper to send SSE events with proper formatting

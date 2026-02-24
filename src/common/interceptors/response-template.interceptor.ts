@@ -2,11 +2,14 @@ import {
   CallHandler,
   ExecutionContext,
   HttpStatus,
+  Logger,
   NestInterceptor,
 } from '@nestjs/common';
 import { map, Observable } from 'rxjs';
 
 export class ResponseTemplateInterceptor<T> implements NestInterceptor<T, any> {
+  private readonly logger = new Logger(ResponseTemplateInterceptor.name);
+
   intercept(
     context: ExecutionContext,
     next: CallHandler<T>,
@@ -29,7 +32,7 @@ export class ResponseTemplateInterceptor<T> implements NestInterceptor<T, any> {
             status: response.statusCode,
           };
         } catch (ex) {
-          console.error('Could not transform response:', ex);
+          this.logger.error('Could not transform response:', ex);
         }
         return {
           message: 'Unknown Error',

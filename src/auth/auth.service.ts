@@ -1,7 +1,7 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { UserLoginDto } from './dto/login.dto';
 import { UserService } from '../user/user.service';
-import { RegisterationDto } from './dto/register.dto';
+import { RegistrationDto } from './dto/register.dto';
 import { UtilsService } from '../utils/utils.service';
 import { FastifyReply } from 'fastify';
 
@@ -26,9 +26,10 @@ export class AuthService {
     return user;
   }
 
-  async register(data: RegisterationDto) {
+  async register(data: RegistrationDto, reply: FastifyReply) {
     const user = await this.userService.createUser(data);
     delete user.password;
+    (reply as any).request.session.set('user', user);
     return user;
   }
 

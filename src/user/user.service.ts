@@ -7,7 +7,7 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { Prisma, User, UserRolesEnum } from '@prisma/client';
 import { UpdateUserDto } from './dto/update-user.dto';
-import { RegisterationDto } from 'src/auth/dto/register.dto';
+import { RegistrationDto } from 'src/auth/dto/register.dto';
 import { UtilsService } from 'src/utils/utils.service';
 import { DefaultArgs } from '@prisma/client/runtime/library';
 
@@ -59,7 +59,7 @@ export class UserService {
     throw new BadRequestException('Invalid arguments for finding a user');
   }
 
-  async createUser(userData?: RegisterationDto) {
+  async createUser(userData: RegistrationDto) {
     if (await this.emailExists(userData.email)) {
       throw new ForbiddenException('Email is unavailable!');
     }

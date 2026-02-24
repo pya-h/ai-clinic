@@ -1,18 +1,12 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
-export enum StandardResponseStatusEnum {
-  SUCCESS = 'success',
-  ERROR = 'error',
-}
-
 export class StandardResponse<T> {
   @ApiProperty({
-    enum: StandardResponseStatusEnum,
-    enumName: 'StandardResponseStatusEnum',
-    description: 'Response status',
-    default: StandardResponseStatusEnum.SUCCESS,
+    description: 'HTTP status code',
+    example: 200,
+    type: 'number',
   })
-  status: StandardResponseStatusEnum;
+  status: number;
 
   @ApiPropertyOptional({
     description: 'Response actual data',
@@ -35,7 +29,7 @@ export class StandardResponse<T> {
   fields?: object;
 
   constructor(
-    status: StandardResponseStatusEnum,
+    status: number,
     data?: T,
     message?: string,
     fields?: object,

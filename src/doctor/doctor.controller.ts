@@ -1,23 +1,25 @@
 import { Body, Controller, Post, UseGuards } from '@nestjs/common';
-import { ApiOperation } from '@nestjs/swagger';
+import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '../user/decorators/current-user.decorator';
 import { DoctorService } from './doctor.service';
-import { CookieAuthGuard } from '../auth/guards/jwt.guard';
+import { CookieAuthGuard } from '../auth/guards/cookie-auth.guard';
 import { User } from '@prisma/client';
 import { IntroduceDoctorDto } from './dto/introduce-doctor.dto';
 
+@ApiTags('Doctor')
 @Controller('doctor')
 export class DoctorController {
   constructor(private readonly doctorService: DoctorService) {}
+
   @ApiOperation({
     description: 'Introduce user as a doctor and create a doctor profile.',
   })
   @UseGuards(CookieAuthGuard)
   @Post()
-  async updateUserData(
+  async createDoctorProfile(
     @CurrentUser() user: User,
-    @Body() updateUserData: IntroduceDoctorDto,
+    @Body() introduceDoctorDto: IntroduceDoctorDto,
   ) {
-    return this.userService.updateUser(user, updateUserData);
+    return this.doctorService.createDoctorProfile(user, introduceDoctorDto);
   }
 }

@@ -41,7 +41,7 @@ export function ApiStandardOkResponse<TModel>(
             properties: {
               ...(actualModel !== 'void'
                 ? {
-                    data: possiblePrimitiveType
+                    contents: possiblePrimitiveType
                       ? {
                           type: isArray ? 'array' : possiblePrimitiveType,
                           ...(isArray
@@ -58,7 +58,7 @@ export function ApiStandardOkResponse<TModel>(
                           }
                         : { $ref: getSchemaPath(actualModel as Type<unknown>) },
                   }
-                : { data: null }),
+                : { contents: null }),
             },
           },
         ],

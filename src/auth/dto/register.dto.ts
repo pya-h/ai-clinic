@@ -13,7 +13,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsEnumDetailed } from '../../common/decorators/is-enum-detailed.decorator';
 import { BasicUserRoles } from '../../user/enums/basic-user-roles.enum';
 
-export class RegisterationDto {
+export class RegistrationDto {
   @ApiProperty({
     description: 'User email',
     example: 'example@example.com',
