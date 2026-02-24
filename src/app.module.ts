@@ -18,6 +18,7 @@ import { CacheModule } from './cache/cache.module';
 import { ScheduleModule } from '@nestjs/schedule';
 import { DoctorModule } from './doctor/doctor.module';
 import { PatientModule } from './patient/patient.module';
+import { SoapModule } from './soap/soap.module';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 
 @Module({
@@ -38,6 +39,7 @@ import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
     }),
     DoctorModule,
     PatientModule,
+    SoapModule,
   ],
   controllers: [AppController],
   providers: [

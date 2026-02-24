@@ -20,13 +20,17 @@ import * as chat from '@botpress/chat';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { CookieAuthGuard } from '../auth/guards/cookie-auth.guard';
 import { ApiStandardOkResponse } from '../common/decorators/api-standard-ok-response.decorator';
+import { SoapService } from '../soap/soap.service';
 
 @ApiTags('Ai Agents')
 @Controller('ai-agents')
 export class AiAgentsController {
   private readonly logger = new Logger(AiAgentsController.name);
 
-  constructor(private readonly aiService: BotpressService) {}
+  constructor(
+    private readonly aiService: BotpressService,
+    private readonly soapService: SoapService,
+  ) {}
 
   @ApiOperation({ description: 'Used for logging in the user' })
   @ApiStandardOkResponse('void')
@@ -57,11 +61,26 @@ export class AiAgentsController {
     @Param('conversationId') conversationId: string,
     @Query('dateOffset') dateOffset?: string,
   ) {
-    return this.aiService.pollForNewMessages(
+    const messages = await this.aiService.pollForNewMessages(
       user,
       conversationId,
       dateOffset ? new Date(dateOffset) : undefined,
     );
+
+    // Check each new message for SOAP tags
+    for (const msg of messages) {
+      const messageText = msg?.payload?.text;
+      if (messageText && user?.id && this.soapService.containsSoapTag(messageText)) {
+        try {
+          await this.soapService.detectAndUpsert(user.id, conversationId, messageText);
+          this.logger.log(`SOAP note saved from poll for conversation ${conversationId}`);
+        } catch (err) {
+          this.logger.error('Failed to save SOAP note during poll:', err);
+        }
+      }
+    }
+
+    return messages;
   }
 
   @UseGuards(CookieAuthGuard)
@@ -119,6 +138,22 @@ export class AiAgentsController {
       const onMessage = (ev: chat.Signals['message_created']) => {
         this.logger.debug('Botpress message received:', ev);
         sendEvent('message_created', ev);
+
+        // Check for SOAP tags in AI messages and persist if found
+        const messageText = ev?.payload?.text;
+        if (messageText && user?.id && this.soapService.containsSoapTag(messageText)) {
+          this.soapService
+            .detectAndUpsert(user.id, actualConversationId, messageText)
+            .then((soap) => {
+              if (soap) {
+                this.logger.log(`SOAP note saved for conversation ${actualConversationId}`);
+                sendEvent('soap_ready', { soapId: soap.id, conversationId: actualConversationId });
+              }
+            })
+            .catch((err) => {
+              this.logger.error('Failed to save SOAP note:', err);
+            });
+        }
       };
 
       const onError = (err: unknown) => {
