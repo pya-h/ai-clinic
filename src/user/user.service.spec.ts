@@ -1,20 +1,217 @@
+/**
+ * UserService Unit Tests
+ *
+ * Tests:
+ *   getById      — found + not found
+ *   getBy        — by email, by id, missing args
+ *   emailExists  — exists + doesn't exist
+ *   createUser   — successful + duplicate email + invalid role
+ *   updateUser   — successful + empty data + email conflict
+ *   getUsers     — returns user list
+ */
 import { Test, TestingModule } from '@nestjs/testing';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+} from '@nestjs/common';
 import { UserService } from './user.service';
-import { PrismaService } from 'src/prisma/prisma.service';
+import { PrismaService } from '../prisma/prisma.service';
+import { UtilsService } from '../utils/utils.service';
+import { UserRolesEnum } from '@prisma/client';
+import {
+  createMockPrismaService,
+  MockPrismaService,
+} from '../../test/helpers/mock-prisma.helper';
 
 describe('UserService', () => {
   let service: UserService;
+  let prisma: MockPrismaService;
+  let utilsService: Record<string, jest.Mock>;
+
+  const mockUser = {
+    id: 'user-uuid',
+    email: 'test@example.com',
+    firstname: 'Test',
+    lastname: 'User',
+    role: UserRolesEnum.PATIENT,
+    isAdmin: false,
+    isSuperAdmin: false,
+    isPrivate: false,
+    isActive: true,
+    avatar: null,
+    password: 'hashedpassword',
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  };
 
   beforeEach(async () => {
+    prisma = createMockPrismaService();
+    utilsService = {
+      getHash: jest.fn().mockResolvedValue('hashedpassword'),
+      isEnumElement: jest.fn().mockReturnValue(true),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
-      providers: [UserService],
-      imports: [PrismaService],
+      providers: [
+        UserService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: UtilsService, useValue: utilsService },
+      ],
     }).compile();
 
     service = module.get<UserService>(UserService);
   });
 
-  it('should be defined', () => {
-    expect(service).toBeDefined();
+  afterEach(() => {
+    jest.clearAllMocks();
+  });
+
+  // ───────────────────── getById ─────────────────────
+
+  describe('getById', () => {
+    it('should return user when found', async () => {
+      prisma.user.findUnique.mockResolvedValue(mockUser);
+      const result = await service.getById('user-uuid');
+      expect(result).toEqual(mockUser);
+      expect(prisma.user.findUnique).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: 'user-uuid' } }),
+      );
+    });
+
+    it('should return null when user not found', async () => {
+      prisma.user.findUnique.mockResolvedValue(null);
+      const result = await service.getById('nonexistent');
+      expect(result).toBeNull();
+    });
+  });
+
+  // ───────────────────── getBy ─────────────────────
+
+  describe('getBy', () => {
+    it('should find user by email', async () => {
+      prisma.user.findFirst.mockResolvedValue(mockUser);
+      const result = await service.getBy({ email: 'test@example.com' });
+      expect(result).toEqual(mockUser);
+    });
+
+    it('should find user by id', async () => {
+      prisma.user.findUnique.mockResolvedValue(mockUser);
+      const result = await service.getBy({ id: 'user-uuid' });
+      expect(result).toEqual(mockUser);
+    });
+
+    it('should throw BadRequestException if no identifier provided', () => {
+      expect(() => service.getBy({})).toThrow(BadRequestException);
+    });
+  });
+
+  // ───────────────────── emailExists ─────────────────────
+
+  describe('emailExists', () => {
+    it('should return true when email exists', async () => {
+      prisma.user.findFirst.mockResolvedValue(mockUser);
+      const result = await service.emailExists('test@example.com');
+      expect(result).toBe(true);
+    });
+
+    it('should return false when email does not exist', async () => {
+      prisma.user.findFirst.mockResolvedValue(null);
+      const result = await service.emailExists('nobody@example.com');
+      expect(result).toBe(false);
+    });
+  });
+
+  // ───────────────────── createUser ─────────────────────
+
+  describe('createUser', () => {
+    const registerDto = {
+      email: 'new@example.com',
+      firstname: 'New',
+      lastname: 'User',
+      password: '1StrongPass',
+      role: UserRolesEnum.PATIENT as any,
+      isPrivate: false,
+    };
+
+    it('should create a user successfully', async () => {
+      prisma.user.findFirst.mockResolvedValue(null); // no existing email
+      prisma.user.create.mockResolvedValue({ ...mockUser, ...registerDto });
+
+      const result = await service.createUser(registerDto);
+      expect(result).toBeDefined();
+      expect(prisma.user.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            email: registerDto.email,
+            password: 'hashedpassword',
+          }),
+        }),
+      );
+    });
+
+    it('should throw ForbiddenException for duplicate email', async () => {
+      prisma.user.findFirst.mockResolvedValue(mockUser); // email exists
+
+      await expect(service.createUser(registerDto)).rejects.toThrow(
+        ForbiddenException,
+      );
+    });
+
+    it('should throw BadRequestException for invalid role', async () => {
+      prisma.user.findFirst.mockResolvedValue(null);
+      utilsService.isEnumElement.mockReturnValue(false);
+
+      await expect(
+        service.createUser({ ...registerDto, role: 'INVALID' as any }),
+      ).rejects.toThrow(BadRequestException);
+    });
+  });
+
+  // ───────────────────── updateUser ─────────────────────
+
+  describe('updateUser', () => {
+    it('should update user with valid data', async () => {
+      prisma.user.findFirst.mockResolvedValue(null); // no email conflict
+      prisma.user.update.mockResolvedValue({
+        ...mockUser,
+        firstname: 'Updated',
+      });
+
+      const result = await service.updateUser(mockUser as any, {
+        firstname: 'Updated',
+      });
+      expect(result.firstname).toBe('Updated');
+    });
+
+    it('should throw BadRequestException for empty update data', async () => {
+      await expect(
+        service.updateUser(mockUser as any, {}),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('should throw ConflictException for duplicate email', async () => {
+      prisma.user.findFirst.mockResolvedValue({
+        id: 'other-user',
+        email: 'taken@example.com',
+      });
+
+      await expect(
+        service.updateUser(mockUser as any, { email: 'taken@example.com' }),
+      ).rejects.toThrow(ConflictException);
+    });
+  });
+
+  // ───────────────────── getUsers ─────────────────────
+
+  describe('getUsers', () => {
+    it('should return list of non-admin users', async () => {
+      prisma.user.findMany.mockResolvedValue([mockUser]);
+      const result = await service.getUsers();
+      expect(Array.isArray(result)).toBe(true);
+      expect(prisma.user.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { isAdmin: false } }),
+      );
+    });
   });
 });
