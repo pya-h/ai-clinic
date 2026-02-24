@@ -82,7 +82,32 @@ export type MockPrismaService = {
     findMany: jest.Mock;
     create: jest.Mock;
     update: jest.Mock;
+    delete: jest.Mock;
     count: jest.Mock;
+  };
+  doctorAvailability: {
+    findFirst: jest.Mock;
+    findUnique: jest.Mock;
+    findMany: jest.Mock;
+    create: jest.Mock;
+    update: jest.Mock;
+    delete: jest.Mock;
+  };
+  slotDuration: {
+    findFirst: jest.Mock;
+    findUnique: jest.Mock;
+    findMany: jest.Mock;
+    create: jest.Mock;
+    update: jest.Mock;
+    delete: jest.Mock;
+  };
+  availabilityException: {
+    findFirst: jest.Mock;
+    findUnique: jest.Mock;
+    findMany: jest.Mock;
+    create: jest.Mock;
+    update: jest.Mock;
+    delete: jest.Mock;
   };
   $connect: jest.Mock;
   $disconnect: jest.Mock;
@@ -115,6 +140,9 @@ export function createMockPrismaService(): MockPrismaService {
     patientSOAP: createModelMock(['upsert']) as any,
     consultation: createModelMock(['count']) as any,
     appointment: createModelMock(['count']) as any,
+    doctorAvailability: createModelMock() as any,
+    slotDuration: createModelMock() as any,
+    availabilityException: createModelMock() as any,
     $connect: jest.fn(),
     $disconnect: jest.fn(),
   };

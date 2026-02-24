@@ -1,0 +1,213 @@
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  ParseIntPipe,
+  Patch,
+  Post,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
+import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { User, UserRolesEnum } from '@prisma/client';
+import { CurrentUser } from '../user/decorators/current-user.decorator';
+import { CookieAuthGuard } from '../auth/guards/cookie-auth.guard';
+import { RolesGuard } from '../auth/guards/roles.guard';
+import { Roles } from '../common/decorators/roles.decorator';
+import { SchedulingService } from './scheduling.service';
+import { CreateAvailabilityDto } from './dto/create-availability.dto';
+import { UpdateAvailabilityDto } from './dto/update-availability.dto';
+import { CreateSlotDurationDto } from './dto/create-slot-duration.dto';
+import { CreateExceptionDto } from './dto/create-exception.dto';
+import { BookAppointmentDto } from './dto/book-appointment.dto';
+import { AvailableSlotsQueryDto } from './dto/available-slots-query.dto';
+import { AppointmentFilterDto } from './dto/appointment-filter.dto';
+
+@ApiTags('Scheduling')
+@Controller('scheduling')
+export class SchedulingController {
+  constructor(private readonly schedulingService: SchedulingService) {}
+
+  // ──────────────── Availability (Doctor) ────────────────
+
+  @ApiOperation({ description: 'Create a weekly availability slot.' })
+  @UseGuards(CookieAuthGuard, RolesGuard)
+  @Roles(UserRolesEnum.DOCTOR)
+  @Post('availability')
+  async setAvailability(
+    @CurrentUser() user: User,
+    @Body() dto: CreateAvailabilityDto,
+  ) {
+    const doctorId = await this.schedulingService.getDoctorProfileId(user.id);
+    return this.schedulingService.setAvailability(doctorId, dto);
+  }
+
+  @ApiOperation({ description: 'Get own weekly availability.' })
+  @UseGuards(CookieAuthGuard, RolesGuard)
+  @Roles(UserRolesEnum.DOCTOR)
+  @Get('availability')
+  async getMyAvailability(@CurrentUser() user: User) {
+    const doctorId = await this.schedulingService.getDoctorProfileId(user.id);
+    return this.schedulingService.getAvailability(doctorId);
+  }
+
+  @ApiOperation({ description: 'Update an availability slot.' })
+  @UseGuards(CookieAuthGuard, RolesGuard)
+  @Roles(UserRolesEnum.DOCTOR)
+  @Patch('availability/:id')
+  async updateAvailability(
+    @CurrentUser() user: User,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: UpdateAvailabilityDto,
+  ) {
+    const doctorId = await this.schedulingService.getDoctorProfileId(user.id);
+    return this.schedulingService.updateAvailability(id, doctorId, dto);
+  }
+
+  @ApiOperation({ description: 'Delete an availability slot.' })
+  @UseGuards(CookieAuthGuard, RolesGuard)
+  @Roles(UserRolesEnum.DOCTOR)
+  @Delete('availability/:id')
+  async deleteAvailability(
+    @CurrentUser() user: User,
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    const doctorId = await this.schedulingService.getDoctorProfileId(user.id);
+    return this.schedulingService.deleteAvailability(id, doctorId);
+  }
+
+  // ──────────────── Slot Durations (Doctor) ────────────────
+
+  @ApiOperation({ description: 'Create a slot duration preset.' })
+  @UseGuards(CookieAuthGuard, RolesGuard)
+  @Roles(UserRolesEnum.DOCTOR)
+  @Post('slot-durations')
+  async setSlotDuration(
+    @CurrentUser() user: User,
+    @Body() dto: CreateSlotDurationDto,
+  ) {
+    const doctorId = await this.schedulingService.getDoctorProfileId(user.id);
+    return this.schedulingService.setSlotDuration(doctorId, dto);
+  }
+
+  @ApiOperation({ description: 'Get own slot duration presets.' })
+  @UseGuards(CookieAuthGuard, RolesGuard)
+  @Roles(UserRolesEnum.DOCTOR)
+  @Get('slot-durations')
+  async getMySlotDurations(@CurrentUser() user: User) {
+    const doctorId = await this.schedulingService.getDoctorProfileId(user.id);
+    return this.schedulingService.getSlotDurations(doctorId);
+  }
+
+  // ──────────────── Exceptions (Doctor) ────────────────
+
+  @ApiOperation({ description: 'Add an availability exception (vacation/day off).' })
+  @UseGuards(CookieAuthGuard, RolesGuard)
+  @Roles(UserRolesEnum.DOCTOR)
+  @Post('exceptions')
+  async addException(
+    @CurrentUser() user: User,
+    @Body() dto: CreateExceptionDto,
+  ) {
+    const doctorId = await this.schedulingService.getDoctorProfileId(user.id);
+    return this.schedulingService.addException(doctorId, dto);
+  }
+
+  @ApiOperation({ description: 'Get own availability exceptions.' })
+  @UseGuards(CookieAuthGuard, RolesGuard)
+  @Roles(UserRolesEnum.DOCTOR)
+  @Get('exceptions')
+  async getMyExceptions(@CurrentUser() user: User) {
+    const doctorId = await this.schedulingService.getDoctorProfileId(user.id);
+    return this.schedulingService.getExceptions(doctorId);
+  }
+
+  @ApiOperation({ description: 'Delete an availability exception.' })
+  @UseGuards(CookieAuthGuard, RolesGuard)
+  @Roles(UserRolesEnum.DOCTOR)
+  @Delete('exceptions/:id')
+  async deleteException(
+    @CurrentUser() user: User,
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    const doctorId = await this.schedulingService.getDoctorProfileId(user.id);
+    return this.schedulingService.deleteException(id, doctorId);
+  }
+
+  // ──────────────── Public Endpoints ────────────────
+
+  @ApiOperation({
+    description:
+      'Compute available time slots for a doctor in a date range. Public endpoint.',
+  })
+  @Get('doctor/:doctorId/slots')
+  async getAvailableSlots(
+    @Param('doctorId', ParseIntPipe) doctorId: number,
+    @Query() query: AvailableSlotsQueryDto,
+  ) {
+    return this.schedulingService.getAvailableSlots(
+      doctorId,
+      new Date(query.start),
+      new Date(query.end),
+      query.duration ? +query.duration : undefined,
+    );
+  }
+
+  @ApiOperation({
+    description: "Get a doctor's active slot duration presets. Public endpoint.",
+  })
+  @Get('doctor/:doctorId/durations')
+  async getDoctorDurations(
+    @Param('doctorId', ParseIntPipe) doctorId: number,
+  ) {
+    return this.schedulingService.getSlotDurations(doctorId);
+  }
+
+  // ──────────────── Appointments (Authenticated) ────────────────
+
+  @ApiOperation({ description: 'Book an appointment with a doctor.' })
+  @UseGuards(CookieAuthGuard, RolesGuard)
+  @Roles(UserRolesEnum.PATIENT)
+  @Post('book')
+  async bookAppointment(
+    @CurrentUser() user: User,
+    @Body() dto: BookAppointmentDto,
+  ) {
+    return this.schedulingService.bookAppointment(user, dto);
+  }
+
+  @ApiOperation({
+    description:
+      'List own appointments (patient sees own, doctor sees assigned, admin sees all).',
+  })
+  @UseGuards(CookieAuthGuard)
+  @Get('appointments')
+  async getMyAppointments(
+    @CurrentUser() user: User,
+    @Query() filters: AppointmentFilterDto,
+  ) {
+    return this.schedulingService.getMyAppointments(user, filters);
+  }
+
+  @ApiOperation({ description: 'Get a single appointment by ID.' })
+  @UseGuards(CookieAuthGuard)
+  @Get('appointments/:id')
+  async getAppointment(
+    @CurrentUser() user: User,
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    return this.schedulingService.getAppointment(id, user);
+  }
+
+  @ApiOperation({ description: 'Cancel an appointment.' })
+  @UseGuards(CookieAuthGuard)
+  @Patch('appointments/:id/cancel')
+  async cancelAppointment(
+    @CurrentUser() user: User,
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    return this.schedulingService.cancelAppointment(id, user);
+  }
+}
