@@ -1,19 +1,23 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Get,
   NotFoundException,
   Param,
   Patch,
+  Post,
+  Req,
   UseGuards,
 } from '@nestjs/common';
 import { UserService } from './user.service';
-import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { CookieAuthGuard } from '../auth/guards/cookie-auth.guard';
 import { CurrentUser } from './decorators/current-user.decorator';
 import { AdminGuard } from '../auth/guards/admin.guard';
 import { User } from '@prisma/client';
+import { FastifyRequest } from 'fastify';
 
 @ApiTags('User')
 @Controller('user')
@@ -48,6 +52,23 @@ export class UserController {
     @Body() updateUserData: UpdateUserDto,
   ) {
     return this.userService.updateUser(user, updateUserData);
+  }
+
+  @ApiOperation({
+    description: 'Upload and set user avatar.',
+  })
+  @ApiConsumes('multipart/form-data')
+  @UseGuards(CookieAuthGuard)
+  @Post('avatar')
+  async uploadAvatar(
+    @CurrentUser() user: User,
+    @Req() req: FastifyRequest,
+  ) {
+    const file = await req.file();
+    if (!file) {
+      throw new BadRequestException('No file provided.');
+    }
+    return this.userService.uploadAvatar(user, file);
   }
 
   // TODO: Implement the serialize user data INTERCEPTOR.

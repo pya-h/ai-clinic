@@ -9,12 +9,15 @@ import { UpdateUserDto } from './dto/update-user.dto';
 import { RegistrationDto } from '../auth/dto/register.dto';
 import { UtilsService } from '../utils/utils.service';
 import { DefaultArgs } from '@prisma/client/runtime/library';
+import { FileUploadService } from '../file-upload/file-upload.service';
+import { MultipartFile } from '@fastify/multipart';
 
 @Injectable()
 export class UserService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly utilsService: UtilsService,
+    private readonly fileUploadService: FileUploadService,
   ) {}
 
   getById(id: string, select?: Prisma.UserSelect<DefaultArgs>) {
@@ -114,6 +117,19 @@ export class UserService {
         isPrivate: true,
         role: true,
       },
+    });
+  }
+
+  /**
+   * Upload and set user avatar.
+   */
+  async uploadAvatar(user: User, file: MultipartFile) {
+    const uploaded = await this.fileUploadService.uploadFile(file, 'avatars');
+
+    return this.prisma.user.update({
+      where: { id: user.id },
+      data: { avatar: uploaded.url },
+      select: { id: true, avatar: true },
     });
   }
 }

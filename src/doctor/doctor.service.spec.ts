@@ -16,10 +16,12 @@ import {
 } from '@nestjs/common';
 import { DoctorService } from './doctor.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { FileUploadService } from '../file-upload/file-upload.service';
 import {
   UserRolesEnum,
   DoctorSpecialtiesEnum,
   VisitMethodsEnum,
+  DocumentTypeEnum,
 } from '@prisma/client';
 import {
   createMockPrismaService,
@@ -29,6 +31,7 @@ import {
 describe('DoctorService', () => {
   let service: DoctorService;
   let prisma: MockPrismaService;
+  let fileUploadService: Record<string, jest.Mock>;
 
   const mockDoctorUser = {
     id: 'doctor-uuid',
@@ -82,11 +85,17 @@ describe('DoctorService', () => {
 
   beforeEach(async () => {
     prisma = createMockPrismaService();
+    fileUploadService = {
+      uploadFile: jest.fn(),
+      deleteFile: jest.fn(),
+      getFileUrl: jest.fn(),
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         DoctorService,
         { provide: PrismaService, useValue: prisma },
+        { provide: FileUploadService, useValue: fileUploadService },
       ],
     }).compile();
 
@@ -346,6 +355,97 @@ describe('DoctorService', () => {
       });
 
       await expect(service.findOne(1)).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  // ───────────────────── uploadDocument ─────────────────────
+
+  describe('uploadDocument', () => {
+    const mockFile = {
+      filename: 'license.pdf',
+      mimetype: 'application/pdf',
+      toBuffer: jest.fn().mockResolvedValue(Buffer.from('data')),
+      fields: {},
+    } as any;
+
+    const mockDoc = {
+      id: 1,
+      doctorId: 1,
+      type: DocumentTypeEnum.LICENSE,
+      fileUrl: '/uploads/doctor-documents/123-license.pdf',
+      fileName: 'license.pdf',
+      mimeType: 'application/pdf',
+      status: 'PENDING',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+
+    it('should upload a document for a doctor', async () => {
+      prisma.doctorProfile.findUnique.mockResolvedValue(mockProfile);
+      fileUploadService.uploadFile.mockResolvedValue({
+        url: '/uploads/doctor-documents/123-license.pdf',
+        fileName: 'license.pdf',
+        mimeType: 'application/pdf',
+        key: 'doctor-documents/123-license.pdf',
+      });
+      prisma.doctorDocument.create.mockResolvedValue(mockDoc);
+
+      const result = await service.uploadDocument(
+        mockDoctorUser as any,
+        mockFile,
+        DocumentTypeEnum.LICENSE,
+      );
+
+      expect(result).toEqual(mockDoc);
+      expect(fileUploadService.uploadFile).toHaveBeenCalledWith(
+        mockFile,
+        'doctor-documents',
+      );
+      expect(prisma.doctorDocument.create).toHaveBeenCalledWith({
+        data: {
+          doctorId: mockProfile.id,
+          type: DocumentTypeEnum.LICENSE,
+          fileUrl: '/uploads/doctor-documents/123-license.pdf',
+          fileName: 'license.pdf',
+          mimeType: 'application/pdf',
+        },
+      });
+    });
+
+    it('should throw NotFoundException if doctor has no profile', async () => {
+      prisma.doctorProfile.findUnique.mockResolvedValue(null);
+
+      await expect(
+        service.uploadDocument(mockDoctorUser as any, mockFile, DocumentTypeEnum.LICENSE),
+      ).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  // ───────────────────── getDocuments ─────────────────────
+
+  describe('getDocuments', () => {
+    it('should return documents for the doctor', async () => {
+      const docs = [
+        { id: 1, doctorId: 1, type: DocumentTypeEnum.LICENSE, fileUrl: '/file.pdf' },
+      ];
+      prisma.doctorProfile.findUnique.mockResolvedValue(mockProfile);
+      prisma.doctorDocument.findMany.mockResolvedValue(docs);
+
+      const result = await service.getDocuments(mockDoctorUser as any);
+
+      expect(result).toEqual(docs);
+      expect(prisma.doctorDocument.findMany).toHaveBeenCalledWith({
+        where: { doctorId: mockProfile.id },
+        orderBy: { createdAt: 'desc' },
+      });
+    });
+
+    it('should throw NotFoundException if doctor has no profile', async () => {
+      prisma.doctorProfile.findUnique.mockResolvedValue(null);
+
+      await expect(
+        service.getDocuments(mockDoctorUser as any),
+      ).rejects.toThrow(NotFoundException);
     });
   });
 });

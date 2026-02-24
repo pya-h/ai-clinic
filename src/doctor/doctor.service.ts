@@ -5,14 +5,19 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { Prisma, User, UserRolesEnum } from '@prisma/client';
+import { Prisma, User, UserRolesEnum, DocumentTypeEnum } from '@prisma/client';
 import { toCapitalCase } from '../common/tools';
 import { UpdateDoctorProfileDto } from './dto/update-doctor-profile.dto';
 import { DoctorFilterDto } from './dto/doctor-filter.dto';
+import { FileUploadService } from '../file-upload/file-upload.service';
+import { MultipartFile } from '@fastify/multipart';
 
 @Injectable()
 export class DoctorService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly fileUploadService: FileUploadService,
+  ) {}
 
   async hasProfile(userId: string, fromAnyKind: boolean = false) {
     return (
@@ -143,5 +148,53 @@ export class DoctorService {
         : null,
       totalReviews: ratingAgg._count.rating,
     };
+  }
+
+  /**
+   * Upload a document for the authenticated doctor.
+   */
+  async uploadDocument(
+    user: User,
+    file: MultipartFile,
+    type: DocumentTypeEnum,
+  ) {
+    const profile = await this.prisma.doctorProfile.findUnique({
+      where: { userId: user.id },
+    });
+    if (!profile) {
+      throw new NotFoundException('Doctor profile not found.');
+    }
+
+    const uploaded = await this.fileUploadService.uploadFile(
+      file,
+      'doctor-documents',
+    );
+
+    return this.prisma.doctorDocument.create({
+      data: {
+        doctorId: profile.id,
+        type,
+        fileUrl: uploaded.url,
+        fileName: uploaded.fileName,
+        mimeType: uploaded.mimeType,
+      },
+    });
+  }
+
+  /**
+   * Get all documents for the authenticated doctor.
+   */
+  async getDocuments(user: User) {
+    const profile = await this.prisma.doctorProfile.findUnique({
+      where: { userId: user.id },
+    });
+    if (!profile) {
+      throw new NotFoundException('Doctor profile not found.');
+    }
+
+    return this.prisma.doctorDocument.findMany({
+      where: { doctorId: profile.id },
+      orderBy: { createdAt: 'desc' },
+    });
   }
 }

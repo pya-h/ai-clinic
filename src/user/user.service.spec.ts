@@ -18,6 +18,7 @@ import {
 import { UserService } from './user.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { UtilsService } from '../utils/utils.service';
+import { FileUploadService } from '../file-upload/file-upload.service';
 import { UserRolesEnum } from '@prisma/client';
 import {
   createMockPrismaService,
@@ -28,6 +29,7 @@ describe('UserService', () => {
   let service: UserService;
   let prisma: MockPrismaService;
   let utilsService: Record<string, jest.Mock>;
+  let fileUploadService: Record<string, jest.Mock>;
 
   const mockUser = {
     id: 'user-uuid',
@@ -51,12 +53,18 @@ describe('UserService', () => {
       getHash: jest.fn().mockResolvedValue('hashedpassword'),
       isEnumElement: jest.fn().mockReturnValue(true),
     };
+    fileUploadService = {
+      uploadFile: jest.fn(),
+      deleteFile: jest.fn(),
+      getFileUrl: jest.fn(),
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         UserService,
         { provide: PrismaService, useValue: prisma },
         { provide: UtilsService, useValue: utilsService },
+        { provide: FileUploadService, useValue: fileUploadService },
       ],
     }).compile();
 
@@ -211,6 +219,49 @@ describe('UserService', () => {
       expect(Array.isArray(result)).toBe(true);
       expect(prisma.user.findMany).toHaveBeenCalledWith(
         expect.objectContaining({ where: { isAdmin: false } }),
+      );
+    });
+  });
+
+  describe('uploadAvatar', () => {
+    const mockFile = {
+      filename: 'avatar.png',
+      mimetype: 'image/png',
+      file: { bytesRead: 1024 },
+      toBuffer: jest.fn().mockResolvedValue(Buffer.alloc(1024)),
+    } as any;
+
+    it('should upload avatar and update user record', async () => {
+      fileUploadService.uploadFile.mockResolvedValue({
+        url: '/uploads/avatars/12345-avatar.png',
+        key: 'avatars/12345-avatar.png',
+      });
+      prisma.user.update.mockResolvedValue({
+        ...mockUser,
+        avatar: '/uploads/avatars/12345-avatar.png',
+      });
+
+      const result = await service.uploadAvatar(mockUser, mockFile);
+
+      expect(fileUploadService.uploadFile).toHaveBeenCalledWith(
+        mockFile,
+        'avatars',
+      );
+      expect(prisma.user.update).toHaveBeenCalledWith({
+        where: { id: mockUser.id },
+        data: { avatar: '/uploads/avatars/12345-avatar.png' },
+        select: { id: true, avatar: true },
+      });
+      expect(result.avatar).toBe('/uploads/avatars/12345-avatar.png');
+    });
+
+    it('should propagate upload errors', async () => {
+      fileUploadService.uploadFile.mockRejectedValue(
+        new Error('Invalid file type'),
+      );
+
+      await expect(service.uploadAvatar(mockUser, mockFile)).rejects.toThrow(
+        'Invalid file type',
       );
     });
   });
