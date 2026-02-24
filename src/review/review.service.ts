@@ -1,0 +1,238 @@
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
+import { PrismaService } from '../prisma/prisma.service';
+import { CacheService } from '../cache/cache.service';
+import { DoctorReview, User, UserRolesEnum } from '@prisma/client';
+import { CreateReviewDto } from './dto/create-review.dto';
+import { UpdateReviewDto } from './dto/update-review.dto';
+import { PaginationOptionsDto } from '../common/dtos/pagination-options.dto';
+
+export interface AggregateRating {
+  averageRating: number | null;
+  totalReviews: number;
+  distribution: Record<1 | 2 | 3 | 4 | 5, number>;
+}
+
+@Injectable()
+export class ReviewService {
+  private readonly logger = new Logger(ReviewService.name);
+  private readonly CACHE_GROUP = 'ratings';
+  private readonly CACHE_TTL = 600_000; // 10 minutes
+
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly cacheService: CacheService,
+  ) {}
+
+  /**
+   * Create a review for a doctor.
+   * Rules:
+   *  1. Reviewer must be a PATIENT
+   *  2. Reviewer must have a COMPLETED consultation with this doctor
+   *  3. One review per patient per doctor (unique constraint)
+   */
+  async create(user: User, dto: CreateReviewDto): Promise<DoctorReview> {
+    // 1. Role check
+    if (user.role !== UserRolesEnum.PATIENT) {
+      throw new ForbiddenException('Only patients can submit reviews.');
+    }
+
+    // 2. Doctor must exist and be verified
+    const doctor = await this.prisma.doctorProfile.findUnique({
+      where: { id: dto.doctorId },
+    });
+    if (!doctor || !doctor.verified) {
+      throw new NotFoundException('Doctor not found.');
+    }
+
+    // 3. Must have a completed consultation with this doctor
+    const completedConsultation = await this.prisma.consultation.findFirst({
+      where: {
+        patientId: user.id,
+        doctorId: dto.doctorId,
+        status: 'COMPLETED',
+      },
+    });
+    if (!completedConsultation) {
+      throw new BadRequestException(
+        'You must have a completed consultation with this doctor before leaving a review.',
+      );
+    }
+
+    // 4. Check uniqueness (also enforced at DB level)
+    const existing = await this.prisma.doctorReview.findUnique({
+      where: {
+        reviewerId_doctorId: {
+          reviewerId: user.id,
+          doctorId: dto.doctorId,
+        },
+      },
+    });
+    if (existing) {
+      throw new ConflictException(
+        'You have already reviewed this doctor. You may update your existing review.',
+      );
+    }
+
+    const review = await this.prisma.doctorReview.create({
+      data: {
+        reviewerId: user.id,
+        doctorId: dto.doctorId,
+        rating: dto.rating,
+        title: dto.title,
+        overview: dto.overview,
+      },
+    });
+
+    // Invalidate cached rating for this doctor
+    await this.invalidateRatingCache(dto.doctorId);
+
+    return review;
+  }
+
+  /**
+   * Update own review.
+   */
+  async update(
+    user: User,
+    reviewId: number,
+    dto: UpdateReviewDto,
+  ): Promise<DoctorReview> {
+    const review = await this.prisma.doctorReview.findUnique({
+      where: { id: reviewId },
+    });
+    if (!review) {
+      throw new NotFoundException('Review not found.');
+    }
+    if (review.reviewerId !== user.id) {
+      throw new ForbiddenException('You can only update your own review.');
+    }
+
+    const updated = await this.prisma.doctorReview.update({
+      where: { id: reviewId },
+      data: { ...dto },
+    });
+
+    await this.invalidateRatingCache(review.doctorId);
+
+    return updated;
+  }
+
+  /**
+   * Delete a review. Owner or admin can delete.
+   */
+  async delete(reviewId: number, user: User): Promise<void> {
+    const review = await this.prisma.doctorReview.findUnique({
+      where: { id: reviewId },
+    });
+    if (!review) {
+      throw new NotFoundException('Review not found.');
+    }
+    if (review.reviewerId !== user.id && !user.isAdmin) {
+      throw new ForbiddenException(
+        'You can only delete your own review.',
+      );
+    }
+
+    await this.prisma.doctorReview.delete({ where: { id: reviewId } });
+    await this.invalidateRatingCache(review.doctorId);
+  }
+
+  /**
+   * List reviews for a doctor (public, paginated).
+   */
+  async listByDoctor(
+    doctorId: number,
+    pagination: PaginationOptionsDto,
+  ): Promise<{ data: DoctorReview[]; total: number; skip: number; take: number }> {
+    const skip = +(pagination.skip ?? 0);
+    const take = +(pagination.take ?? 20);
+
+    const where = { doctorId };
+
+    const [data, total] = await Promise.all([
+      this.prisma.doctorReview.findMany({
+        where,
+        skip,
+        take,
+        orderBy: { createdAt: 'desc' },
+        include: {
+          reviewer: {
+            select: { id: true, firstname: true, lastname: true, avatar: true },
+          },
+        },
+      }),
+      this.prisma.doctorReview.count({ where }),
+    ]);
+
+    return { data, total, skip, take };
+  }
+
+  /**
+   * Aggregate rating for a doctor — cached for 10 minutes.
+   */
+  async getAggregateRating(doctorId: number): Promise<AggregateRating> {
+    // Check cache first
+    const cached = await this.cacheService.get<AggregateRating>(
+      this.CACHE_GROUP,
+      String(doctorId),
+    );
+    if (cached) return cached;
+
+    const reviews = await this.prisma.doctorReview.findMany({
+      where: { doctorId },
+      select: { rating: true },
+    });
+
+    const distribution: Record<1 | 2 | 3 | 4 | 5, number> = {
+      1: 0,
+      2: 0,
+      3: 0,
+      4: 0,
+      5: 0,
+    };
+
+    for (const review of reviews) {
+      if (review.rating >= 1 && review.rating <= 5) {
+        distribution[review.rating as 1 | 2 | 3 | 4 | 5]++;
+      }
+    }
+
+    const totalReviews = reviews.length;
+    const averageRating =
+      totalReviews > 0
+        ? Math.round(
+            (reviews.reduce((sum, r) => sum + r.rating, 0) / totalReviews) * 10,
+          ) / 10
+        : null;
+
+    const result: AggregateRating = { averageRating, totalReviews, distribution };
+
+    // Cache the result
+    await this.cacheService.set(
+      this.CACHE_GROUP,
+      String(doctorId),
+      result,
+      this.CACHE_TTL,
+    );
+
+    return result;
+  }
+
+  /**
+   * Invalidate cached rating for a doctor.
+   */
+  private async invalidateRatingCache(doctorId: number): Promise<void> {
+    try {
+      await this.cacheService.del(this.CACHE_GROUP, String(doctorId));
+    } catch {
+      // Cache miss is fine
+    }
+  }
+}

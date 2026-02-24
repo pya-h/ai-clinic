@@ -21,11 +21,15 @@ import { User, UserRolesEnum } from '@prisma/client';
 import { IntroduceDoctorDto } from './dto/introduce-doctor.dto';
 import { UpdateDoctorProfileDto } from './dto/update-doctor-profile.dto';
 import { DoctorFilterDto } from './dto/doctor-filter.dto';
+import { ReviewService } from '../review/review.service';
 
 @ApiTags('Doctor')
 @Controller('doctor')
 export class DoctorController {
-  constructor(private readonly doctorService: DoctorService) {}
+  constructor(
+    private readonly doctorService: DoctorService,
+    private readonly reviewService: ReviewService,
+  ) {}
 
   @ApiOperation({
     description: 'Introduce user as a doctor and create a doctor profile.',
@@ -66,5 +70,13 @@ export class DoctorController {
   @Get(':id')
   async findOne(@Param('id', ParseIntPipe) id: number) {
     return this.doctorService.findOne(id);
+  }
+
+  @ApiOperation({
+    description: 'Get aggregate rating for a doctor. Public endpoint.',
+  })
+  @Get(':id/rating')
+  async getDoctorRating(@Param('id', ParseIntPipe) id: number) {
+    return this.reviewService.getAggregateRating(id);
   }
 }
