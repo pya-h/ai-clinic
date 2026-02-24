@@ -1,0 +1,537 @@
+import { Test, TestingModule } from '@nestjs/testing';
+import { AdminService } from './admin.service';
+import { PrismaService } from '../prisma/prisma.service';
+import { ReviewService } from '../review/review.service';
+import {
+  BadRequestException,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common';
+import { UserRolesEnum } from '@prisma/client';
+
+describe('AdminService', () => {
+  let service: AdminService;
+  let prisma: Record<string, any>;
+  let reviewService: Record<string, jest.Mock>;
+
+  const mockAdminUser = {
+    id: 'admin-uuid-1',
+    email: 'admin@example.com',
+    firstname: 'Admin',
+    lastname: 'User',
+    role: UserRolesEnum.NONE,
+    isAdmin: true,
+    isSuperAdmin: false,
+    isActive: true,
+    isPrivate: false,
+    avatar: null,
+    password: 'hashed',
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  };
+
+  const mockSuperAdmin = {
+    ...mockAdminUser,
+    id: 'super-uuid-1',
+    isAdmin: false,
+    isSuperAdmin: true,
+  };
+
+  const mockRegularUser = {
+    ...mockAdminUser,
+    id: 'regular-uuid-1',
+    isAdmin: false,
+    isSuperAdmin: false,
+    role: UserRolesEnum.PATIENT,
+  };
+
+  const mockDoctorProfile = {
+    id: 1,
+    userId: 'doctor-uuid-1',
+    verified: false,
+    verifiedAt: null,
+    verifiedBy: null,
+    rejectionReason: null,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  };
+
+  beforeEach(async () => {
+    prisma = {
+      user: {
+        findUnique: jest.fn(),
+        findMany: jest.fn(),
+        update: jest.fn(),
+        count: jest.fn(),
+      },
+      doctorProfile: {
+        findUnique: jest.fn(),
+        findMany: jest.fn(),
+        update: jest.fn(),
+        count: jest.fn(),
+      },
+      patientProfile: {
+        count: jest.fn(),
+      },
+      consultation: {
+        count: jest.fn(),
+      },
+      doctorDocument: {
+        findMany: jest.fn(),
+      },
+    };
+
+    reviewService = {
+      delete: jest.fn(),
+    };
+
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        AdminService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: ReviewService, useValue: reviewService },
+      ],
+    }).compile();
+
+    service = module.get<AdminService>(AdminService);
+  });
+
+  it('should be defined', () => {
+    expect(service).toBeDefined();
+  });
+
+  /* ── listUsers ─────────────────────────────────────────── */
+
+  describe('listUsers', () => {
+    it('should return paginated users with default skip/take', async () => {
+      const users = [mockRegularUser];
+      prisma.user.findMany.mockResolvedValue(users);
+      prisma.user.count.mockResolvedValue(1);
+
+      const result = await service.listUsers({});
+
+      expect(result).toEqual({ data: users, total: 1, skip: 0, take: 20 });
+      expect(prisma.user.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ skip: 0, take: 20 }),
+      );
+    });
+
+    it('should apply role filter', async () => {
+      prisma.user.findMany.mockResolvedValue([]);
+      prisma.user.count.mockResolvedValue(0);
+
+      await service.listUsers({ role: UserRolesEnum.DOCTOR });
+
+      expect(prisma.user.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ role: UserRolesEnum.DOCTOR }),
+        }),
+      );
+    });
+
+    it('should apply isActive filter', async () => {
+      prisma.user.findMany.mockResolvedValue([]);
+      prisma.user.count.mockResolvedValue(0);
+
+      await service.listUsers({ isActive: 'true' });
+
+      expect(prisma.user.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ isActive: true }),
+        }),
+      );
+    });
+
+    it('should apply isAdmin filter', async () => {
+      prisma.user.findMany.mockResolvedValue([]);
+      prisma.user.count.mockResolvedValue(0);
+
+      await service.listUsers({ isAdmin: 'true' });
+
+      expect(prisma.user.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ isAdmin: true }),
+        }),
+      );
+    });
+
+    it('should apply search filter with OR on name/email', async () => {
+      prisma.user.findMany.mockResolvedValue([]);
+      prisma.user.count.mockResolvedValue(0);
+
+      await service.listUsers({ search: 'john' });
+
+      expect(prisma.user.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            OR: [
+              { firstname: { contains: 'john', mode: 'insensitive' } },
+              { lastname: { contains: 'john', mode: 'insensitive' } },
+              { email: { contains: 'john', mode: 'insensitive' } },
+            ],
+          }),
+        }),
+      );
+    });
+
+    it('should apply custom skip and take', async () => {
+      prisma.user.findMany.mockResolvedValue([]);
+      prisma.user.count.mockResolvedValue(0);
+
+      await service.listUsers({ skip: 10 as any, take: 5 as any });
+
+      expect(prisma.user.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ skip: 10, take: 5 }),
+      );
+    });
+  });
+
+  /* ── updateUser ────────────────────────────────────────── */
+
+  describe('updateUser', () => {
+    it('should update a user', async () => {
+      prisma.user.findUnique.mockResolvedValue(mockRegularUser);
+      prisma.user.update.mockResolvedValue({
+        ...mockRegularUser,
+        firstname: 'Updated',
+      });
+
+      const result = await service.updateUser(mockRegularUser.id, {
+        firstname: 'Updated',
+      });
+
+      expect(result.firstname).toBe('Updated');
+      expect(prisma.user.update).toHaveBeenCalledWith({
+        where: { id: mockRegularUser.id },
+        data: { firstname: 'Updated' },
+      });
+    });
+
+    it('should throw NotFoundException if user not found', async () => {
+      prisma.user.findUnique.mockResolvedValue(null);
+
+      await expect(
+        service.updateUser('nonexistent', { firstname: 'X' }),
+      ).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  /* ── deactivateUser ────────────────────────────────────── */
+
+  describe('deactivateUser', () => {
+    it('should deactivate an active user', async () => {
+      prisma.user.findUnique.mockResolvedValue(mockRegularUser);
+      prisma.user.update.mockResolvedValue({
+        ...mockRegularUser,
+        isActive: false,
+      });
+
+      const result = await service.deactivateUser(mockRegularUser.id);
+
+      expect(result.isActive).toBe(false);
+      expect(prisma.user.update).toHaveBeenCalledWith({
+        where: { id: mockRegularUser.id },
+        data: { isActive: false },
+      });
+    });
+
+    it('should throw NotFoundException if user not found', async () => {
+      prisma.user.findUnique.mockResolvedValue(null);
+
+      await expect(service.deactivateUser('nonexistent')).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+
+    it('should throw BadRequestException if user already deactivated', async () => {
+      prisma.user.findUnique.mockResolvedValue({
+        ...mockRegularUser,
+        isActive: false,
+      });
+
+      await expect(
+        service.deactivateUser(mockRegularUser.id),
+      ).rejects.toThrow(BadRequestException);
+    });
+  });
+
+  /* ── listPendingDoctors ────────────────────────────────── */
+
+  describe('listPendingDoctors', () => {
+    it('should return unverified doctors', async () => {
+      const pending = [mockDoctorProfile];
+      prisma.doctorProfile.findMany.mockResolvedValue(pending);
+
+      const result = await service.listPendingDoctors();
+
+      expect(result).toEqual(pending);
+      expect(prisma.doctorProfile.findMany).toHaveBeenCalledWith({
+        where: { verified: false },
+        orderBy: { createdAt: 'asc' },
+        include: {
+          user: {
+            select: {
+              id: true,
+              firstname: true,
+              lastname: true,
+              email: true,
+            },
+          },
+        },
+      });
+    });
+  });
+
+  /* ── getDoctorDocuments ────────────────────────────────── */
+
+  describe('getDoctorDocuments', () => {
+    it('should return documents for a doctor', async () => {
+      const docs = [
+        {
+          id: 1,
+          doctorId: 1,
+          type: 'LICENSE',
+          fileUrl: 'https://example.com/file.pdf',
+          fileName: 'license.pdf',
+          mimeType: 'application/pdf',
+          status: 'PENDING',
+        },
+      ];
+      prisma.doctorProfile.findUnique.mockResolvedValue(mockDoctorProfile);
+      prisma.doctorDocument.findMany.mockResolvedValue(docs);
+
+      const result = await service.getDoctorDocuments(1);
+
+      expect(result).toEqual(docs);
+      expect(prisma.doctorDocument.findMany).toHaveBeenCalledWith({
+        where: { doctorId: 1 },
+        orderBy: { createdAt: 'desc' },
+      });
+    });
+
+    it('should throw NotFoundException if doctor not found', async () => {
+      prisma.doctorProfile.findUnique.mockResolvedValue(null);
+
+      await expect(service.getDoctorDocuments(999)).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+  });
+
+  /* ── verifyDoctor ──────────────────────────────────────── */
+
+  describe('verifyDoctor', () => {
+    it('should approve a doctor', async () => {
+      prisma.doctorProfile.findUnique.mockResolvedValue(mockDoctorProfile);
+      prisma.doctorProfile.update.mockResolvedValue({
+        ...mockDoctorProfile,
+        verified: true,
+        verifiedAt: expect.any(Date),
+        verifiedBy: mockAdminUser.id,
+      });
+
+      const result = await service.verifyDoctor(
+        1,
+        { approved: true },
+        mockAdminUser as any,
+      );
+
+      expect(prisma.doctorProfile.update).toHaveBeenCalledWith({
+        where: { id: 1 },
+        data: {
+          verified: true,
+          verifiedAt: expect.any(Date),
+          verifiedBy: mockAdminUser.id,
+          rejectionReason: null,
+        },
+      });
+    });
+
+    it('should reject a doctor with reason', async () => {
+      prisma.doctorProfile.findUnique.mockResolvedValue(mockDoctorProfile);
+      prisma.doctorProfile.update.mockResolvedValue({
+        ...mockDoctorProfile,
+        verified: false,
+        rejectionReason: 'Invalid license',
+      });
+
+      await service.verifyDoctor(
+        1,
+        { approved: false, reason: 'Invalid license' },
+        mockAdminUser as any,
+      );
+
+      expect(prisma.doctorProfile.update).toHaveBeenCalledWith({
+        where: { id: 1 },
+        data: {
+          verified: false,
+          verifiedAt: null,
+          verifiedBy: null,
+          rejectionReason: 'Invalid license',
+        },
+      });
+    });
+
+    it('should throw BadRequestException if rejecting without reason', async () => {
+      prisma.doctorProfile.findUnique.mockResolvedValue(mockDoctorProfile);
+
+      await expect(
+        service.verifyDoctor(
+          1,
+          { approved: false },
+          mockAdminUser as any,
+        ),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('should throw NotFoundException if doctor not found', async () => {
+      prisma.doctorProfile.findUnique.mockResolvedValue(null);
+
+      await expect(
+        service.verifyDoctor(999, { approved: true }, mockAdminUser as any),
+      ).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  /* ── promoteToAdmin ────────────────────────────────────── */
+
+  describe('promoteToAdmin', () => {
+    it('should promote a regular user to admin', async () => {
+      prisma.user.findUnique.mockResolvedValue(mockRegularUser);
+      prisma.user.update.mockResolvedValue({
+        ...mockRegularUser,
+        isAdmin: true,
+      });
+
+      const result = await service.promoteToAdmin(mockRegularUser.id);
+
+      expect(result.isAdmin).toBe(true);
+      expect(prisma.user.update).toHaveBeenCalledWith({
+        where: { id: mockRegularUser.id },
+        data: { isAdmin: true },
+      });
+    });
+
+    it('should throw NotFoundException if user not found', async () => {
+      prisma.user.findUnique.mockResolvedValue(null);
+
+      await expect(service.promoteToAdmin('nonexistent')).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+
+    it('should throw BadRequestException if user is already admin', async () => {
+      prisma.user.findUnique.mockResolvedValue(mockAdminUser);
+
+      await expect(
+        service.promoteToAdmin(mockAdminUser.id),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('should throw BadRequestException if user is superadmin', async () => {
+      prisma.user.findUnique.mockResolvedValue(mockSuperAdmin);
+
+      await expect(
+        service.promoteToAdmin(mockSuperAdmin.id),
+      ).rejects.toThrow(BadRequestException);
+    });
+  });
+
+  /* ── demoteAdmin ───────────────────────────────────────── */
+
+  describe('demoteAdmin', () => {
+    it('should demote an admin to regular user', async () => {
+      prisma.user.findUnique.mockResolvedValue(mockAdminUser);
+      prisma.user.update.mockResolvedValue({
+        ...mockAdminUser,
+        isAdmin: false,
+      });
+
+      const result = await service.demoteAdmin(
+        mockAdminUser.id,
+        mockSuperAdmin as any,
+      );
+
+      expect(result.isAdmin).toBe(false);
+      expect(prisma.user.update).toHaveBeenCalledWith({
+        where: { id: mockAdminUser.id },
+        data: { isAdmin: false },
+      });
+    });
+
+    it('should throw ForbiddenException if trying to self-demote', async () => {
+      await expect(
+        service.demoteAdmin(mockSuperAdmin.id, mockSuperAdmin as any),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('should throw NotFoundException if user not found', async () => {
+      prisma.user.findUnique.mockResolvedValue(null);
+
+      await expect(
+        service.demoteAdmin('nonexistent', mockSuperAdmin as any),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('should throw BadRequestException if target is not admin', async () => {
+      prisma.user.findUnique.mockResolvedValue(mockRegularUser);
+
+      await expect(
+        service.demoteAdmin(mockRegularUser.id, mockSuperAdmin as any),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('should throw ForbiddenException if trying to demote superadmin', async () => {
+      prisma.user.findUnique.mockResolvedValue(mockSuperAdmin);
+
+      await expect(
+        service.demoteAdmin(mockSuperAdmin.id, mockAdminUser as any),
+      ).rejects.toThrow(ForbiddenException);
+    });
+  });
+
+  /* ── getPlatformStats ──────────────────────────────────── */
+
+  describe('getPlatformStats', () => {
+    it('should return aggregated platform statistics', async () => {
+      prisma.user.count.mockResolvedValue(100);
+      prisma.doctorProfile.count
+        .mockResolvedValueOnce(25) // verified doctors
+        .mockResolvedValueOnce(5); // pending verifications
+      prisma.patientProfile.count.mockResolvedValue(60);
+      prisma.consultation.count.mockResolvedValue(200);
+
+      const result = await service.getPlatformStats();
+
+      expect(result).toEqual({
+        totalUsers: 100,
+        totalDoctors: 25,
+        totalPatients: 60,
+        totalConsultations: 200,
+        pendingVerifications: 5,
+      });
+    });
+  });
+
+  /* ── removeReview ──────────────────────────────────────── */
+
+  describe('removeReview', () => {
+    it('should delegate to ReviewService.delete', async () => {
+      reviewService.delete.mockResolvedValue(undefined);
+
+      await service.removeReview(42, mockAdminUser as any);
+
+      expect(reviewService.delete).toHaveBeenCalledWith(42, mockAdminUser);
+    });
+
+    it('should propagate errors from ReviewService', async () => {
+      reviewService.delete.mockRejectedValue(
+        new NotFoundException('Review not found.'),
+      );
+
+      await expect(
+        service.removeReview(999, mockAdminUser as any),
+      ).rejects.toThrow(NotFoundException);
+    });
+  });
+});

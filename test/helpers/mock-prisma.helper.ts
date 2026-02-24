@@ -109,6 +109,14 @@ export type MockPrismaService = {
     update: jest.Mock;
     delete: jest.Mock;
   };
+  doctorDocument: {
+    findFirst: jest.Mock;
+    findUnique: jest.Mock;
+    findMany: jest.Mock;
+    create: jest.Mock;
+    update: jest.Mock;
+    delete: jest.Mock;
+  };
   $connect: jest.Mock;
   $disconnect: jest.Mock;
 };
@@ -143,6 +151,7 @@ export function createMockPrismaService(): MockPrismaService {
     doctorAvailability: createModelMock() as any,
     slotDuration: createModelMock() as any,
     availabilityException: createModelMock() as any,
+    doctorDocument: createModelMock() as any,
     $connect: jest.fn(),
     $disconnect: jest.fn(),
   };

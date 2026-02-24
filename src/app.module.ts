@@ -22,6 +22,7 @@ import { SoapModule } from './soap/soap.module';
 import { ReviewModule } from './review/review.module';
 import { ConsultationModule } from './consultation/consultation.module';
 import { SchedulingModule } from './scheduling/scheduling.module';
+import { AdminModule } from './admin/admin.module';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 
 @Module({
@@ -46,6 +47,7 @@ import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
     ReviewModule,
     ConsultationModule,
     SchedulingModule,
+    AdminModule,
   ],
   controllers: [AppController],
   providers: [
