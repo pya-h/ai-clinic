@@ -17,6 +17,7 @@ import { UserModule } from './user/user.module';
 import { CacheModule } from './cache/cache.module';
 import { ScheduleModule } from '@nestjs/schedule';
 import { DoctorModule } from './doctor/doctor.module';
+import { PatientModule } from './patient/patient.module';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 
 @Module({
@@ -36,6 +37,7 @@ import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
       throttlers: [{ ttl: 60000, limit: 100 }],
     }),
     DoctorModule,
+    PatientModule,
   ],
   controllers: [AppController],
   providers: [
