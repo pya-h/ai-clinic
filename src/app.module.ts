@@ -20,6 +20,7 @@ import { DoctorModule } from './doctor/doctor.module';
 import { PatientModule } from './patient/patient.module';
 import { SoapModule } from './soap/soap.module';
 import { ReviewModule } from './review/review.module';
+import { ConsultationModule } from './consultation/consultation.module';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 
 @Module({
@@ -42,6 +43,7 @@ import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
     PatientModule,
     SoapModule,
     ReviewModule,
+    ConsultationModule,
   ],
   controllers: [AppController],
   providers: [
