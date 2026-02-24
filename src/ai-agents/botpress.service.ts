@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as chat from '@botpress/chat';
-import { User, AiConversations } from '@prisma/client';
+import { User, AiConversation } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   IUserContext,
@@ -64,11 +64,11 @@ export class BotpressService {
     return ctx;
   }
 
-  async getConversation(user: User, updateCacheDeadline?: boolean): Promise<AiConversations> {
+  async getConversation(user: User, updateCacheDeadline?: boolean): Promise<AiConversation> {
     const ctx = await this.getClient(user, updateCacheDeadline);
 
     if (ctx.conversationId) {
-      const existing = await this.prismaService.aiConversations.findUnique({
+      const existing = await this.prismaService.aiConversation.findUnique({
         where: { id: ctx.conversationId },
       });
       if (existing) {
@@ -77,7 +77,7 @@ export class BotpressService {
       ctx.conversationId = undefined;
     }
 
-    const dbConversation = await this.prismaService.aiConversations.findFirst({
+    const dbConversation = await this.prismaService.aiConversation.findFirst({
       where: { userId: user.id },
       orderBy: { createdAt: 'desc' },
     });
@@ -98,7 +98,7 @@ export class BotpressService {
     const { conversation } = await ctx.client.createConversation({});
     ctx.conversationId = conversation.id;
 
-    return this.prismaService.aiConversations.create({
+    return this.prismaService.aiConversation.create({
       data: { userId: user.id, id: ctx.conversationId },
     });
   }
