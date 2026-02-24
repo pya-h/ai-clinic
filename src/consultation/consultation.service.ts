@@ -9,6 +9,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import {
   Consultation,
   ConsultationStatusEnum,
+  Prisma,
   User,
   UserRolesEnum,
 } from '@prisma/client';
@@ -290,7 +291,7 @@ export class ConsultationService {
     const skip = +(filters.skip ?? 0);
     const take = +(filters.take ?? 20);
 
-    const where: any = {};
+    const where: Prisma.ConsultationWhereInput = {};
 
     // Status filter
     if (filters.status) {

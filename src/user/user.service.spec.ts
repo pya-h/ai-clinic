@@ -150,11 +150,11 @@ describe('UserService', () => {
       );
     });
 
-    it('should throw ForbiddenException for duplicate email', async () => {
+    it('should throw ConflictException for duplicate email', async () => {
       prisma.user.findFirst.mockResolvedValue(mockUser); // email exists
 
       await expect(service.createUser(registerDto)).rejects.toThrow(
-        ForbiddenException,
+        ConflictException,
       );
     });
 

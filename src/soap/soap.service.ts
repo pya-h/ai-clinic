@@ -136,7 +136,7 @@ export class SoapService {
   async getById(
     id: string,
     requestingUserId: string,
-    isAdmin = false,
+    isAdminOrSuperAdmin = false,
   ): Promise<PatientSOAP> {
     const soap = await this.prisma.patientSOAP.findUnique({
       where: { id },
@@ -146,7 +146,7 @@ export class SoapService {
       throw new NotFoundException('SOAP note not found.');
     }
 
-    if (!isAdmin && soap.userId !== requestingUserId) {
+    if (!isAdminOrSuperAdmin && soap.userId !== requestingUserId) {
       throw new ForbiddenException(
         'You do not have permission to view this SOAP note.',
       );

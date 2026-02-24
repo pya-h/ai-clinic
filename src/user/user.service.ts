@@ -1,14 +1,13 @@
 import {
   BadRequestException,
   ConflictException,
-  ForbiddenException,
   Injectable,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { Prisma, User, UserRolesEnum } from '@prisma/client';
 import { UpdateUserDto } from './dto/update-user.dto';
-import { RegistrationDto } from 'src/auth/dto/register.dto';
-import { UtilsService } from 'src/utils/utils.service';
+import { RegistrationDto } from '../auth/dto/register.dto';
+import { UtilsService } from '../utils/utils.service';
 import { DefaultArgs } from '@prisma/client/runtime/library';
 
 @Injectable()
@@ -39,7 +38,6 @@ export class UserService {
       select = undefined,
     }: {
       select?: Prisma.UserSelect<DefaultArgs>;
-      includePassword?: boolean;
     } = {},
   ) {
     const { id, email } = identifier;
@@ -61,7 +59,7 @@ export class UserService {
 
   async createUser(userData: RegistrationDto) {
     if (await this.emailExists(userData.email)) {
-      throw new ForbiddenException('Email is unavailable!');
+      throw new ConflictException('Email is unavailable!');
     }
     if (!this.utilsService.isEnumElement(UserRolesEnum, userData.role)) {
       throw new BadRequestException('Invalid role!');

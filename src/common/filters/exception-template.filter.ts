@@ -17,7 +17,10 @@ export class ExceptionTemplateFilter implements ExceptionFilter {
     if (exception instanceof HttpException) {
       status = exception.getStatus();
       this.logger.warn(exception.getResponse());
-      message = exception.getResponse()['message'] || 'Unknown Error';
+      const responseBody = exception.getResponse();
+      const rawMessage = responseBody['message'] || 'Unknown Error';
+      // class-validator returns message as string[], join for display
+      message = Array.isArray(rawMessage) ? rawMessage.join('; ') : rawMessage;
     } else {
       status = HttpStatus.INTERNAL_SERVER_ERROR;
       message = 'Internal Server Error';

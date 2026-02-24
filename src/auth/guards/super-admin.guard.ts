@@ -1,8 +1,8 @@
 import {
   CanActivate,
   ExecutionContext,
+  ForbiddenException,
   Injectable,
-  UnauthorizedException,
 } from '@nestjs/common';
 
 @Injectable()
@@ -11,7 +11,7 @@ export class SuperAdminGuard implements CanActivate {
     const { user } = context.switchToHttp().getRequest();
 
     if (!user?.isSuperAdmin) {
-      throw new UnauthorizedException('Superadmin access required');
+      throw new ForbiddenException('Superadmin access required');
     }
 
     return true;

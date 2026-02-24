@@ -179,7 +179,7 @@ describe('Auth (e2e)', () => {
         payload: validRegistration,
       });
 
-      expect(res.statusCode).toBe(HttpStatus.FORBIDDEN);
+      expect(res.statusCode).toBe(HttpStatus.CONFLICT);
     });
 
     it('should reject weak password', async () => {

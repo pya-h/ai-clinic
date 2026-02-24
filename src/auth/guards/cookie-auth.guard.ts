@@ -1,4 +1,4 @@
-import { CanActivate, ExecutionContext, Injectable, UnauthorizedException } from '@nestjs/common';
+import { CanActivate, ExecutionContext, ForbiddenException, Injectable, UnauthorizedException } from '@nestjs/common';
 import { FastifyRequest } from 'fastify';
 
 @Injectable()
@@ -6,12 +6,17 @@ export class CookieAuthGuard implements CanActivate {
   canActivate(context: ExecutionContext): boolean | Promise<boolean> {
     const request = context.switchToHttp().getRequest<FastifyRequest>();
     const session: any = (request as any).session;
+    const user = session?.get('user');
 
-    if (!session || !session.get('user')) {
+    if (!user) {
       throw new UnauthorizedException('Not authenticated');
     }
 
-    (request as any).user = session.get('user');
+    if (user.isActive === false) {
+      throw new ForbiddenException('Account is deactivated');
+    }
+
+    (request as any).user = user;
     return true;
   }
 }

@@ -169,7 +169,7 @@ describe('Doctor (e2e)', () => {
 
     it('should reject duplicate doctor profile', async () => {
       sessionUser = createMockDoctorUser();
-      prisma.doctorProfile.findFirst.mockResolvedValue({
+      prisma.doctorProfile.findUnique.mockResolvedValue({
         id: 'existing-profile-uuid',
         userId: sessionUser.id,
       });
@@ -403,12 +403,15 @@ describe('Doctor (e2e)', () => {
       verified: true,
       bio: 'Heart doctor',
       user: { id: 'doc-1', firstname: 'Jane', lastname: 'Doe', avatar: null },
-      reviewsAbout: [{ rating: 5 }, { rating: 4 }],
     };
 
     it('should return a verified doctor profile with ratings', async () => {
       sessionUser = null; // public endpoint
       prisma.doctorProfile.findUnique.mockResolvedValue(verifiedProfile);
+      prisma.doctorReview.aggregate.mockResolvedValue({
+        _avg: { rating: 4.5 },
+        _count: { rating: 2 },
+      });
 
       const res = await app.inject({
         method: 'GET',
@@ -424,6 +427,10 @@ describe('Doctor (e2e)', () => {
 
     it('should return 404 for non-existent doctor', async () => {
       prisma.doctorProfile.findUnique.mockResolvedValue(null);
+      prisma.doctorReview.aggregate.mockResolvedValue({
+        _avg: { rating: null },
+        _count: { rating: 0 },
+      });
 
       const res = await app.inject({
         method: 'GET',
@@ -437,6 +444,10 @@ describe('Doctor (e2e)', () => {
       prisma.doctorProfile.findUnique.mockResolvedValue({
         ...verifiedProfile,
         verified: false,
+      });
+      prisma.doctorReview.aggregate.mockResolvedValue({
+        _avg: { rating: null },
+        _count: { rating: 0 },
       });
 
       const res = await app.inject({

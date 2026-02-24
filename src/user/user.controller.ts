@@ -4,7 +4,6 @@ import {
   Get,
   NotFoundException,
   Param,
-  ParseIntPipe,
   Patch,
   UseGuards,
 } from '@nestjs/common';

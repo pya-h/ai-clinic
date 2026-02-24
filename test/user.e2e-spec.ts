@@ -175,7 +175,7 @@ describe('User (e2e)', () => {
         url: '/user/all',
       });
 
-      expect(res.statusCode).toBe(HttpStatus.UNAUTHORIZED);
+      expect(res.statusCode).toBe(HttpStatus.FORBIDDEN);
     });
 
     it('should reject unauthenticated request', async () => {

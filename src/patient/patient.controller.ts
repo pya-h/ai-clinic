@@ -6,6 +6,7 @@ import {
   HttpStatus,
   Patch,
   Post,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
@@ -17,11 +18,19 @@ import { CurrentUser } from '../user/decorators/current-user.decorator';
 import { User, UserRolesEnum } from '@prisma/client';
 import { CreatePatientProfileDto } from './dto/create-patient-profile.dto';
 import { UpdatePatientProfileDto } from './dto/update-patient-profile.dto';
+import { ConsultationService } from '../consultation/consultation.service';
+import { ConsultationFilterDto } from '../consultation/dto/consultation-filter.dto';
+import { SoapService } from '../soap/soap.service';
+import { PaginationOptionsDto } from '../common/dtos/pagination-options.dto';
 
 @ApiTags('Patient')
 @Controller('patient')
 export class PatientController {
-  constructor(private readonly patientService: PatientService) {}
+  constructor(
+    private readonly patientService: PatientService,
+    private readonly consultationService: ConsultationService,
+    private readonly soapService: SoapService,
+  ) {}
 
   @ApiOperation({
     description: 'Create a patient profile for the current user.',
@@ -58,5 +67,33 @@ export class PatientController {
   @Get('profile')
   async getProfile(@CurrentUser() user: User) {
     return this.patientService.getProfile(user.id);
+  }
+
+  // ──────────────── B-29: Patient Consultations & SOAPs ────────────────
+
+  @ApiOperation({
+    description: 'List consultations for the current patient (paginated, filterable).',
+  })
+  @UseGuards(CookieAuthGuard, RolesGuard)
+  @Roles(UserRolesEnum.PATIENT)
+  @Get('consultations')
+  async getMyConsultations(
+    @CurrentUser() user: User,
+    @Query() filters: ConsultationFilterDto,
+  ) {
+    return this.consultationService.list(user, filters);
+  }
+
+  @ApiOperation({
+    description: 'List SOAP notes for the current patient (paginated).',
+  })
+  @UseGuards(CookieAuthGuard, RolesGuard)
+  @Roles(UserRolesEnum.PATIENT)
+  @Get('soaps')
+  async getMySoaps(
+    @CurrentUser() user: User,
+    @Query() pagination: PaginationOptionsDto,
+  ) {
+    return this.soapService.getByUser(user.id, pagination);
   }
 }

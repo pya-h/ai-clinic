@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   Param,
+  ParseUUIDPipe,
   Query,
   UseGuards,
 } from '@nestjs/common';
@@ -35,7 +36,10 @@ export class SoapController {
       'Get a single SOAP note by ID (ownership check — must be your own).',
   })
   @Get(':id')
-  async getSoapById(@Param('id') id: string, @CurrentUser() user: User) {
-    return this.soapService.getById(id, user.id, user.isAdmin);
+  async getSoapById(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: User,
+  ) {
+    return this.soapService.getById(id, user.id, user.isAdmin || user.isSuperAdmin);
   }
 }

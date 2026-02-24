@@ -81,6 +81,8 @@ describe('ReviewService', () => {
         update: jest.fn(),
         delete: jest.fn(),
         count: jest.fn(),
+        aggregate: jest.fn(),
+        groupBy: jest.fn(),
       },
       consultation: {
         findFirst: jest.fn(),
@@ -324,17 +326,19 @@ describe('ReviewService', () => {
 
       const result = await service.getAggregateRating(1);
       expect(result).toEqual(cached);
-      expect(prisma.doctorReview.findMany).not.toHaveBeenCalled();
+      expect(prisma.doctorReview.aggregate).not.toHaveBeenCalled();
     });
 
     it('should compute and cache rating when not cached', async () => {
       cache.get.mockResolvedValue(null);
-      prisma.doctorReview.findMany.mockResolvedValue([
-        { rating: 5 },
-        { rating: 4 },
-        { rating: 4 },
-        { rating: 3 },
-        { rating: 5 },
+      prisma.doctorReview.aggregate.mockResolvedValue({
+        _avg: { rating: 4.2 },
+        _count: { rating: 5 },
+      });
+      prisma.doctorReview.groupBy.mockResolvedValue([
+        { rating: 3, _count: { rating: 1 } },
+        { rating: 4, _count: { rating: 2 } },
+        { rating: 5, _count: { rating: 2 } },
       ]);
 
       const result = await service.getAggregateRating(1);
@@ -358,7 +362,11 @@ describe('ReviewService', () => {
 
     it('should return null averageRating when no reviews exist', async () => {
       cache.get.mockResolvedValue(null);
-      prisma.doctorReview.findMany.mockResolvedValue([]);
+      prisma.doctorReview.aggregate.mockResolvedValue({
+        _avg: { rating: null },
+        _count: { rating: 0 },
+      });
+      prisma.doctorReview.groupBy.mockResolvedValue([]);
 
       const result = await service.getAggregateRating(1);
 
@@ -375,10 +383,14 @@ describe('ReviewService', () => {
 
     it('should round averageRating to 1 decimal place', async () => {
       cache.get.mockResolvedValue(null);
-      prisma.doctorReview.findMany.mockResolvedValue([
-        { rating: 5 },
-        { rating: 4 },
-        { rating: 3 },
+      prisma.doctorReview.aggregate.mockResolvedValue({
+        _avg: { rating: 4.0 },
+        _count: { rating: 3 },
+      });
+      prisma.doctorReview.groupBy.mockResolvedValue([
+        { rating: 3, _count: { rating: 1 } },
+        { rating: 4, _count: { rating: 1 } },
+        { rating: 5, _count: { rating: 1 } },
       ]);
 
       const result = await service.getAggregateRating(1);

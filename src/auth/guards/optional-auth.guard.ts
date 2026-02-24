@@ -11,13 +11,9 @@ export class OptionalAuthGuard implements CanActivate {
   canActivate(context: ExecutionContext): boolean {
     const request = context.switchToHttp().getRequest<FastifyRequest>();
     const session: any = (request as any).session;
+    const user = session?.get('user');
 
-    if (session && session.get('user')) {
-      (request as any).user = session.get('user');
-    } else {
-      (request as any).user = null;
-    }
-
+    (request as any).user = user || null;
     return true;
   }
 }

@@ -2,7 +2,7 @@ import { CACHE_MANAGER, Cache } from '@nestjs/cache-manager';
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { ICacheItemIdentifier } from './types/cache-item-ident.type';
 import { Cron, CronExpression } from '@nestjs/schedule';
-import { splitIn2, splitIn2Set } from '../common/tools/arrays';
+import { splitIn2 } from '../common/tools/arrays';
 
 @Injectable()
 export class CacheService {
@@ -10,7 +10,12 @@ export class CacheService {
 
   private delEvents: Record<string, (key: string) => Promise<void>> = {};
 
-  private keysWithDelEvent: Set<ICacheItemIdentifier> = new Set(); // using set to prevent multiple instances being pushed on rapid requests.
+  /**
+   * Map-based tracking for del-event items. Key format: "group:key"
+   * Using Map instead of Set<object> because Set uses reference equality,
+   * so identical {group,key} objects would never deduplicate.
+   */
+  private keysWithDelEvent: Map<string, ICacheItemIdentifier> = new Map();
 
   constructor(@Inject(CACHE_MANAGER) private readonly cacheManager: Cache) {}
 
@@ -25,11 +30,10 @@ export class CacheService {
   async get<T>(group: string, key: string, updateDeadline?: boolean) {
     const item = await this.cacheManager.get<T>(`${group}:${key}`);
     if (updateDeadline && item && this.delEvents?.[group]) {
-      const kwdi = [...this.keysWithDelEvent].find(
-        (i) => i.group === group && i.key === key,
-      );
+      const mapKey = `${group}:${key}`;
+      const kwdi = this.keysWithDelEvent.get(mapKey);
       if (kwdi) {
-        kwdi.deadline = new Date(Date.now() + +kwdi.ttl);
+        kwdi.deadline = new Date(Date.now() + (+kwdi.ttl || 0));
       }
     }
 
@@ -38,13 +42,14 @@ export class CacheService {
 
   set<T>(group: string, key: string, value: T, ttl?: number) {
     if (ttl && this.delEvents[group]) {
-      this.keysWithDelEvent.add({
+      const mapKey = `${group}:${key}`;
+      this.keysWithDelEvent.set(mapKey, {
         group,
         key,
-        deadline: new Date(Date.now() + +ttl),
+        deadline: new Date(Date.now() + ttl),
         ttl,
       });
-      return this.cacheManager.set<T>(`${group}:${key}`, value);
+      return this.cacheManager.set<T>(`${group}:${key}`, value, ttl);
     }
     return this.cacheManager.set<T>(`${group}:${key}`, value, ttl);
   }
@@ -55,17 +60,18 @@ export class CacheService {
     ttl?: number,
   ): Promise<{ key: string; value: T }[]> {
     if (this.delEvents[group]) {
-      const deadline = new Date(Date.now() + +ttl);
-      items.forEach((item) =>
-        this.keysWithDelEvent.add({
+      const deadline = new Date(Date.now() + (+ttl || 0));
+      items.forEach((item) => {
+        const mapKey = `${group}:${item.k}`;
+        this.keysWithDelEvent.set(mapKey, {
           group,
           key: item.k,
           deadline,
           ttl,
-        }),
-      );
+        });
+      });
       return this.cacheManager.mset(
-        items.map((i) => ({ key: `${group}:${i.k}`, value: i.v })),
+        items.map((i) => ({ key: `${group}:${i.k}`, value: i.v, ttl })),
       );
     }
     return this.cacheManager.mset(
@@ -80,25 +86,34 @@ export class CacheService {
       items,
       (item) => item.g in this.delEvents,
     );
+    const results: { key: string; value: T; ttl?: number }[][] = [];
+
     if (withDelEvents?.length) {
-      return this.cacheManager.mset(
-        withDelEvents.map((i) => {
-          this.keysWithDelEvent.add({
-            group: i.g,
-            key: i.k,
-            deadline: new Date(Date.now() + +i.ttl),
-            ttl: i.ttl,
-          });
-          return { key: `${i.g}:${i.k}`, value: i.v };
-        }),
+      results.push(
+        await this.cacheManager.mset(
+          withDelEvents.map((i) => {
+            const mapKey = `${i.g}:${i.k}`;
+            this.keysWithDelEvent.set(mapKey, {
+              group: i.g,
+              key: i.k,
+              deadline: new Date(Date.now() + (+i.ttl || 0)),
+              ttl: i.ttl,
+            });
+            return { key: `${i.g}:${i.k}`, value: i.v, ttl: i.ttl };
+          }),
+        ),
       );
     }
 
     if (normals?.length) {
-      return this.cacheManager.mset(
-        normals.map((i) => ({ key: `${i.g}:${i.k}`, value: i.v, ttl: i.ttl })),
+      results.push(
+        await this.cacheManager.mset(
+          normals.map((i) => ({ key: `${i.g}:${i.k}`, value: i.v, ttl: i.ttl })),
+        ),
       );
     }
+
+    return results.flat();
   }
 
   async del(group: string, key: string, bypassDeleteEvent?: boolean) {
@@ -125,9 +140,11 @@ export class CacheService {
         }),
       );
       const keysSet = new Set(keys);
-      this.keysWithDelEvent = new Set(
-        [...this.keysWithDelEvent].filter((x) => !keysSet.has(x.key)),
-      );
+      for (const [mapKey, item] of this.keysWithDelEvent) {
+        if (keysSet.has(item.key)) {
+          this.keysWithDelEvent.delete(mapKey);
+        }
+      }
     }
     return this.cacheManager.mdel(keys.map((k) => `${group}:${k}`));
   }
@@ -138,8 +155,8 @@ export class CacheService {
       (item) => item.g in this.delEvents,
     );
     if (withDelEvents?.length) {
-      const rawKeys = await Promise.all(
-        items.map(async (item) => {
+      await Promise.all(
+        withDelEvents.map(async (item) => {
           try {
             await this.delEvents[item.g](item.k);
           } catch (error) {
@@ -148,15 +165,11 @@ export class CacheService {
               error,
             );
           }
-          return `${item.g}:${item.k}`;
         }),
       );
-      const keysSet = new Set(rawKeys);
-      this.keysWithDelEvent = new Set(
-        [...this.keysWithDelEvent].filter(
-          (x) => !keysSet.has(`${x.group}:${x.key}`),
-        ),
-      );
+      for (const item of withDelEvents) {
+        this.keysWithDelEvent.delete(`${item.g}:${item.k}`);
+      }
     }
 
     return this.cacheManager.mdel(items.map((i) => `${i.g}:${i.k}`));
@@ -165,12 +178,19 @@ export class CacheService {
   @Cron(CronExpression.EVERY_MINUTE)
   async checkFordelEvents() {
     const exactTime = new Date();
+    const allValues = [...this.keysWithDelEvent.values()];
     const [passedDues, remaining] = splitIn2(
-      this.keysWithDelEvent,
+      allValues,
       (item) => item.deadline < exactTime,
     );
     this.logger.debug({ remaining: remaining.length, passedDues: passedDues.length });
-    this.keysWithDelEvent = new Set(remaining); // TODO: Think about Data_Racing?
+
+    // Rebuild Map from remaining items
+    const newMap = new Map<string, ICacheItemIdentifier>();
+    for (const item of remaining) {
+      newMap.set(`${item.group}:${item.key}`, item);
+    }
+    this.keysWithDelEvent = newMap;
 
     await Promise.all(
       passedDues.map(async (item) => {
@@ -184,8 +204,10 @@ export class CacheService {
         }
       }),
     );
-    await this.cacheManager.mdel(
-      passedDues.map((item) => `${item.group}:${item.key}`),
-    );
+    if (passedDues.length) {
+      await this.cacheManager.mdel(
+        passedDues.map((item) => `${item.group}:${item.key}`),
+      );
+    }
   }
 }

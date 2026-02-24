@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { Prisma, User, UserRolesEnum } from '@prisma/client';
-import { toCapitalCase } from 'src/common/tools';
+import { toCapitalCase } from '../common/tools';
 import { UpdateDoctorProfileDto } from './dto/update-doctor-profile.dto';
 import { DoctorFilterDto } from './dto/doctor-filter.dto';
 
@@ -16,9 +16,9 @@ export class DoctorService {
 
   async hasProfile(userId: string, fromAnyKind: boolean = false) {
     return (
-      (await this.prisma.doctorProfile.findFirst({ where: { userId } })) ||
+      (await this.prisma.doctorProfile.findUnique({ where: { userId } })) ||
       (fromAnyKind &&
-        (await this.prisma.patientProfile.findFirst({ where: { userId } })))
+        (await this.prisma.patientProfile.findUnique({ where: { userId } })))
     );
   }
 
@@ -118,31 +118,30 @@ export class DoctorService {
    * Public single doctor profile by profileId, with aggregate rating.
    */
   async findOne(id: number) {
-    const profile = await this.prisma.doctorProfile.findUnique({
-      where: { id },
-      include: {
-        user: { select: { id: true, firstname: true, lastname: true, avatar: true } },
-        reviewsAbout: {
-          select: { rating: true },
+    const [profile, ratingAgg] = await Promise.all([
+      this.prisma.doctorProfile.findUnique({
+        where: { id },
+        include: {
+          user: { select: { id: true, firstname: true, lastname: true, avatar: true } },
         },
-      },
-    });
+      }),
+      this.prisma.doctorReview.aggregate({
+        where: { doctorId: id },
+        _avg: { rating: true },
+        _count: { rating: true },
+      }),
+    ]);
 
     if (!profile || !profile.verified) {
       throw new NotFoundException('Doctor profile not found.');
     }
 
-    const ratings = profile.reviewsAbout.map((r) => r.rating);
-    const averageRating =
-      ratings.length > 0
-        ? Math.round((ratings.reduce((a, b) => a + b, 0) / ratings.length) * 10) / 10
-        : null;
-
-    const { reviewsAbout, ...rest } = profile;
     return {
-      ...rest,
-      averageRating,
-      totalReviews: ratings.length,
+      ...profile,
+      averageRating: ratingAgg._count.rating > 0
+        ? Math.round((ratingAgg._avg.rating ?? 0) * 10) / 10
+        : null,
+      totalReviews: ratingAgg._count.rating,
     };
   }
 }

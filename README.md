@@ -42,6 +42,7 @@ Key environment variables:
 
 | Variable | Required | Description |
 |----------|----------|-------------|
+| `CORS_ORIGIN` | No | Comma-separated allowed origins (default: `http://localhost:5173`) |
 | `DATABASE_URL` | Yes | PostgreSQL connection string |
 | `APP_PORT` | Yes | Server port (default: `8080`) |
 | `SESSION_SECRET` | Yes | Session encryption key (min 32 chars) |
@@ -110,9 +111,12 @@ server/
 │   │   ├── interceptors/    # ResponseTemplateInterceptor (global response envelope)
 │   │   └── tools/           # Utility functions (toCapitalCase, truncateString)
 │   ├── configs/             # Config loaders (general, auth, ai, notification, storage)
-│   ├── doctor/              # Doctor profile creation
-│   ├── patient/             # Patient profile CRUD
+│   ├── consultation/       # Consultation state machine, CRUD, ownership
+│   ├── doctor/              # Doctor profile CRUD, public listing, aggregate rating
+│   ├── patient/             # Patient profile CRUD, consultations & SOAPs listing
 │   ├── prisma/              # PrismaService (@Global)
+│   ├── review/              # Doctor review CRUD, aggregate ratings (cached)
+│   ├── soap/                # SOAP note parsing, detection, CRUD
 │   ├── user/                # User CRUD, admin listing
 │   └── utils/               # bcrypt hashing, string helpers, enum validation
 └── test/
@@ -147,12 +151,47 @@ server/
 | POST | `/patient/profile` | PATIENT role | Create patient profile |
 | PATCH | `/patient/profile` | PATIENT role | Update patient profile |
 | GET | `/patient/profile` | PATIENT role | Get own patient profile |
+| GET | `/patient/consultations` | PATIENT role | List own consultations (paginated, filterable) |
+| GET | `/patient/soaps` | PATIENT role | List own SOAP notes (paginated) |
 
 ### Doctor (`/doctor`)
 
 | Method | Endpoint | Auth | Description |
 |--------|----------|------|-------------|
 | POST | `/doctor` | DOCTOR role | Create doctor profile |
+| PATCH | `/doctor/profile` | DOCTOR role | Update own doctor profile |
+| GET | `/doctor` | Public | List verified doctors (filtered, paginated) |
+| GET | `/doctor/:id` | Public | Single doctor with aggregate rating |
+| GET | `/doctor/:id/rating` | Public | Aggregate rating for doctor (cached) |
+
+### Consultation (`/consultation`)
+
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| POST | `/consultation` | PATIENT role | Create consultation |
+| GET | `/consultation` | Session | List consultations (role-filtered) |
+| GET | `/consultation/:id` | Session | Single consultation (ownership check) |
+| PATCH | `/consultation/:id/decide` | DOCTOR role | Doctor decides mode + visit method |
+| PATCH | `/consultation/:id/complete` | DOCTOR role | Doctor completes consultation |
+| PATCH | `/consultation/:id/cancel` | Session | Cancel consultation |
+| GET | `/consultation/pending` | DOCTOR role | Pending consultations for doctor |
+
+### Reviews (`/review`)
+
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| POST | `/review` | PATIENT role | Create review (requires completed consultation) |
+| PATCH | `/review/:id` | Session | Update own review |
+| DELETE | `/review/:id` | Session | Delete own or admin delete any |
+| GET | `/review/doctor/:doctorId` | Public | List reviews for doctor (paginated) |
+| GET | `/review/doctor/:doctorId/rating` | Public | Aggregate rating (cached 10min) |
+
+### SOAP (`/soap`)
+
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| GET | `/soap` | Session | List own SOAP notes (paginated) |
+| GET | `/soap/:id` | Session | Single SOAP note (ownership check) |
 
 ### AI Agents (`/ai-agents`)
 
@@ -257,9 +296,9 @@ npm run test:cov
 
 | Type | Suites | Tests |
 |------|--------|-------|
-| Unit | 7 | 68 |
-| E2E | 5 | 48 |
-| **Total** | **12** | **116** |
+| Unit | 12 | 229 |
+| E2E | 5 | 61 |
+| **Total** | **17** | **290** |
 
 Tests use:
 - Mocked `PrismaService` (no real DB needed)

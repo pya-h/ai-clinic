@@ -134,7 +134,7 @@ export class ReviewService {
     if (!review) {
       throw new NotFoundException('Review not found.');
     }
-    if (review.reviewerId !== user.id && !user.isAdmin) {
+    if (review.reviewerId !== user.id && !user.isAdmin && !user.isSuperAdmin) {
       throw new ForbiddenException(
         'You can only delete your own review.',
       );
@@ -176,6 +176,7 @@ export class ReviewService {
 
   /**
    * Aggregate rating for a doctor — cached for 10 minutes.
+   * Uses Prisma aggregate + groupBy to avoid loading all rows into memory.
    */
   async getAggregateRating(doctorId: number): Promise<AggregateRating> {
     // Check cache first
@@ -185,32 +186,32 @@ export class ReviewService {
     );
     if (cached) return cached;
 
-    const reviews = await this.prisma.doctorReview.findMany({
-      where: { doctorId },
-      select: { rating: true },
-    });
+    const [agg, groups] = await Promise.all([
+      this.prisma.doctorReview.aggregate({
+        where: { doctorId },
+        _avg: { rating: true },
+        _count: { rating: true },
+      }),
+      this.prisma.doctorReview.groupBy({
+        by: ['rating'],
+        where: { doctorId },
+        _count: { rating: true },
+      }),
+    ]);
 
     const distribution: Record<1 | 2 | 3 | 4 | 5, number> = {
-      1: 0,
-      2: 0,
-      3: 0,
-      4: 0,
-      5: 0,
+      1: 0, 2: 0, 3: 0, 4: 0, 5: 0,
     };
-
-    for (const review of reviews) {
-      if (review.rating >= 1 && review.rating <= 5) {
-        distribution[review.rating as 1 | 2 | 3 | 4 | 5]++;
+    for (const g of groups) {
+      if (g.rating >= 1 && g.rating <= 5) {
+        distribution[g.rating as 1 | 2 | 3 | 4 | 5] = g._count.rating;
       }
     }
 
-    const totalReviews = reviews.length;
-    const averageRating =
-      totalReviews > 0
-        ? Math.round(
-            (reviews.reduce((sum, r) => sum + r.rating, 0) / totalReviews) * 10,
-          ) / 10
-        : null;
+    const totalReviews = agg._count.rating;
+    const averageRating = totalReviews > 0
+      ? Math.round((agg._avg.rating ?? 0) * 10) / 10
+      : null;
 
     const result: AggregateRating = { averageRating, totalReviews, distribution };
 

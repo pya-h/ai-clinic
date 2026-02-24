@@ -4,7 +4,7 @@ import { AuthController } from './auth.controller';
 import { UserModule } from '../user/user.module';
 import { ConfigModule } from '@nestjs/config';
 import { CookieAuthGuard } from './guards/cookie-auth.guard';
-import { UtilsModule } from 'src/utils/utils.module';
+import { UtilsModule } from '../utils/utils.module';
 
 @Module({
   imports: [

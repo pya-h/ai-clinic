@@ -17,14 +17,19 @@ async function bootstrap() {
     AppModule,
     new FastifyAdapter(),
   );
-  app.enableCors({ origin: true, credentials: true });
+  const corsOrigin = process.env.CORS_ORIGIN || 'http://localhost:5173';
+  app.enableCors({
+    origin: corsOrigin.split(',').map((o) => o.trim()),
+    credentials: true,
+  });
 
   app.useGlobalFilters(new ExceptionTemplateFilter());
   app.useGlobalInterceptors(new ResponseTemplateInterceptor());
 
   const configService = app.get(ConfigService);
-  const appPort = configService.getOrThrow<number>('general.appPort'),
-    appIsInDebugMode = configService.get<boolean>('general.debug');
+  const rawPort = configService.get<number>('general.appPort');
+  const appPort = Number.isFinite(rawPort) ? rawPort : 8080;
+  const appIsInDebugMode = configService.get<boolean>('general.debug');
   // Register cookie & secure session plugins (Fastify)
   await app.register(fastifyCookie);
   await app.register(fastifySecureSession, {
@@ -36,7 +41,7 @@ async function bootstrap() {
     cookie: {
       path: '/',
       httpOnly: true,
-      secure: false, // set true behind HTTPS
+      secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
     },
   });
@@ -50,6 +55,7 @@ async function bootstrap() {
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
+      forbidNonWhitelisted: true,
       forbidUnknownValues: true,
       transform: true,
       enableDebugMessages: appIsInDebugMode,
@@ -61,13 +67,16 @@ async function bootstrap() {
     createIOServer(port: number, options?: any) {
       return super.createIOServer(port, {
         ...options,
-        cors: { origin: true, credentials: true },
+        cors: {
+          origin: corsOrigin.split(',').map((o) => o.trim()),
+          credentials: true,
+        },
         transports: ['websocket', 'polling'],
       });
     }
   }
   app.useWebSocketAdapter(new FastifyIoAdapter(app));
 
-  await app.listen(appPort ?? 8080);
+  await app.listen(appPort);
 }
 bootstrap();

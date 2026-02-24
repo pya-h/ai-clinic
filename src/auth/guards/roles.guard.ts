@@ -20,6 +20,9 @@ export class RolesGuard implements CanActivate {
     if (!requiredRoles) return true; // No roles required = open to all authenticated
 
     const { user } = context.switchToHttp().getRequest();
+    if (!user) {
+      throw new ForbiddenException('Authentication required');
+    }
 
     // Admins bypass role checks
     if (user.isAdmin || user.isSuperAdmin) return true;
