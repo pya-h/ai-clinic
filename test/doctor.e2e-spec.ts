@@ -2,7 +2,10 @@
  * Doctor E2E Tests
  *
  * Tests:
- *   POST /doctor — create doctor profile
+ *   POST   /doctor         — create doctor profile
+ *   PATCH  /doctor/profile  — update doctor profile
+ *   GET    /doctor          — public listing of verified doctors
+ *   GET    /doctor/:id      — public single doctor profile
  */
 import { Test, TestingModule } from '@nestjs/testing';
 import {
@@ -217,6 +220,240 @@ describe('Doctor (e2e)', () => {
       });
 
       expect(res.statusCode).toBe(HttpStatus.UNAUTHORIZED);
+    });
+  });
+
+  // ───────────────── PATCH /doctor/profile ─────────────────
+
+  describe('PATCH /doctor/profile', () => {
+    const updatePayload = {
+      bio: 'Updated bio text',
+      university: 'Harvard Medical School',
+      clinicLocation: '123 Main St',
+    };
+
+    it('should update doctor profile with valid data', async () => {
+      sessionUser = createMockDoctorUser();
+      const existingProfile = {
+        id: 1,
+        userId: sessionUser.id,
+        specialty: DoctorSpecialtiesEnum.GENERAL,
+        bio: 'Old bio',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+      const updatedProfile = { ...existingProfile, ...updatePayload };
+
+      prisma.doctorProfile.findUnique.mockResolvedValue(existingProfile);
+      prisma.doctorProfile.update.mockResolvedValue(updatedProfile);
+
+      const res = await app.inject({
+        method: 'PATCH',
+        url: '/doctor/profile',
+        payload: updatePayload,
+      });
+
+      expect(res.statusCode).toBe(HttpStatus.OK);
+      const body = JSON.parse(res.body);
+      expect(body.contents.bio).toBe('Updated bio text');
+      expect(body.contents.university).toBe('Harvard Medical School');
+    });
+
+    it('should return 404 if doctor has no profile', async () => {
+      sessionUser = createMockDoctorUser();
+      prisma.doctorProfile.findUnique.mockResolvedValue(null);
+
+      const res = await app.inject({
+        method: 'PATCH',
+        url: '/doctor/profile',
+        payload: updatePayload,
+      });
+
+      expect(res.statusCode).toBe(HttpStatus.NOT_FOUND);
+    });
+
+    it('should reject non-doctor role', async () => {
+      sessionUser = createMockUser(); // PATIENT role
+
+      const res = await app.inject({
+        method: 'PATCH',
+        url: '/doctor/profile',
+        payload: updatePayload,
+      });
+
+      expect(res.statusCode).toBe(HttpStatus.FORBIDDEN);
+    });
+
+    it('should reject unauthenticated request', async () => {
+      sessionUser = null;
+
+      const res = await app.inject({
+        method: 'PATCH',
+        url: '/doctor/profile',
+        payload: updatePayload,
+      });
+
+      expect(res.statusCode).toBe(HttpStatus.UNAUTHORIZED);
+    });
+
+    it('should accept partial update (only bio)', async () => {
+      sessionUser = createMockDoctorUser();
+      const existingProfile = {
+        id: 1,
+        userId: sessionUser.id,
+        specialty: DoctorSpecialtiesEnum.GENERAL,
+        bio: 'Old bio',
+      };
+      prisma.doctorProfile.findUnique.mockResolvedValue(existingProfile);
+      prisma.doctorProfile.update.mockResolvedValue({
+        ...existingProfile,
+        bio: 'Just bio',
+      });
+
+      const res = await app.inject({
+        method: 'PATCH',
+        url: '/doctor/profile',
+        payload: { bio: 'Just bio' },
+      });
+
+      expect(res.statusCode).toBe(HttpStatus.OK);
+      const body = JSON.parse(res.body);
+      expect(body.contents.bio).toBe('Just bio');
+    });
+  });
+
+  // ───────────────── GET /doctor (public listing) ─────────────────
+
+  describe('GET /doctor', () => {
+    const mockListResult = [
+      {
+        id: 1,
+        userId: 'doc-1',
+        specialty: DoctorSpecialtiesEnum.GENERAL,
+        verified: true,
+        bio: 'GP',
+        user: { id: 'doc-1', firstname: 'John', lastname: 'Doe', avatar: null },
+        _count: { reviewsAbout: 3 },
+      },
+    ];
+
+    it('should list verified doctors without auth', async () => {
+      sessionUser = null; // no auth needed
+      prisma.doctorProfile.findMany.mockResolvedValue(mockListResult);
+      prisma.doctorProfile.count.mockResolvedValue(1);
+
+      const res = await app.inject({
+        method: 'GET',
+        url: '/doctor',
+      });
+
+      expect(res.statusCode).toBe(HttpStatus.OK);
+      const body = JSON.parse(res.body);
+      expect(body.contents.data).toHaveLength(1);
+      expect(body.contents.total).toBe(1);
+    });
+
+    it('should pass specialty filter to query', async () => {
+      prisma.doctorProfile.findMany.mockResolvedValue([]);
+      prisma.doctorProfile.count.mockResolvedValue(0);
+
+      const res = await app.inject({
+        method: 'GET',
+        url: '/doctor?specialty=CARDIOLOGY',
+      });
+
+      expect(res.statusCode).toBe(HttpStatus.OK);
+      const body = JSON.parse(res.body);
+      expect(body.contents.data).toHaveLength(0);
+      expect(body.contents.total).toBe(0);
+    });
+
+    it('should support pagination params', async () => {
+      prisma.doctorProfile.findMany.mockResolvedValue([]);
+      prisma.doctorProfile.count.mockResolvedValue(50);
+
+      const res = await app.inject({
+        method: 'GET',
+        url: '/doctor?skip=10&take=5',
+      });
+
+      expect(res.statusCode).toBe(HttpStatus.OK);
+      const body = JSON.parse(res.body);
+      expect(body.contents.skip).toBe(10);
+      expect(body.contents.take).toBe(5);
+    });
+
+    it('should reject invalid specialty enum in filter', async () => {
+      const res = await app.inject({
+        method: 'GET',
+        url: '/doctor?specialty=NOT_A_SPECIALTY',
+      });
+
+      expect(res.statusCode).toBe(HttpStatus.BAD_REQUEST);
+    });
+  });
+
+  // ───────────────── GET /doctor/:id (public profile) ─────────────────
+
+  describe('GET /doctor/:id', () => {
+    const verifiedProfile = {
+      id: 1,
+      userId: 'doc-1',
+      specialty: DoctorSpecialtiesEnum.CARDIOLOGY,
+      verified: true,
+      bio: 'Heart doctor',
+      user: { id: 'doc-1', firstname: 'Jane', lastname: 'Doe', avatar: null },
+      reviewsAbout: [{ rating: 5 }, { rating: 4 }],
+    };
+
+    it('should return a verified doctor profile with ratings', async () => {
+      sessionUser = null; // public endpoint
+      prisma.doctorProfile.findUnique.mockResolvedValue(verifiedProfile);
+
+      const res = await app.inject({
+        method: 'GET',
+        url: '/doctor/1',
+      });
+
+      expect(res.statusCode).toBe(HttpStatus.OK);
+      const body = JSON.parse(res.body);
+      expect(body.contents.specialty).toBe(DoctorSpecialtiesEnum.CARDIOLOGY);
+      expect(body.contents.averageRating).toBe(4.5);
+      expect(body.contents.totalReviews).toBe(2);
+    });
+
+    it('should return 404 for non-existent doctor', async () => {
+      prisma.doctorProfile.findUnique.mockResolvedValue(null);
+
+      const res = await app.inject({
+        method: 'GET',
+        url: '/doctor/999',
+      });
+
+      expect(res.statusCode).toBe(HttpStatus.NOT_FOUND);
+    });
+
+    it('should return 404 for unverified doctor', async () => {
+      prisma.doctorProfile.findUnique.mockResolvedValue({
+        ...verifiedProfile,
+        verified: false,
+      });
+
+      const res = await app.inject({
+        method: 'GET',
+        url: '/doctor/1',
+      });
+
+      expect(res.statusCode).toBe(HttpStatus.NOT_FOUND);
+    });
+
+    it('should return 400 for non-numeric id', async () => {
+      const res = await app.inject({
+        method: 'GET',
+        url: '/doctor/abc',
+      });
+
+      expect(res.statusCode).toBe(HttpStatus.BAD_REQUEST);
     });
   });
 });
