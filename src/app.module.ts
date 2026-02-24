@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { APP_GUARD } from '@nestjs/core';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { PrismaModule } from './prisma/prisma.module';
@@ -9,17 +10,20 @@ import { ApiModule } from './api/api.module';
 import appGeneralConfigs from './configs/general';
 import authConfigs from './configs/auth';
 import aiConfigs from './configs/ai';
+import notificationConfigs from './configs/notification';
+import storageConfigs from './configs/storage';
 import { AuthModule } from './auth/auth.module';
 import { UserModule } from './user/user.module';
 import { CacheModule } from './cache/cache.module';
 import { ScheduleModule } from '@nestjs/schedule';
 import { DoctorModule } from './doctor/doctor.module';
+import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 
 @Module({
   imports: [
     PrismaModule,
     ConfigModule.forRoot({
-      load: [appGeneralConfigs, authConfigs, aiConfigs],
+      load: [appGeneralConfigs, authConfigs, aiConfigs, notificationConfigs, storageConfigs],
     }),
     CacheModule,
     UtilsModule,
@@ -28,9 +32,15 @@ import { DoctorModule } from './doctor/doctor.module';
     AuthModule,
     UserModule,
     ScheduleModule.forRoot(),
+    ThrottlerModule.forRoot({
+      throttlers: [{ ttl: 60000, limit: 100 }],
+    }),
     DoctorModule,
   ],
   controllers: [AppController],
-  providers: [AppService],
+  providers: [
+    AppService,
+    { provide: APP_GUARD, useClass: ThrottlerGuard },
+  ],
 })
 export class AppModule {}

@@ -8,6 +8,8 @@ import { ConfigService } from '@nestjs/config';
 import { setupSwagger } from './configs';
 import fastifyCookie from '@fastify/cookie';
 import fastifySecureSession from '@fastify/secure-session';
+import fastifyMultipart from '@fastify/multipart';
+import { IoAdapter } from '@nestjs/platform-socket.io';
 import { createHash } from 'crypto';
 
 async function bootstrap() {
@@ -38,6 +40,12 @@ async function bootstrap() {
       sameSite: 'lax',
     },
   });
+
+  // Register multipart file upload support
+  await app.register(fastifyMultipart, {
+    limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB
+  });
+
   setupSwagger(app);
   app.useGlobalPipes(
     new ValidationPipe({
@@ -47,6 +55,19 @@ async function bootstrap() {
       enableDebugMessages: appIsInDebugMode,
     }),
   );
+
+  // WebSocket adapter for Fastify + Socket.IO
+  class FastifyIoAdapter extends IoAdapter {
+    createIOServer(port: number, options?: any) {
+      return super.createIOServer(port, {
+        ...options,
+        cors: { origin: true, credentials: true },
+        transports: ['websocket', 'polling'],
+      });
+    }
+  }
+  app.useWebSocketAdapter(new FastifyIoAdapter(app));
+
   await app.listen(appPort ?? 8080);
 }
 bootstrap();

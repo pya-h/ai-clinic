@@ -11,9 +11,123 @@ enum UserRolesEnum {
   NONE // ordinary or guest user
   DOCTOR
   NURSE
-  ASSISTANT
   PATIENT
-  STAFF
+}
+
+enum MessageTypeEnum {
+  TEXT
+  IMAGE
+  FILE
+  AUDIO
+  VIDEO
+  SYSTEM
+}
+
+enum TriageLevelEnum {
+  SELF_CARE
+  SEE_DOCTOR
+  URGENT
+  EMERGENCY
+}
+
+enum ConsultationStatusEnum {
+  CREATED
+  PENDING_DOCTOR_REVIEW
+  DOCTOR_DECIDED
+  PENDING_PAYMENT
+  PAYMENT_CONFIRMED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum ConsultationModeEnum {
+  ASYNC
+  ONLINE
+  IN_PERSON
+}
+
+enum AppointmentStatusEnum {
+  PENDING
+  CONFIRMED
+  CANCELLED
+  COMPLETED
+  NO_SHOW
+}
+
+enum DocumentTypeEnum {
+  LICENSE
+  ID_CARD
+  CERTIFICATION
+  PHOTO
+  OTHER
+}
+
+enum DocumentStatusEnum {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum NursePermissionEnum {
+  VIEW_PATIENTS
+  VIEW_SOAPS
+  CHAT_WITH_PATIENTS
+  MANAGE_SCHEDULE
+  MANAGE_APPOINTMENTS
+  VIEW_CONSULTATION_NOTES
+}
+
+enum CallTypeEnum {
+  VOICE
+  VIDEO
+}
+
+enum CallStatusEnum {
+  RINGING
+  ACTIVE
+  ENDED
+  MISSED
+  REJECTED
+}
+
+enum PaymentStatusEnum {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  REFUNDED
+}
+
+enum SubscriptionPlanEnum {
+  FREE
+  BASIC
+  PREMIUM
+}
+
+enum SubscriptionStatusEnum {
+  ACTIVE
+  CANCELLED
+  EXPIRED
+}
+
+enum NotificationTypeEnum {
+  CONSULTATION_REQUEST
+  DOCTOR_DECISION
+  PAYMENT_CONFIRMED
+  APPOINTMENT_REMINDER
+  APPOINTMENT_CANCELLED
+  NEW_CHAT_MESSAGE
+  NEW_REVIEW
+  DOCTOR_VERIFIED
+  SOAP_READY
+  SYSTEM
+}
+
+enum NotificationChannelEnum {
+  EMAIL
+  PUSH
+  BOTH
 }
 
 model User {
@@ -26,7 +140,9 @@ model User {
   lastname            String
   role                UserRolesEnum     @map("user_role")
   isAdmin             Boolean           @default(false) @map("is_admin")
+  isSuperAdmin        Boolean           @default(false) @map("is_super_admin")
   isPrivate           Boolean           @default(false) @map("is_private")
+  isActive            Boolean           @default(true) @map("is_active")
   avatar              String?           @map("avatar")
   password            String
   chatHistory         ChatParticipant[]
@@ -35,7 +151,16 @@ model User {
   doctorProfile       DoctorProfile?
   reviewsOnDoctors    DoctorReview[]
   patientProfile      PatientProfile?
-  visitsAttended      Visit[]
+  sentMessages        Message[]
+  consultationsAsPatient Consultation[] @relation("PatientConsultations")
+  appointmentsAsPatient  Appointment[]  @relation("PatientAppointments")
+  nurseAssignments       DoctorNurseAssignment[] @relation("NurseAssignments")
+  callsMade              Call[]              @relation("CallerCalls")
+  callsReceived          Call[]              @relation("ReceiverCalls")
+  payments               Payment[]
+  subscription           Subscription?
+  notifications          Notification[]
+  pushSubscriptions      PushSubscription[]
 
   @@map("user")
 }
@@ -47,9 +172,11 @@ model Chat {
   updatedAt DateTime  @updatedAt @map("updated_at")
   closedAt  DateTime? @map("closed_at")
 
-  topic    String?
-  messages Message[]
-  parties  ChatParticipant[]
+  topic          String?
+  consultationId String?       @unique @map("consultation_id")
+  consultation   Consultation? @relation(fields: [consultationId], references: [id])
+  messages       Message[]
+  parties        ChatParticipant[]
 
   @@map("chat")
 }
@@ -62,11 +189,22 @@ model Message {
   chatId String @map("chat_id")
   chat   Chat   @relation(fields: [chatId], references: [id])
 
+  senderId String @map("sender_id")
+  sender   User   @relation(fields: [senderId], references: [id])
+
+  content  String
+  type     MessageTypeEnum @default(TEXT) @map("type")
+  fileUrl  String?         @map("file_url")
+
   repliedToId BigInt?  @map("replied_to_id")
   repliedTo   Message? @relation("MessageReply", fields: [repliedToId], references: [id])
+  replies     Message[] @relation("MessageReply")
 
-  replies Message[] @relation("MessageReply")
+  readBy    Json?     @map("read_by")
+  editedAt  DateTime? @map("edited_at")
+  deletedAt DateTime? @map("deleted_at")
 
+  @@index([chatId, createdAt])
   @@map("message")
 }
 
@@ -76,6 +214,9 @@ model ChatParticipant {
   chatId String @map("chat_id")
   chat   Chat   @relation(fields: [chatId], references: [id])
 
+  joinedAt   DateTime  @default(now()) @map("joined_at")
+  lastSeenAt DateTime? @map("last_seen_at")
+
   @@id([chatId, userId])
   @@map("chat_participant")
 }
@@ -83,7 +224,7 @@ model ChatParticipant {
 enum AiAgentsEnum {
   BOTPRESS
   OPENAI
-  GEMENI
+  GEMINI
   DEEPSEEK
   KIMI
   CLAUDE
@@ -97,9 +238,9 @@ model AiConversation {
   user   User   @relation(fields: [userId], references: [id])
 
   topic        String?
-  agentType    AiAgentsEnum  @default(BOTPRESS)
-  createdAt    DateTime      @default(now()) @map("created_at")
-  patientSOAPs PatientSOAP[]
+  agentType    AiAgentsEnum @default(BOTPRESS)
+  createdAt    DateTime     @default(now()) @map("created_at")
+  soap         PatientSOAP?
 
   @@map("ai_conversation")
 }
@@ -112,10 +253,19 @@ model PatientSOAP {
   userId String @map("user_id")
   user   User   @relation(fields: [userId], references: [id])
 
-  conversationId String         @map("conversation_id")
+  conversationId String         @unique @map("conversation_id")
   conversation   AiConversation @relation(fields: [conversationId], references: [id])
 
-  note String @map("note")
+  subjective         String?                @map("subjective")
+  objective          String?                @map("objective")
+  assessment         String?                @map("assessment")
+  plan               String?                @map("plan")
+  rawNote            String                 @map("raw_note")
+  suggestedSpecialty DoctorSpecialtiesEnum? @map("suggested_specialty")
+  triageLevel        TriageLevelEnum?       @map("triage_level")
+  confidenceScores   Json?                  @map("confidence_scores")
+
+  consultations Consultation[]
 
   @@map("patient_soap")
 }
@@ -125,13 +275,6 @@ enum VisitMethodsEnum {
   VOICE_CALL
   VIDEO_CALL
   ON_SITE
-}
-
-enum VisitStatusEnum {
-  PENDING
-  CONFIRMED
-  CANCELLED
-  COMPLETED
 }
 
 enum VisitTypesEnum {
@@ -183,10 +326,20 @@ model DoctorProfile {
   visitMethods VisitMethodsEnum[] @map("visit_methods")
   visitTypes   VisitTypesEnum[]   @map("visit_types")
 
-  verified        Boolean        @default(false)
-  platformSummary String?        @map("platform_summuary")
-  reviewsAbout    DoctorReview[]
-  visits          Visit[]
+  verified         Boolean        @default(false)
+  verifiedAt       DateTime?      @map("verified_at")
+  verifiedBy       String?        @map("verified_by")
+  rejectionReason  String?        @map("rejection_reason")
+  platformSummary  String?        @map("platform_summary")
+
+  reviewsAbout     DoctorReview[]
+  documents        DoctorDocument[]
+  nurseAssignments DoctorNurseAssignment[]
+  consultations    Consultation[]
+  appointments     Appointment[]
+  availability     DoctorAvailability[]
+  slotDurations    SlotDuration[]
+  exceptions       AvailabilityException[]
 
   @@map("doctor_profile")
 }
@@ -208,6 +361,7 @@ model DoctorReview {
   verified Boolean @default(false)
   rating   Int
 
+  @@unique([reviewerId, doctorId])
   @@map("doctor_review")
 }
 
@@ -233,29 +387,255 @@ model PatientProfile {
   @@map("patient_profile")
 }
 
-model Visit {
+// ────────────── CONSULTATION & APPOINTMENTS ──────────────
+
+model Consultation {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  patientId String @map("patient_id")
+  patient   User   @relation("PatientConsultations", fields: [patientId], references: [id])
+
+  doctorId Int           @map("doctor_id")
+  doctor   DoctorProfile @relation(fields: [doctorId], references: [id])
+
+  soapId String?     @map("soap_id")
+  soap   PatientSOAP? @relation(fields: [soapId], references: [id])
+
+  status         ConsultationStatusEnum @default(CREATED)
+  doctorDecision ConsultationModeEnum?  @map("doctor_decision")
+  visitMethod    VisitMethodsEnum?      @map("visit_method")
+
+  notes          String?
+  summary        String?
+  followUpNeeded Boolean   @default(false) @map("follow_up_needed")
+  completedAt    DateTime? @map("completed_at")
+
+  appointment Appointment?
+  payment     Payment?
+  chat        Chat?
+  calls       Call[]
+
+  @@map("consultation")
+}
+
+model Appointment {
   id        Int      @id @default(autoincrement())
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
   patientId String @map("patient_id")
-  patient   User   @relation(fields: [patientId], references: [id])
+  patient   User   @relation("PatientAppointments", fields: [patientId], references: [id])
 
   doctorId Int           @map("doctor_id")
   doctor   DoctorProfile @relation(fields: [doctorId], references: [id])
 
+  consultationId String?       @unique @map("consultation_id")
+  consultation   Consultation? @relation(fields: [consultationId], references: [id])
+
+  dateTime        DateTime             @map("date_time")
+  durationMinutes Int                  @map("duration_minutes")
+  price           Decimal              @db.Decimal(10, 2)
+  method          VisitMethodsEnum     @map("method")
+  status          AppointmentStatusEnum @default(PENDING)
+  notes           String?
+
+  @@map("appointment")
+}
+
+// ────────────── SCHEDULING ──────────────
+
+model DoctorAvailability {
+  id        Int      @id @default(autoincrement())
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  doctorId  Int           @map("doctor_id")
+  doctor    DoctorProfile @relation(fields: [doctorId], references: [id])
+
+  dayOfWeek Int      @map("day_of_week")  // 0 (Sun) – 6 (Sat)
+  startTime String   @map("start_time")   // "09:00"
+  endTime   String   @map("end_time")     // "17:00"
+  isActive  Boolean  @default(true) @map("is_active")
+
+  @@unique([doctorId, dayOfWeek, startTime])
+  @@map("doctor_availability")
+}
+
+model SlotDuration {
+  id        Int      @id @default(autoincrement())
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  doctorId Int           @map("doctor_id")
+  doctor   DoctorProfile @relation(fields: [doctorId], references: [id])
+
+  minutes  Int
+  price    Decimal  @db.Decimal(10, 2)
+  label    String?
+  isActive Boolean  @default(true) @map("is_active")
+
+  @@unique([doctorId, minutes])
+  @@map("slot_duration")
+}
+
+model AvailabilityException {
+  id        Int      @id @default(autoincrement())
+  createdAt DateTime @default(now()) @map("created_at")
+
+  doctorId  Int           @map("doctor_id")
+  doctor    DoctorProfile @relation(fields: [doctorId], references: [id])
+
   date      DateTime @map("date")
-  startTime Int      @map("start_time") // in ms
-  endTime   Int?     @map("end_time") // in ms
+  isBlocked Boolean  @default(true) @map("is_blocked")
+  startTime String?  @map("start_time")
+  endTime   String?  @map("end_time")
+  reason    String?
 
-  method VisitMethodsEnum @map("method")
-  type   VisitTypesEnum   @map("type")
-  status VisitStatusEnum  @map("status")
+  @@unique([doctorId, date])
+  @@map("availability_exception")
+}
 
-  notes       String[] @map("notes")
-  attachments String[] @map("attachments")
+// ────────────── DOCTOR DOCUMENTS & NURSE ASSIGNMENT ──────────────
 
-  scheduled Boolean @default(false) @map("scheduled")
+model DoctorDocument {
+  id        Int      @id @default(autoincrement())
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
-  @@map("visit")
+  doctorId Int           @map("doctor_id")
+  doctor   DoctorProfile @relation(fields: [doctorId], references: [id])
+
+  type         DocumentTypeEnum   @map("type")
+  fileUrl      String             @map("file_url")
+  fileName     String             @map("file_name")
+  mimeType     String             @map("mime_type")
+  status       DocumentStatusEnum @default(PENDING)
+  reviewedAt   DateTime?          @map("reviewed_at")
+  reviewedBy   String?            @map("reviewed_by")
+  rejectReason String?            @map("reject_reason")
+
+  @@map("doctor_document")
+}
+
+model DoctorNurseAssignment {
+  id        Int      @id @default(autoincrement())
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  doctorId Int           @map("doctor_id")
+  doctor   DoctorProfile @relation(fields: [doctorId], references: [id])
+
+  nurseId String @map("nurse_id")
+  nurse   User   @relation("NurseAssignments", fields: [nurseId], references: [id])
+
+  permissions NursePermissionEnum[] @map("permissions")
+  isActive    Boolean               @default(true) @map("is_active")
+
+  @@unique([doctorId, nurseId])
+  @@map("doctor_nurse_assignment")
+}
+
+// ────────────── CALLS ──────────────
+
+model Call {
+  id        Int      @id @default(autoincrement())
+  createdAt DateTime @default(now()) @map("created_at")
+
+  chatId         String?       @map("chat_id")
+  consultationId String?       @map("consultation_id")
+  consultation   Consultation? @relation(fields: [consultationId], references: [id])
+
+  callerId   String @map("caller_id")
+  caller     User   @relation("CallerCalls", fields: [callerId], references: [id])
+  receiverId String @map("receiver_id")
+  receiver   User   @relation("ReceiverCalls", fields: [receiverId], references: [id])
+
+  type         CallTypeEnum
+  status       CallStatusEnum @default(RINGING)
+  startedAt    DateTime?      @map("started_at")
+  endedAt      DateTime?      @map("ended_at")
+  duration     Int?
+  recordingUrl String?        @map("recording_url")
+
+  @@map("call")
+}
+
+// ────────────── PAYMENT & SUBSCRIPTION ──────────────
+
+model Payment {
+  id        Int      @id @default(autoincrement())
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  userId String @map("user_id")
+  user   User   @relation(fields: [userId], references: [id])
+
+  consultationId String?       @unique @map("consultation_id")
+  consultation   Consultation? @relation(fields: [consultationId], references: [id])
+
+  amount          Decimal           @db.Decimal(10, 2)
+  currency        String            @default("USD")
+  status          PaymentStatusEnum @default(PENDING)
+  method          String?
+  gatewayId       String?           @map("gateway_id")
+  gatewayResponse Json?             @map("gateway_response")
+  paidAt          DateTime?         @map("paid_at")
+
+  @@map("payment")
+}
+
+model Subscription {
+  id        Int      @id @default(autoincrement())
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  userId String @unique @map("user_id")
+  user   User   @relation(fields: [userId], references: [id])
+
+  plan      SubscriptionPlanEnum   @default(FREE)
+  status    SubscriptionStatusEnum @default(ACTIVE)
+  startDate DateTime               @map("start_date")
+  endDate   DateTime?              @map("end_date")
+  features  Json?
+
+  @@map("subscription")
+}
+
+// ────────────── NOTIFICATIONS ──────────────
+
+model Notification {
+  id        Int      @id @default(autoincrement())
+  createdAt DateTime @default(now()) @map("created_at")
+
+  userId String @map("user_id")
+  user   User   @relation(fields: [userId], references: [id])
+
+  type    NotificationTypeEnum
+  title   String
+  body    String
+  data    Json?
+  channel NotificationChannelEnum @default(PUSH)
+  isRead  Boolean                 @default(false) @map("is_read")
+  sentAt  DateTime?               @map("sent_at")
+  readAt  DateTime?               @map("read_at")
+
+  @@index([userId, isRead])
+  @@map("notification")
+}
+
+model PushSubscription {
+  id        Int      @id @default(autoincrement())
+  createdAt DateTime @default(now()) @map("created_at")
+
+  userId   String @map("user_id")
+  user     User   @relation(fields: [userId], references: [id])
+
+  endpoint String
+  keys     Json
+  isActive Boolean @default(true) @map("is_active")
+
+  @@unique([userId, endpoint])
+  @@map("push_subscription")
 }
