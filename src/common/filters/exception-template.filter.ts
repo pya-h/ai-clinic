@@ -12,15 +12,32 @@ export class ExceptionTemplateFilter implements ExceptionFilter {
   private readonly logger = new Logger(ExceptionTemplateFilter.name);
 
   catch(exception: any, host: ArgumentsHost) {
-    let status: number, message: string;
+    // Only handle HTTP context; let WS/RPC exceptions propagate normally
+    if (host.getType() !== 'http') {
+      this.logger.error(
+        `Non-HTTP exception in ${host.getType()} context:`,
+        exception,
+      );
+      return;
+    }
+
+    let status: number;
+    let message: string;
 
     if (exception instanceof HttpException) {
       status = exception.getStatus();
-      this.logger.warn(exception.getResponse());
       const responseBody = exception.getResponse();
-      const rawMessage = responseBody['message'] || 'Unknown Error';
-      // class-validator returns message as string[], join for display
-      message = Array.isArray(rawMessage) ? rawMessage.join('; ') : rawMessage;
+      this.logger.warn(responseBody);
+
+      if (typeof responseBody === 'string') {
+        message = responseBody;
+      } else {
+        const rawMessage = responseBody['message'] || 'Unknown Error';
+        // class-validator returns message as string[], join for display
+        message = Array.isArray(rawMessage)
+          ? rawMessage.join('; ')
+          : String(rawMessage);
+      }
     } else {
       status = HttpStatus.INTERNAL_SERVER_ERROR;
       message = 'Internal Server Error';
@@ -30,7 +47,7 @@ export class ExceptionTemplateFilter implements ExceptionFilter {
     const ctx = host.switchToHttp();
     const response = ctx.getResponse();
     const request = ctx.getRequest();
-    
+
     // Fastify-specific response handling
     response.status(status).send({
       status,

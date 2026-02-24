@@ -1,5 +1,6 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { randomUUID } from 'crypto';
 import { IStorageProvider } from './interfaces/storage-provider.interface';
 import { LocalStorageProvider } from './providers/local-storage.provider';
 import { MultipartFile } from '@fastify/multipart';
@@ -16,14 +17,16 @@ const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
 @Injectable()
 export class FileUploadService {
   private readonly provider: IStorageProvider;
+  private readonly logger = new Logger(FileUploadService.name);
 
   constructor(private readonly configService: ConfigService) {
     const storageType = this.configService.get<string>('storage.type', 'local');
 
     // Extensible: add 's3' case when S3StorageProvider is implemented
     if (storageType === 's3') {
-      // TODO: new S3StorageProvider(configService)
-      throw new Error('S3 storage provider is not yet implemented.');
+      this.logger.warn(
+        'S3 storage provider is not yet implemented — falling back to local storage.',
+      );
     }
 
     const localPath = this.configService.get<string>(
@@ -51,7 +54,10 @@ export class FileUploadService {
     }
 
     const safeOriginalName = file.filename.replace(/[^a-zA-Z0-9._-]/g, '_');
-    const fileName = `${Date.now()}-${safeOriginalName}`;
+    const ext = safeOriginalName.includes('.')
+      ? '.' + safeOriginalName.split('.').pop()
+      : '';
+    const fileName = `${randomUUID()}${ext}`;
 
     const { url, key } = await this.provider.upload(
       buffer,

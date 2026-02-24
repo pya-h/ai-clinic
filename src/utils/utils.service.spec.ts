@@ -132,16 +132,26 @@ describe('UtilsService', () => {
 
   describe('generateRandomNumberInRange', () => {
     it('should generate number within range', () => {
+      const min = Math.floor(Math.random() * 10) + 1;
+      const max = min + Math.floor(Math.random() * 50) + 10;
       for (let i = 0; i < 50; i++) {
-        const num = service.generateRandomNumberInRange(1, 10);
-        expect(num).toBeGreaterThanOrEqual(1);
-        expect(num).toBeLessThan(10);
+        const num = service.generateRandomNumberInRange(min, max);
+        expect(num).toBeGreaterThanOrEqual(min);
+        expect(num).toBeLessThan(max);
       }
     });
 
     it('should return integer', () => {
       const num = service.generateRandomNumberInRange(1, 100);
       expect(Number.isInteger(num)).toBe(true);
+    });
+
+    it('should handle min > max by swapping', () => {
+      for (let i = 0; i < 20; i++) {
+        const num = service.generateRandomNumberInRange(10, 1);
+        expect(num).toBeGreaterThanOrEqual(1);
+        expect(num).toBeLessThan(10);
+      }
     });
   });
 });

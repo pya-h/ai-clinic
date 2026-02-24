@@ -2,13 +2,16 @@
  * ExceptionTemplateFilter Unit Tests
  *
  * Tests:
- *   - HttpException with string message
+ *   - HttpException with string response body (now correctly extracts message)
+ *   - HttpException with object response containing message string
  *   - HttpException with array message (validation errors, joined with '; ')
  *   - Non-HttpException (generic error) returns 500
+ *   - Non-HTTP context (WebSocket) — gracefully returns without crashing
  *   - Response body format: { status, message, contents: null, timestamp, path }
  */
 import { ArgumentsHost, HttpException, HttpStatus } from '@nestjs/common';
 import { ExceptionTemplateFilter } from './exception-template.filter';
+import { randomUUID } from 'crypto';
 
 // ─── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -21,6 +24,7 @@ function createMockHost(url = '/test-path'): {
   const statusFn = jest.fn().mockReturnValue({ send: sendFn });
 
   const host = {
+    getType: () => 'http',
     switchToHttp: () => ({
       getRequest: () => ({ url }),
       getResponse: () => ({ status: statusFn }),
@@ -28,6 +32,16 @@ function createMockHost(url = '/test-path'): {
   } as unknown as ArgumentsHost;
 
   return { host, sendFn, statusFn };
+}
+
+function createWsHost(): ArgumentsHost {
+  return {
+    getType: () => 'ws',
+    switchToWs: () => ({
+      getClient: () => ({}),
+      getData: () => ({}),
+    }),
+  } as unknown as ArgumentsHost;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -39,10 +53,9 @@ describe('ExceptionTemplateFilter', () => {
     filter = new ExceptionTemplateFilter();
   });
 
-  it('should handle HttpException with string response (no .message property)', () => {
-    const { host, sendFn, statusFn } = createMockHost('/api/test');
-    // When HttpException gets a plain string, getResponse() returns that string,
-    // so responseBody['message'] is undefined → falls back to 'Unknown Error'
+  it('should extract string message from HttpException with string response', () => {
+    const randomPath = `/api/${randomUUID().slice(0, 8)}`;
+    const { host, sendFn, statusFn } = createMockHost(randomPath);
     const exception = new HttpException('Something went wrong', HttpStatus.BAD_REQUEST);
 
     filter.catch(exception, host);
@@ -51,9 +64,9 @@ describe('ExceptionTemplateFilter', () => {
     const body = sendFn.mock.calls[0][0];
     expect(body).toMatchObject({
       status: 400,
-      message: 'Unknown Error',
+      message: 'Something went wrong',
       contents: null,
-      path: '/api/test',
+      path: randomPath,
     });
     expect(body.timestamp).toBeDefined();
   });
@@ -94,8 +107,9 @@ describe('ExceptionTemplateFilter', () => {
 
   it('should join array messages with "; " (class-validator style)', () => {
     const { host, sendFn, statusFn } = createMockHost('/api/users');
+    const randomField = `field_${Math.random().toString(36).slice(2, 6)}`;
     const exception = new HttpException(
-      { statusCode: 400, message: ['email must be valid', 'name is required'] },
+      { statusCode: 400, message: [`${randomField} must be valid`, 'name is required'] },
       HttpStatus.BAD_REQUEST,
     );
 
@@ -103,7 +117,7 @@ describe('ExceptionTemplateFilter', () => {
 
     expect(statusFn).toHaveBeenCalledWith(400);
     const body = sendFn.mock.calls[0][0];
-    expect(body.message).toBe('email must be valid; name is required');
+    expect(body.message).toBe(`${randomField} must be valid; name is required`);
   });
 
   it('should return 500 for non-HttpException errors', () => {
@@ -138,7 +152,6 @@ describe('ExceptionTemplateFilter', () => {
     filter.catch(new HttpException('test', 200), host);
 
     const body = sendFn.mock.calls[0][0];
-    // ISO 8601 format check
     expect(new Date(body.timestamp).toISOString()).toBe(body.timestamp);
   });
 
@@ -150,5 +163,11 @@ describe('ExceptionTemplateFilter', () => {
     expect(Object.keys(body).sort()).toEqual(
       ['contents', 'message', 'path', 'status', 'timestamp'].sort(),
     );
+  });
+
+  it('should gracefully handle non-HTTP (WebSocket) context', () => {
+    const wsHost = createWsHost();
+    // Should not throw
+    expect(() => filter.catch(new Error('ws error'), wsHost)).not.toThrow();
   });
 });

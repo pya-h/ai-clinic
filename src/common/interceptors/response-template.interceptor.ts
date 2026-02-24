@@ -2,11 +2,13 @@ import {
   CallHandler,
   ExecutionContext,
   HttpStatus,
+  Injectable,
   Logger,
   NestInterceptor,
 } from '@nestjs/common';
 import { map, Observable } from 'rxjs';
 
+@Injectable()
 export class ResponseTemplateInterceptor<T> implements NestInterceptor<T, any> {
   private readonly logger = new Logger(ResponseTemplateInterceptor.name);
 
@@ -18,17 +20,30 @@ export class ResponseTemplateInterceptor<T> implements NestInterceptor<T, any> {
       map((data: unknown) => {
         const response = context.switchToHttp().getResponse();
         try {
-          if (data) {
-            if (data['statusCode']) response.statusCode = data['statusCode'];
+          const statusCode: number = response.statusCode;
 
-            if (data['message']) {
-              response.message = data['message'];
-              delete data['message'];
-            } else response.message = 'Success!';
+          // 204 No Content should return no body
+          if (statusCode === HttpStatus.NO_CONTENT) {
+            return undefined;
           }
+
+          let message = 'Success!';
+          let contents: unknown = data;
+
+          // Only extract statusCode/message from plain object data
+          if (data && typeof data === 'object' && !Array.isArray(data)) {
+            const { message: dataMessage, statusCode: dataStatus, ...rest } =
+              data as Record<string, unknown>;
+            if (dataStatus) response.statusCode = dataStatus;
+            if (dataMessage && typeof dataMessage === 'string') {
+              message = dataMessage;
+            }
+            contents = rest;
+          }
+
           return {
-            message: response.message,
-            contents: data,
+            message,
+            contents: contents ?? null,
             status: response.statusCode,
           };
         } catch (ex) {

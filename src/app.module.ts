@@ -23,6 +23,7 @@ import { ReviewModule } from './review/review.module';
 import { ConsultationModule } from './consultation/consultation.module';
 import { SchedulingModule } from './scheduling/scheduling.module';
 import { AdminModule } from './admin/admin.module';
+import { ChatModule } from './chat/chat.module';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 
 @Module({
@@ -48,6 +49,7 @@ import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
     ConsultationModule,
     SchedulingModule,
     AdminModule,
+    ChatModule,
   ],
   controllers: [AppController],
   providers: [
