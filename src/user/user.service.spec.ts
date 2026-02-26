@@ -8,6 +8,8 @@
  *   createUser   — successful + duplicate email + invalid role
  *   updateUser   — successful + empty data + email conflict
  *   getUsers     — returns user list
+ *
+ * Uses randomized test data via test-data.factory.
  */
 import { Test, TestingModule } from '@nestjs/testing';
 import {
@@ -24,6 +26,13 @@ import {
   createMockPrismaService,
   MockPrismaService,
 } from '../../test/helpers/mock-prisma.helper';
+import {
+  buildUser,
+  randomEmail,
+  randomFirstName,
+  randomLastName,
+  randomUuid,
+} from '../../test/helpers/test-data.factory';
 
 describe('UserService', () => {
   let service: UserService;
@@ -31,21 +40,7 @@ describe('UserService', () => {
   let utilsService: Record<string, jest.Mock>;
   let fileUploadService: Record<string, jest.Mock>;
 
-  const mockUser = {
-    id: 'user-uuid',
-    email: 'test@example.com',
-    firstname: 'Test',
-    lastname: 'User',
-    role: UserRolesEnum.PATIENT,
-    isAdmin: false,
-    isSuperAdmin: false,
-    isPrivate: false,
-    isActive: true,
-    avatar: null,
-    password: 'hashedpassword',
-    createdAt: new Date(),
-    updatedAt: new Date(),
-  };
+  const mockUser = buildUser();
 
   beforeEach(async () => {
     prisma = createMockPrismaService();
@@ -134,10 +129,10 @@ describe('UserService', () => {
 
   describe('createUser', () => {
     const registerDto = {
-      email: 'new@example.com',
-      firstname: 'New',
-      lastname: 'User',
-      password: '1StrongPass',
+      email: randomEmail('register'),
+      firstname: randomFirstName(),
+      lastname: randomLastName(),
+      password: 'Str0ngP@ss1',
       role: UserRolesEnum.PATIENT as any,
       isPrivate: false,
     };
@@ -180,16 +175,17 @@ describe('UserService', () => {
 
   describe('updateUser', () => {
     it('should update user with valid data', async () => {
+      const updatedName = randomFirstName();
       prisma.user.findFirst.mockResolvedValue(null); // no email conflict
       prisma.user.update.mockResolvedValue({
         ...mockUser,
-        firstname: 'Updated',
+        firstname: updatedName,
       });
 
       const result = await service.updateUser(mockUser as any, {
-        firstname: 'Updated',
+        firstname: updatedName,
       });
-      expect(result.firstname).toBe('Updated');
+      expect(result.firstname).toBe(updatedName);
     });
 
     it('should throw BadRequestException for empty update data', async () => {
@@ -199,9 +195,10 @@ describe('UserService', () => {
     });
 
     it('should throw ConflictException for duplicate email', async () => {
+      const takenEmail = randomEmail('taken');
       prisma.user.findFirst.mockResolvedValue({
-        id: 'other-user',
-        email: 'taken@example.com',
+        id: randomUuid(),
+        email: takenEmail,
       });
 
       await expect(

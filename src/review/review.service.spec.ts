@@ -9,51 +9,34 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { UserRolesEnum } from '@prisma/client';
+import {
+  buildUser,
+  buildDoctorUser,
+  buildAdminUser,
+  randomUuid,
+} from '../../test/helpers/test-data.factory';
 
 describe('ReviewService', () => {
   let service: ReviewService;
   let prisma: Record<string, any>;
   let cache: Record<string, jest.Mock>;
 
-  const mockPatientUser = {
-    id: 'patient-uuid-1',
-    email: 'patient@example.com',
-    firstname: 'Pat',
-    lastname: 'Ient',
-    role: UserRolesEnum.PATIENT,
-    isAdmin: false,
-    isSuperAdmin: false,
-    isPrivate: false,
-    isActive: true,
-    avatar: null,
-    password: 'hashed',
-    createdAt: new Date(),
-    updatedAt: new Date(),
-  };
+  const mockPatientUser = buildUser();
 
-  const mockDoctorUser = {
-    ...mockPatientUser,
-    id: 'doctor-uuid-1',
-    role: UserRolesEnum.DOCTOR,
-  };
+  const mockDoctorUser = buildDoctorUser();
 
-  const mockAdminUser = {
-    ...mockPatientUser,
-    id: 'admin-uuid-1',
-    role: UserRolesEnum.NONE,
-    isAdmin: true,
-  };
+  const mockAdminUser = buildAdminUser();
 
   const mockDoctorProfile = {
-    id: 1,
-    userId: 'doctor-uuid-1',
+    id: Math.floor(Math.random() * 1000) + 1,
+    userId: mockDoctorUser.id,
     verified: true,
   };
 
   const mockReview = {
-    id: 1,
+    id: Math.floor(Math.random() * 1000) + 1,
     reviewerId: mockPatientUser.id,
-    doctorId: 1,
+    doctorId: mockDoctorProfile.id,
     rating: 4,
     title: 'Great doctor',
     overview: 'Very professional and caring.',
@@ -63,9 +46,9 @@ describe('ReviewService', () => {
   };
 
   const mockConsultation = {
-    id: 'consult-uuid-1',
+    id: randomUuid(),
     patientId: mockPatientUser.id,
-    doctorId: 1,
+    doctorId: mockDoctorProfile.id,
     status: 'COMPLETED',
   };
 
@@ -116,7 +99,7 @@ describe('ReviewService', () => {
       prisma.doctorReview.create.mockResolvedValue(mockReview);
 
       const result = await service.create(mockPatientUser as any, {
-        doctorId: 1,
+        doctorId: mockDoctorProfile.id,
         rating: 4,
         title: 'Great doctor',
         overview: 'Very professional and caring.',
@@ -126,19 +109,19 @@ describe('ReviewService', () => {
       expect(prisma.doctorReview.create).toHaveBeenCalledWith({
         data: {
           reviewerId: mockPatientUser.id,
-          doctorId: 1,
+          doctorId: mockDoctorProfile.id,
           rating: 4,
           title: 'Great doctor',
           overview: 'Very professional and caring.',
         },
       });
-      expect(cache.del).toHaveBeenCalledWith('ratings', '1');
+      expect(cache.del).toHaveBeenCalledWith('ratings', String(mockDoctorProfile.id));
     });
 
     it('should throw ForbiddenException if user is not a PATIENT', async () => {
       await expect(
         service.create(mockDoctorUser as any, {
-          doctorId: 1,
+          doctorId: mockDoctorProfile.id,
           rating: 5,
         }),
       ).rejects.toThrow(ForbiddenException);
@@ -163,7 +146,7 @@ describe('ReviewService', () => {
 
       await expect(
         service.create(mockPatientUser as any, {
-          doctorId: 1,
+          doctorId: mockDoctorProfile.id,
           rating: 5,
         }),
       ).rejects.toThrow(NotFoundException);
@@ -175,7 +158,7 @@ describe('ReviewService', () => {
 
       await expect(
         service.create(mockPatientUser as any, {
-          doctorId: 1,
+          doctorId: mockDoctorProfile.id,
           rating: 5,
         }),
       ).rejects.toThrow(BadRequestException);
@@ -188,7 +171,7 @@ describe('ReviewService', () => {
 
       await expect(
         service.create(mockPatientUser as any, {
-          doctorId: 1,
+          doctorId: mockDoctorProfile.id,
           rating: 5,
         }),
       ).rejects.toThrow(ConflictException);
@@ -203,12 +186,12 @@ describe('ReviewService', () => {
       prisma.doctorReview.findUnique.mockResolvedValue(mockReview);
       prisma.doctorReview.update.mockResolvedValue(updated);
 
-      const result = await service.update(mockPatientUser as any, 1, {
+      const result = await service.update(mockPatientUser as any, mockReview.id, {
         rating: 5,
       });
 
       expect(result.rating).toBe(5);
-      expect(cache.del).toHaveBeenCalledWith('ratings', '1');
+      expect(cache.del).toHaveBeenCalledWith('ratings', String(mockDoctorProfile.id));
     });
 
     it('should throw NotFoundException if review not found', async () => {
@@ -222,11 +205,11 @@ describe('ReviewService', () => {
     it('should throw ForbiddenException if not the owner', async () => {
       prisma.doctorReview.findUnique.mockResolvedValue({
         ...mockReview,
-        reviewerId: 'other-user-id',
+        reviewerId: randomUuid(),
       });
 
       await expect(
-        service.update(mockPatientUser as any, 1, { rating: 3 }),
+        service.update(mockPatientUser as any, mockReview.id, { rating: 3 }),
       ).rejects.toThrow(ForbiddenException);
     });
   });
@@ -238,22 +221,22 @@ describe('ReviewService', () => {
       prisma.doctorReview.findUnique.mockResolvedValue(mockReview);
       prisma.doctorReview.delete.mockResolvedValue(mockReview);
 
-      await service.delete(1, mockPatientUser as any);
+      await service.delete(mockReview.id, mockPatientUser as any);
 
       expect(prisma.doctorReview.delete).toHaveBeenCalledWith({
-        where: { id: 1 },
+        where: { id: mockReview.id },
       });
-      expect(cache.del).toHaveBeenCalledWith('ratings', '1');
+      expect(cache.del).toHaveBeenCalledWith('ratings', String(mockDoctorProfile.id));
     });
 
     it('should allow admin to delete any review', async () => {
       prisma.doctorReview.findUnique.mockResolvedValue(mockReview);
       prisma.doctorReview.delete.mockResolvedValue(mockReview);
 
-      await service.delete(1, mockAdminUser as any);
+      await service.delete(mockReview.id, mockAdminUser as any);
 
       expect(prisma.doctorReview.delete).toHaveBeenCalledWith({
-        where: { id: 1 },
+        where: { id: mockReview.id },
       });
     });
 
@@ -270,12 +253,12 @@ describe('ReviewService', () => {
 
       const otherUser = {
         ...mockPatientUser,
-        id: 'other-user-id',
+        id: randomUuid(),
         isAdmin: false,
       };
 
       await expect(
-        service.delete(1, otherUser as any),
+        service.delete(mockReview.id, otherUser as any),
       ).rejects.toThrow(ForbiddenException);
     });
   });
@@ -287,7 +270,7 @@ describe('ReviewService', () => {
       prisma.doctorReview.findMany.mockResolvedValue([mockReview]);
       prisma.doctorReview.count.mockResolvedValue(1);
 
-      const result = await service.listByDoctor(1, { skip: 0, take: 20 });
+      const result = await service.listByDoctor(mockDoctorProfile.id, { skip: 0, take: 20 });
 
       expect(result).toEqual({
         data: [mockReview],
@@ -297,7 +280,7 @@ describe('ReviewService', () => {
       });
       expect(prisma.doctorReview.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: { doctorId: 1 },
+          where: { doctorId: mockDoctorProfile.id },
           skip: 0,
           take: 20,
         }),
@@ -308,7 +291,7 @@ describe('ReviewService', () => {
       prisma.doctorReview.findMany.mockResolvedValue([]);
       prisma.doctorReview.count.mockResolvedValue(0);
 
-      const result = await service.listByDoctor(1, {} as any);
+      const result = await service.listByDoctor(mockDoctorProfile.id, {} as any);
       expect(result).toEqual({ data: [], total: 0, skip: 0, take: 20 });
     });
   });
@@ -324,7 +307,7 @@ describe('ReviewService', () => {
       };
       cache.get.mockResolvedValue(cached);
 
-      const result = await service.getAggregateRating(1);
+      const result = await service.getAggregateRating(mockDoctorProfile.id);
       expect(result).toEqual(cached);
       expect(prisma.doctorReview.aggregate).not.toHaveBeenCalled();
     });
@@ -341,7 +324,7 @@ describe('ReviewService', () => {
         { rating: 5, _count: { rating: 2 } },
       ]);
 
-      const result = await service.getAggregateRating(1);
+      const result = await service.getAggregateRating(mockDoctorProfile.id);
 
       expect(result.averageRating).toBe(4.2);
       expect(result.totalReviews).toBe(5);
@@ -354,7 +337,7 @@ describe('ReviewService', () => {
       });
       expect(cache.set).toHaveBeenCalledWith(
         'ratings',
-        '1',
+        String(mockDoctorProfile.id),
         result,
         600_000,
       );
@@ -368,7 +351,7 @@ describe('ReviewService', () => {
       });
       prisma.doctorReview.groupBy.mockResolvedValue([]);
 
-      const result = await service.getAggregateRating(1);
+      const result = await service.getAggregateRating(mockDoctorProfile.id);
 
       expect(result.averageRating).toBeNull();
       expect(result.totalReviews).toBe(0);
@@ -393,7 +376,7 @@ describe('ReviewService', () => {
         { rating: 5, _count: { rating: 1 } },
       ]);
 
-      const result = await service.getAggregateRating(1);
+      const result = await service.getAggregateRating(mockDoctorProfile.id);
       expect(result.averageRating).toBe(4); // (5+4+3)/3 = 4.0
     });
   });

@@ -15,6 +15,7 @@ import { AdminGuard } from './admin.guard';
 import { RolesGuard } from './roles.guard';
 import { SuperAdminGuard } from './super-admin.guard';
 import { OptionalAuthGuard } from './optional-auth.guard';
+import { randomUuid } from '../../../test/helpers/test-data.factory';
 
 // ─── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -75,13 +76,13 @@ describe('CookieAuthGuard', () => {
   });
 
   it('should throw ForbiddenException when user is inactive', () => {
-    const ctx = createMockContext({ id: 1, isActive: false });
+    const ctx = createMockContext({ id: randomUuid(), isActive: false });
     expect(() => guard.canActivate(ctx)).toThrow(ForbiddenException);
     expect(() => guard.canActivate(ctx)).toThrow('Account is deactivated');
   });
 
   it('should set request.user and return true for valid active session', () => {
-    const user = { id: 1, isActive: true, role: 'PATIENT' };
+    const user = { id: randomUuid(), isActive: true, role: 'PATIENT' };
     const ctx = createMockContext(user);
     const result = guard.canActivate(ctx);
 
@@ -91,7 +92,7 @@ describe('CookieAuthGuard', () => {
   });
 
   it('should pass when isActive is not explicitly false (undefined)', () => {
-    const user = { id: 2, role: 'DOCTOR' };
+    const user = { id: randomUuid(), role: 'DOCTOR' };
     const ctx = createMockContext(user);
     const result = guard.canActivate(ctx);
 
@@ -120,17 +121,17 @@ describe('AdminGuard', () => {
   });
 
   it('should throw ForbiddenException for non-admin user', () => {
-    const ctx = createMockContext(null, { id: 1, isAdmin: false, isSuperAdmin: false });
+    const ctx = createMockContext(null, { id: randomUuid(), isAdmin: false, isSuperAdmin: false });
     expect(() => guard.canActivate(ctx)).toThrow(ForbiddenException);
   });
 
   it('should return true for admin user', () => {
-    const ctx = createMockContext(null, { id: 1, isAdmin: true, isSuperAdmin: false });
+    const ctx = createMockContext(null, { id: randomUuid(), isAdmin: true, isSuperAdmin: false });
     expect(guard.canActivate(ctx)).toBe(true);
   });
 
   it('should return true for superAdmin user', () => {
-    const ctx = createMockContext(null, { id: 1, isAdmin: false, isSuperAdmin: true });
+    const ctx = createMockContext(null, { id: randomUuid(), isAdmin: false, isSuperAdmin: true });
     expect(guard.canActivate(ctx)).toBe(true);
   });
 });
@@ -164,7 +165,7 @@ describe('RolesGuard', () => {
   it('should return true when user has the required role', () => {
     jest.spyOn(reflector, 'getAllAndOverride').mockReturnValue(['PATIENT']);
     const ctx = createMockContext(null, {
-      id: 1,
+      id: randomUuid(),
       role: 'PATIENT',
       isAdmin: false,
       isSuperAdmin: false,
@@ -175,7 +176,7 @@ describe('RolesGuard', () => {
   it('should throw ForbiddenException when user has wrong role', () => {
     jest.spyOn(reflector, 'getAllAndOverride').mockReturnValue(['DOCTOR']);
     const ctx = createMockContext(null, {
-      id: 1,
+      id: randomUuid(),
       role: 'PATIENT',
       isAdmin: false,
       isSuperAdmin: false,
@@ -187,7 +188,7 @@ describe('RolesGuard', () => {
   it('should return true for admin user regardless of role', () => {
     jest.spyOn(reflector, 'getAllAndOverride').mockReturnValue(['DOCTOR']);
     const ctx = createMockContext(null, {
-      id: 1,
+      id: randomUuid(),
       role: 'PATIENT',
       isAdmin: true,
       isSuperAdmin: false,
@@ -198,7 +199,7 @@ describe('RolesGuard', () => {
   it('should return true for superAdmin user regardless of role', () => {
     jest.spyOn(reflector, 'getAllAndOverride').mockReturnValue(['DOCTOR']);
     const ctx = createMockContext(null, {
-      id: 1,
+      id: randomUuid(),
       role: 'PATIENT',
       isAdmin: false,
       isSuperAdmin: true,
@@ -225,12 +226,12 @@ describe('SuperAdminGuard', () => {
   });
 
   it('should throw ForbiddenException for non-superAdmin user', () => {
-    const ctx = createMockContext(null, { id: 1, isSuperAdmin: false });
+    const ctx = createMockContext(null, { id: randomUuid(), isSuperAdmin: false });
     expect(() => guard.canActivate(ctx)).toThrow(ForbiddenException);
   });
 
   it('should return true for superAdmin user', () => {
-    const ctx = createMockContext(null, { id: 1, isSuperAdmin: true });
+    const ctx = createMockContext(null, { id: randomUuid(), isSuperAdmin: true });
     expect(guard.canActivate(ctx)).toBe(true);
   });
 });
@@ -269,7 +270,7 @@ describe('OptionalAuthGuard', () => {
   });
 
   it('should set request.user to session user when valid session exists', () => {
-    const user = { id: 1, role: 'PATIENT', isActive: true };
+    const user = { id: randomUuid(), role: 'PATIENT', isActive: true };
     const ctx = createMockContext(user);
     const result = guard.canActivate(ctx);
 

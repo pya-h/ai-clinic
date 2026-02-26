@@ -8,46 +8,28 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { UserRolesEnum } from '@prisma/client';
+import {
+  buildAdminUser,
+  buildSuperAdminUser,
+  buildUser,
+  randomUuid,
+  randomFirstName,
+} from '../../test/helpers/test-data.factory';
 
 describe('AdminService', () => {
   let service: AdminService;
   let prisma: Record<string, any>;
   let reviewService: Record<string, jest.Mock>;
 
-  const mockAdminUser = {
-    id: 'admin-uuid-1',
-    email: 'admin@example.com',
-    firstname: 'Admin',
-    lastname: 'User',
-    role: UserRolesEnum.NONE,
-    isAdmin: true,
-    isSuperAdmin: false,
-    isActive: true,
-    isPrivate: false,
-    avatar: null,
-    password: 'hashed',
-    createdAt: new Date(),
-    updatedAt: new Date(),
-  };
+  const mockAdminUser = buildAdminUser();
 
-  const mockSuperAdmin = {
-    ...mockAdminUser,
-    id: 'super-uuid-1',
-    isAdmin: false,
-    isSuperAdmin: true,
-  };
+  const mockSuperAdmin = buildSuperAdminUser();
 
-  const mockRegularUser = {
-    ...mockAdminUser,
-    id: 'regular-uuid-1',
-    isAdmin: false,
-    isSuperAdmin: false,
-    role: UserRolesEnum.PATIENT,
-  };
+  const mockRegularUser = buildUser();
 
   const mockDoctorProfile = {
-    id: 1,
-    userId: 'doctor-uuid-1',
+    id: Math.floor(Math.random() * 1000) + 1,
+    userId: randomUuid(),
     verified: false,
     verifiedAt: null,
     verifiedBy: null,
@@ -190,20 +172,21 @@ describe('AdminService', () => {
 
   describe('updateUser', () => {
     it('should update a user', async () => {
+      const updatedName = randomFirstName();
       prisma.user.findUnique.mockResolvedValue(mockRegularUser);
       prisma.user.update.mockResolvedValue({
         ...mockRegularUser,
-        firstname: 'Updated',
+        firstname: updatedName,
       });
 
       const result = await service.updateUser(mockRegularUser.id, {
-        firstname: 'Updated',
+        firstname: updatedName,
       });
 
-      expect(result.firstname).toBe('Updated');
+      expect(result.firstname).toBe(updatedName);
       expect(prisma.user.update).toHaveBeenCalledWith({
         where: { id: mockRegularUser.id },
-        data: { firstname: 'Updated' },
+        data: { firstname: updatedName },
       });
     });
 
@@ -211,7 +194,7 @@ describe('AdminService', () => {
       prisma.user.findUnique.mockResolvedValue(null);
 
       await expect(
-        service.updateUser('nonexistent', { firstname: 'X' }),
+        service.updateUser(randomUuid(), { firstname: randomFirstName() }),
       ).rejects.toThrow(NotFoundException);
     });
   });

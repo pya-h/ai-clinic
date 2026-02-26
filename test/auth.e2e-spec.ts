@@ -34,6 +34,12 @@ import {
   MockUser,
 } from './helpers/mock-session.helper';
 import { hash as bcryptHash } from 'bcrypt';
+import {
+  randomEmail,
+  randomFirstName,
+  randomLastName,
+  randomPassword,
+} from './helpers/test-data.factory';
 
 @Module({
   imports: [
@@ -55,18 +61,18 @@ describe('Auth (e2e)', () => {
   let sessionStore: Record<string, any> = {};
   let hashedPassword: string;
 
-  const TEST_PASSWORD = 'StrongP@ss1';
+  const TEST_PASSWORD = randomPassword();
 
   const validRegistration = {
-    email: 'test@example.com',
+    email: randomEmail(),
     password: TEST_PASSWORD,
-    firstname: 'Test',
-    lastname: 'User',
+    firstname: randomFirstName(),
+    lastname: randomLastName(),
     role: UserRolesEnum.PATIENT,
   };
 
   const loginPayload = {
-    email: 'test@example.com',
+    email: validRegistration.email,
     password: TEST_PASSWORD,
   };
 
@@ -304,7 +310,7 @@ describe('Auth (e2e)', () => {
       const res = await app.inject({
         method: 'POST',
         url: '/auth/login',
-        payload: { email: 'test@example.com' },
+        payload: { email: randomEmail() },
       });
 
       expect(res.statusCode).toBe(HttpStatus.BAD_REQUEST);

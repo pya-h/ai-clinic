@@ -35,6 +35,12 @@ import {
   createMockAdminUser,
   MockUser,
 } from './helpers/mock-session.helper';
+import {
+  randomEmail,
+  randomFirstName,
+  randomLastName,
+  randomUuid,
+} from './helpers/test-data.factory';
 
 @Module({
   imports: [
@@ -146,12 +152,14 @@ describe('User (e2e)', () => {
   describe('GET /user/all', () => {
     it('should return user list for admin', async () => {
       sessionUser = createMockAdminUser();
+      const fName = randomFirstName();
+      const lName = randomLastName();
       prisma.user.findMany.mockResolvedValue([
         {
           avatar: null,
           createdAt: new Date(),
-          firstname: 'User1',
-          lastname: 'Test',
+          firstname: fName,
+          lastname: lName,
           isPrivate: false,
           role: UserRolesEnum.PATIENT,
         },
@@ -195,21 +203,22 @@ describe('User (e2e)', () => {
   describe('PATCH /user/profile', () => {
     it('should update user profile with valid data', async () => {
       sessionUser = createMockUser();
+      const updatedName = randomFirstName();
       prisma.user.findFirst.mockResolvedValue(null);
       prisma.user.update.mockResolvedValue({
         ...sessionUser,
-        firstname: 'UpdatedName',
+        firstname: updatedName,
       });
 
       const res = await app.inject({
         method: 'PATCH',
         url: '/user/profile',
-        payload: { firstname: 'UpdatedName' },
+        payload: { firstname: updatedName },
       });
 
       expect(res.statusCode).toBe(HttpStatus.OK);
       const body = JSON.parse(res.body);
-      expect(body.contents.firstname).toBe('UpdatedName');
+      expect(body.contents.firstname).toBe(updatedName);
     });
 
     it('should reject update with empty body', async () => {
@@ -226,15 +235,16 @@ describe('User (e2e)', () => {
 
     it('should reject update with duplicate email', async () => {
       sessionUser = createMockUser();
+      const takenEmail = randomEmail();
       prisma.user.findFirst.mockResolvedValue({
-        id: 'other-uuid',
-        email: 'taken@example.com',
+        id: randomUuid(),
+        email: takenEmail,
       });
 
       const res = await app.inject({
         method: 'PATCH',
         url: '/user/profile',
-        payload: { email: 'taken@example.com' },
+        payload: { email: takenEmail },
       });
 
       expect(res.statusCode).toBe(HttpStatus.CONFLICT);
@@ -266,17 +276,18 @@ describe('User (e2e)', () => {
 
     it('should strip unknown fields (whitelist validation)', async () => {
       sessionUser = createMockUser();
+      const updatedName = randomFirstName();
       prisma.user.findFirst.mockResolvedValue(null);
       prisma.user.update.mockResolvedValue({
         ...sessionUser,
-        firstname: 'Updated',
+        firstname: updatedName,
       });
 
       const res = await app.inject({
         method: 'PATCH',
         url: '/user/profile',
         payload: {
-          firstname: 'Updated',
+          firstname: updatedName,
           role: 'DOCTOR',
           isAdmin: true,
         },
@@ -309,21 +320,25 @@ describe('User (e2e)', () => {
 
     it('should return other user data when requesting different ID', async () => {
       sessionUser = createMockUser();
+      const otherId = randomUuid();
+      const otherEmail = randomEmail();
+      const otherFirst = randomFirstName();
+      const otherLast = randomLastName();
       prisma.user.findUnique.mockResolvedValue({
-        id: 'other-user-uuid',
-        email: 'other@example.com',
-        firstname: 'Other',
-        lastname: 'Person',
+        id: otherId,
+        email: otherEmail,
+        firstname: otherFirst,
+        lastname: otherLast,
       });
 
       const res = await app.inject({
         method: 'GET',
-        url: '/user/other-user-uuid',
+        url: `/user/${otherId}`,
       });
 
       expect(res.statusCode).toBe(HttpStatus.OK);
       const body = JSON.parse(res.body);
-      expect(body.contents.email).toBe('other@example.com');
+      expect(body.contents.email).toBe(otherEmail);
     });
 
     it('should return 404 for non-existent user', async () => {
@@ -332,7 +347,7 @@ describe('User (e2e)', () => {
 
       const res = await app.inject({
         method: 'GET',
-        url: '/user/nonexistent-uuid',
+        url: `/user/${randomUuid()}`,
       });
 
       expect(res.statusCode).toBe(HttpStatus.NOT_FOUND);
@@ -343,7 +358,7 @@ describe('User (e2e)', () => {
 
       const res = await app.inject({
         method: 'GET',
-        url: '/user/some-uuid',
+        url: `/user/${randomUuid()}`,
       });
 
       expect(res.statusCode).toBe(HttpStatus.UNAUTHORIZED);

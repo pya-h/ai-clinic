@@ -2,38 +2,34 @@
  * AuthService Unit Tests
  *
  * Tests:
- *   verifyAndLogin  — valid credentials, wrong password, non-existent email
+ *   verifyAndLogin  — valid credentials, wrong password, non-existent email, inactive user
  *   register        — successful registration, duplicate email
  *   logout          — session deletion
  *   refreshSession  — valid user, non-existent user
+ *
+ * Uses randomized test data via test-data.factory.
  */
 import { Test, TestingModule } from '@nestjs/testing';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { UserService } from '../user/user.service';
 import { UtilsService } from '../utils/utils.service';
-import { UserRolesEnum } from '@prisma/client';
+import {
+  buildUser,
+  randomEmail,
+  randomFirstName,
+  randomLastName,
+  randomPassword,
+  randomUuid,
+} from '../../test/helpers/test-data.factory';
 
 describe('AuthService', () => {
   let authService: AuthService;
   let userService: jest.Mocked<Partial<UserService>>;
   let utilsService: jest.Mocked<Partial<UtilsService>>;
 
-  const mockUser = {
-    id: 'user-uuid',
-    email: 'test@example.com',
-    firstname: 'Test',
-    lastname: 'User',
-    role: UserRolesEnum.PATIENT,
-    isAdmin: false,
-    isSuperAdmin: false,
-    isPrivate: false,
-    isActive: true,
-    avatar: null,
-    password: 'hashedpassword123',
-    createdAt: new Date(),
-    updatedAt: new Date(),
-  };
+  // Randomized user generated fresh each suite run
+  const mockUser = buildUser();
 
   const mockSession = {
     get: jest.fn(),
@@ -79,7 +75,7 @@ describe('AuthService', () => {
       utilsService.compareHash.mockResolvedValue(true as any);
 
       const result = await authService.verifyAndLogin(
-        { email: mockUser.email, password: 'Password1' },
+        { email: mockUser.email, password: randomPassword() },
         mockReply,
       );
 
@@ -97,7 +93,7 @@ describe('AuthService', () => {
 
       await expect(
         authService.verifyAndLogin(
-          { email: mockUser.email, password: 'WrongPass1' },
+          { email: mockUser.email, password: randomPassword() },
           mockReply,
         ),
       ).rejects.toThrow(BadRequestException);
@@ -108,7 +104,7 @@ describe('AuthService', () => {
 
       await expect(
         authService.verifyAndLogin(
-          { email: 'nobody@example.com', password: 'Password1' },
+          { email: randomEmail('ghost'), password: randomPassword() },
           mockReply,
         ),
       ).rejects.toThrow(BadRequestException);
@@ -119,15 +115,16 @@ describe('AuthService', () => {
 
   describe('register', () => {
     it('should register a new user and set session', async () => {
-      const newUser = { ...mockUser, id: 'new-uuid' };
+      const newId = randomUuid();
+      const newUser = { ...mockUser, id: newId };
       userService.createUser.mockResolvedValue(newUser as any);
 
       const result = await authService.register(
         {
-          email: 'new@example.com',
-          firstname: 'New',
-          lastname: 'User',
-          password: '1StrongPass',
+          email: randomEmail('new'),
+          firstname: randomFirstName(),
+          lastname: randomLastName(),
+          password: randomPassword(),
           isPrivate: false,
         },
         mockReply,
@@ -137,7 +134,7 @@ describe('AuthService', () => {
       expect(result.password).toBeUndefined();
       expect(mockSession.set).toHaveBeenCalledWith(
         'user',
-        expect.objectContaining({ id: 'new-uuid' }),
+        expect.objectContaining({ id: newId }),
       );
     });
   });
@@ -155,7 +152,8 @@ describe('AuthService', () => {
 
   describe('refreshSession', () => {
     it('should re-fetch user and update session', async () => {
-      const freshUser = { ...mockUser, firstname: 'Updated' };
+      const updatedName = randomFirstName();
+      const freshUser = { ...mockUser, firstname: updatedName };
       userService.getById.mockResolvedValue(freshUser as any);
 
       const result = await authService.refreshSession(
@@ -163,11 +161,11 @@ describe('AuthService', () => {
         mockUser.id,
       );
 
-      expect(result.firstname).toBe('Updated');
+      expect(result.firstname).toBe(updatedName);
       expect(result.password).toBeUndefined();
       expect(mockSession.set).toHaveBeenCalledWith(
         'user',
-        expect.objectContaining({ firstname: 'Updated' }),
+        expect.objectContaining({ firstname: updatedName }),
       );
     });
 
@@ -175,7 +173,7 @@ describe('AuthService', () => {
       userService.getById.mockResolvedValue(null);
 
       await expect(
-        authService.refreshSession(mockSession, 'bad-id'),
+        authService.refreshSession(mockSession, randomUuid()),
       ).rejects.toThrow(NotFoundException);
     });
   });

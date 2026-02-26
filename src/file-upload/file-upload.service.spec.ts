@@ -73,7 +73,7 @@ describe('FileUploadService', () => {
       expect(file.toBuffer).toHaveBeenCalled();
       expect(providerSpy).toHaveBeenCalledWith(
         expect.any(Buffer),
-        expect.stringMatching(/^\d+-test-image\.jpg$/),
+        expect.stringMatching(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.jpg$/),
         'image/jpeg',
         'avatars',
       );
@@ -153,9 +153,9 @@ describe('FileUploadService', () => {
       const file = createMockFile({ filename: 'my file (1).jpg' });
       await service.uploadFile(file, 'avatars');
 
-      // The fileName passed to provider should have special chars replaced with _
+      // The fileName passed to provider should be a UUID + extension
       const calledFileName = providerSpy.mock.calls[0][1];
-      expect(calledFileName).toMatch(/^\d+-my_file__1_\.jpg$/);
+      expect(calledFileName).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.jpg$/);
     });
   });
 

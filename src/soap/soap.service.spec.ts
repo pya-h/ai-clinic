@@ -2,16 +2,18 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { SoapService } from './soap.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotFoundException, ForbiddenException } from '@nestjs/common';
+import { randomUuid } from '../../test/helpers/test-data.factory';
 
 describe('SoapService', () => {
   let service: SoapService;
   let prisma: Record<string, any>;
 
-  const mockUserId = 'user-uuid-1';
-  const mockConversationId = 'conv-uuid-1';
+  const mockUserId = randomUuid();
+  const mockConversationId = randomUuid();
+  const mockSoapId = randomUuid();
 
   const mockSoap = {
-    id: 'soap-uuid-1',
+    id: mockSoapId,
     userId: mockUserId,
     conversationId: mockConversationId,
     subjective: 'Patient reports headache for 3 days',
@@ -332,15 +334,15 @@ Follow up in 2 weeks`;
   describe('getById', () => {
     it('should return SOAP if owner requests it', async () => {
       prisma.patientSOAP.findUnique.mockResolvedValue(mockSoap);
-      const result = await service.getById('soap-uuid-1', mockUserId);
+      const result = await service.getById(mockSoapId, mockUserId);
       expect(result).toEqual(mockSoap);
     });
 
     it('should allow admin to access any SOAP', async () => {
       prisma.patientSOAP.findUnique.mockResolvedValue(mockSoap);
       const result = await service.getById(
-        'soap-uuid-1',
-        'different-user',
+        mockSoapId,
+        randomUuid(),
         true,
       );
       expect(result).toEqual(mockSoap);
@@ -349,14 +351,14 @@ Follow up in 2 weeks`;
     it('should throw NotFoundException if SOAP not found', async () => {
       prisma.patientSOAP.findUnique.mockResolvedValue(null);
       await expect(
-        service.getById('non-existent', mockUserId),
+        service.getById(randomUuid(), mockUserId),
       ).rejects.toThrow(NotFoundException);
     });
 
     it('should throw ForbiddenException if non-owner non-admin requests', async () => {
       prisma.patientSOAP.findUnique.mockResolvedValue(mockSoap);
       await expect(
-        service.getById('soap-uuid-1', 'different-user', false),
+        service.getById(mockSoapId, randomUuid(), false),
       ).rejects.toThrow(ForbiddenException);
     });
   });

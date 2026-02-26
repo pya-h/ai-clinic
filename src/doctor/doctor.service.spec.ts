@@ -7,6 +7,8 @@
  *   updateProfile       — successful, profile not found
  *   findAll             — no filters, with specialty filter, with search, pagination
  *   findOne             — found verified, not found, unverified
+ *
+ * Uses randomized test data via test-data.factory.
  */
 import { Test, TestingModule } from '@nestjs/testing';
 import {
@@ -27,61 +29,32 @@ import {
   createMockPrismaService,
   MockPrismaService,
 } from '../../test/helpers/mock-prisma.helper';
+import {
+  buildUser,
+  buildDoctorUser,
+  buildDoctorProfile,
+  randomSpecialty,
+  randomCareerStartDate,
+  randomBio,
+  randomUuid,
+} from '../../test/helpers/test-data.factory';
 
 describe('DoctorService', () => {
   let service: DoctorService;
   let prisma: MockPrismaService;
   let fileUploadService: Record<string, jest.Mock>;
 
-  const mockDoctorUser = {
-    id: 'doctor-uuid',
-    email: 'doctor@example.com',
-    firstname: 'Doc',
-    lastname: 'Smith',
-    role: UserRolesEnum.DOCTOR,
-    isAdmin: false,
-    isSuperAdmin: false,
-    isPrivate: false,
-    isActive: true,
-    avatar: null,
-    password: 'hashed',
-    createdAt: new Date(),
-    updatedAt: new Date(),
-  };
-
-  const mockPatientUser = {
-    ...mockDoctorUser,
-    id: 'patient-uuid',
-    role: UserRolesEnum.PATIENT,
-  };
+  const mockDoctorUser = buildDoctorUser();
+  const mockPatientUser = buildUser();
 
   const mockProfileData = {
-    startedAt: new Date('2020-01-15'),
-    specialty: DoctorSpecialtiesEnum.GENERAL,
+    startedAt: randomCareerStartDate(),
+    specialty: randomSpecialty(),
     visitMethods: ['ONLINE'],
     visitTypes: ['FIRST_VISIT'],
   };
 
-  const mockProfile = {
-    id: 1,
-    userId: 'doctor-uuid',
-    startedAt: new Date('2020-01-15'),
-    specialty: DoctorSpecialtiesEnum.GENERAL,
-    secondarySpecialties: [],
-    university: null,
-    location: null,
-    clinicLocation: null,
-    bio: null,
-    visitMethods: [VisitMethodsEnum.CHAT],
-    visitTypes: [],
-    verified: false,
-    verifiedAt: null,
-    verifiedBy: null,
-    rejectionReason: null,
-    platformSummary: null,
-    createdAt: new Date(),
-    updatedAt: new Date(),
-  };
+  const mockProfile = buildDoctorProfile({ userId: mockDoctorUser.id });
 
   beforeEach(async () => {
     prisma = createMockPrismaService();
@@ -112,30 +85,32 @@ describe('DoctorService', () => {
     it('should return profile when doctor has one', async () => {
       prisma.doctorProfile.findUnique.mockResolvedValue(mockProfile);
 
-      const result = await service.hasProfile('doctor-uuid');
+      const result = await service.hasProfile(mockDoctorUser.id);
       expect(result).toEqual(mockProfile);
     });
 
     it('should return falsy when doctor has no profile', async () => {
       prisma.doctorProfile.findUnique.mockResolvedValue(null);
 
-      const result = await service.hasProfile('doctor-uuid');
+      const result = await service.hasProfile(mockDoctorUser.id);
       expect(result).toBeFalsy();
     });
 
     it('should check patient profile when fromAnyKind is true', async () => {
+      const userId = randomUuid();
       prisma.doctorProfile.findUnique.mockResolvedValue(null);
-      prisma.patientProfile.findUnique.mockResolvedValue({ id: 'patient-profile' });
+      prisma.patientProfile.findUnique.mockResolvedValue({ id: randomUuid() });
 
-      const result = await service.hasProfile('user-uuid', true);
+      const result = await service.hasProfile(userId, true);
       expect(result).toBeTruthy();
       expect(prisma.patientProfile.findUnique).toHaveBeenCalled();
     });
 
     it('should NOT check patient profile when fromAnyKind is false', async () => {
+      const userId = randomUuid();
       prisma.doctorProfile.findUnique.mockResolvedValue(null);
 
-      await service.hasProfile('user-uuid', false);
+      await service.hasProfile(userId, false);
       expect(prisma.patientProfile.findUnique).not.toHaveBeenCalled();
     });
   });
@@ -179,7 +154,8 @@ describe('DoctorService', () => {
 
   describe('updateProfile', () => {
     it('should update doctor profile successfully', async () => {
-      const updateData = { bio: 'Updated bio', university: 'MIT' };
+      const updateBio = randomBio();
+      const updateData = { bio: updateBio, university: 'MIT' };
       const updatedProfile = { ...mockProfile, ...updateData };
 
       prisma.doctorProfile.findUnique.mockResolvedValue(mockProfile);
@@ -198,7 +174,7 @@ describe('DoctorService', () => {
       prisma.doctorProfile.findUnique.mockResolvedValue(null);
 
       await expect(
-        service.updateProfile(mockDoctorUser as any, { bio: 'new' }),
+        service.updateProfile(mockDoctorUser as any, { bio: randomBio() }),
       ).rejects.toThrow(NotFoundException);
     });
   });
@@ -210,7 +186,7 @@ describe('DoctorService', () => {
       {
         ...mockProfile,
         verified: true,
-        user: { id: 'doctor-uuid', firstname: 'Doc', lastname: 'Smith', avatar: null },
+        user: { id: mockDoctorUser.id, firstname: mockDoctorUser.firstname, lastname: mockDoctorUser.lastname, avatar: null },
         _count: { reviewsAbout: 5 },
       },
     ];
@@ -273,18 +249,19 @@ describe('DoctorService', () => {
     });
 
     it('should filter by search (doctor name)', async () => {
+      const searchTerm = mockDoctorUser.lastname;
       prisma.doctorProfile.findMany.mockResolvedValue([]);
       prisma.doctorProfile.count.mockResolvedValue(0);
 
-      await service.findAll({ search: 'Smith' });
+      await service.findAll({ search: searchTerm });
 
       expect(prisma.doctorProfile.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
           where: expect.objectContaining({
             user: {
               OR: [
-                { firstname: { contains: 'Smith', mode: 'insensitive' } },
-                { lastname: { contains: 'Smith', mode: 'insensitive' } },
+                { firstname: { contains: searchTerm, mode: 'insensitive' } },
+                { lastname: { contains: searchTerm, mode: 'insensitive' } },
               ],
             },
           }),
@@ -300,7 +277,7 @@ describe('DoctorService', () => {
       const profileData = {
         ...mockProfile,
         verified: true,
-        user: { id: 'doctor-uuid', firstname: 'Doc', lastname: 'Smith', avatar: null },
+        user: { id: mockDoctorUser.id, firstname: mockDoctorUser.firstname, lastname: mockDoctorUser.lastname, avatar: null },
       };
       prisma.doctorProfile.findUnique.mockResolvedValue(profileData);
       prisma.doctorReview.aggregate.mockResolvedValue({
@@ -308,7 +285,7 @@ describe('DoctorService', () => {
         _count: { rating: 3 },
       });
 
-      const result = await service.findOne(1);
+      const result = await service.findOne(mockProfile.id);
 
       expect(result.averageRating).toBe(4);
       expect(result.totalReviews).toBe(3);
@@ -318,7 +295,7 @@ describe('DoctorService', () => {
       const profileNoReviews = {
         ...mockProfile,
         verified: true,
-        user: { id: 'doctor-uuid', firstname: 'Doc', lastname: 'Smith', avatar: null },
+        user: { id: mockDoctorUser.id, firstname: mockDoctorUser.firstname, lastname: mockDoctorUser.lastname, avatar: null },
       };
       prisma.doctorProfile.findUnique.mockResolvedValue(profileNoReviews);
       prisma.doctorReview.aggregate.mockResolvedValue({
@@ -326,7 +303,7 @@ describe('DoctorService', () => {
         _count: { rating: 0 },
       });
 
-      const result = await service.findOne(1);
+      const result = await service.findOne(mockProfile.id);
 
       expect(result.averageRating).toBeNull();
       expect(result.totalReviews).toBe(0);
@@ -346,7 +323,7 @@ describe('DoctorService', () => {
       const unverified = {
         ...mockProfile,
         verified: false,
-        user: { id: 'doctor-uuid', firstname: 'Doc', lastname: 'Smith', avatar: null },
+        user: { id: mockDoctorUser.id, firstname: mockDoctorUser.firstname, lastname: mockDoctorUser.lastname, avatar: null },
       };
       prisma.doctorProfile.findUnique.mockResolvedValue(unverified);
       prisma.doctorReview.aggregate.mockResolvedValue({
@@ -354,7 +331,7 @@ describe('DoctorService', () => {
         _count: { rating: 0 },
       });
 
-      await expect(service.findOne(1)).rejects.toThrow(NotFoundException);
+      await expect(service.findOne(mockProfile.id)).rejects.toThrow(NotFoundException);
     });
   });
 

@@ -2,42 +2,23 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { PatientService } from './patient.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { ConflictException, NotFoundException } from '@nestjs/common';
-import { UserRolesEnum } from '@prisma/client';
+import {
+  buildUser,
+  buildPatientProfile,
+  randomLocation,
+  randomBio,
+} from '../../test/helpers/test-data.factory';
 
 describe('PatientService', () => {
   let service: PatientService;
   let prisma: Record<string, any>;
 
-  const mockUser = {
-    id: 'user-uuid-1',
-    email: 'patient@example.com',
-    firstname: 'Pat',
-    lastname: 'Ient',
-    role: UserRolesEnum.PATIENT,
-    isAdmin: false,
-    isSuperAdmin: false,
-    isPrivate: false,
-    isActive: true,
-    avatar: null,
-    password: 'hashed',
-    createdAt: new Date(),
-    updatedAt: new Date(),
-  };
-
-  const mockProfile = {
-    id: 'profile-uuid-1',
+  const mockUser = buildUser();
+  const mockProfile = buildPatientProfile({
     userId: mockUser.id,
-    location: 'Tehran',
-    bio: 'Test patient',
     medicalHistory: ['Flu 2024'],
     allergies: ['Penicillin'],
-    medications: [],
-    surgeries: [],
-    familyHistory: [],
-    visitMethods: [],
-    createdAt: new Date(),
-    updatedAt: new Date(),
-  };
+  });
 
   beforeEach(async () => {
     prisma = {
@@ -84,9 +65,11 @@ describe('PatientService', () => {
       prisma.patientProfile.findUnique.mockResolvedValue(null);
       prisma.patientProfile.create.mockResolvedValue(mockProfile);
 
+      const loc = randomLocation();
+      const bio = randomBio();
       const dto = {
-        location: 'Tehran',
-        bio: 'Test patient',
+        location: loc,
+        bio,
         medicalHistory: ['Flu 2024'],
         allergies: ['Penicillin'],
       };
@@ -96,8 +79,8 @@ describe('PatientService', () => {
       expect(prisma.patientProfile.create).toHaveBeenCalledWith({
         data: {
           userId: mockUser.id,
-          location: 'Tehran',
-          bio: 'Test patient',
+          location: loc,
+          bio,
           medicalHistory: ['Flu 2024'],
           allergies: ['Penicillin'],
           medications: [],
@@ -134,19 +117,20 @@ describe('PatientService', () => {
 
   describe('updateProfile', () => {
     it('should update existing profile', async () => {
+      const updatedBio = randomBio();
       prisma.patientProfile.findUnique.mockResolvedValue(mockProfile);
       prisma.patientProfile.update.mockResolvedValue({
         ...mockProfile,
-        bio: 'Updated bio',
+        bio: updatedBio,
       });
 
       const result = await service.updateProfile(mockUser as any, {
-        bio: 'Updated bio',
+        bio: updatedBio,
       });
-      expect(result.bio).toBe('Updated bio');
+      expect(result.bio).toBe(updatedBio);
       expect(prisma.patientProfile.update).toHaveBeenCalledWith({
         where: { userId: mockUser.id },
-        data: { bio: 'Updated bio' },
+        data: { bio: updatedBio },
       });
     });
 
