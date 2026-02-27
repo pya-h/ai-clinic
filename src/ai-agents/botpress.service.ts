@@ -103,9 +103,9 @@ export class BotpressService {
     });
   }
 
-  start(user: User) {
+  async start(user: User) {
     try {
-      return this.getConversation(user);
+      return await this.getConversation(user);
     } catch (err) {
       this.logger.error(
         `Failed to ensure conversation for user ${user.id}:`,
