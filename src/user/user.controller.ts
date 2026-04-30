@@ -71,7 +71,6 @@ export class UserController {
     return this.userService.uploadAvatar(user, file);
   }
 
-  // TODO: Implement the serialize user data INTERCEPTOR.
   @ApiOperation({
     description: 'Get the current user data.',
   })
@@ -81,15 +80,10 @@ export class UserController {
     @CurrentUser() currentUser: User,
     @Param('id') id: string,
   ) {
-    // TODO: Implement the user data serialization for current user ad other users.
-    // returns the full displayable data if the id === currentId, o.w. return the serialized data.
-
     if (id === currentUser.id) return currentUser;
 
     const user = await this.userService.getById(id);
     if (!user) throw new NotFoundException('User Not Found!');
     return user;
   }
-
-
 }

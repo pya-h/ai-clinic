@@ -71,7 +71,7 @@ export class AiAgentsController {
 
     const actualConversationId = (
       await this.aiService.getConversation(user, true)
-    ).id; // FIXME: Found the root cause of frontend sometimes creating more than 1 conversation or selecting invalid one.
+    ).id;
     await this.aiService.send(user, actualConversationId, body.text);
   }
 
