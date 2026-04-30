@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Get,
@@ -19,6 +20,7 @@ import { BotpressService } from './botpress.service';
 import * as chat from '@botpress/chat';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { CookieAuthGuard } from '../auth/guards/cookie-auth.guard';
+import { OptionalAuthGuard } from '../auth/guards/optional-auth.guard';
 import { ApiStandardOkResponse } from '../common/decorators/api-standard-ok-response.decorator';
 import { SoapService } from '../soap/soap.service';
 
@@ -34,20 +36,39 @@ export class AiAgentsController {
 
   @ApiOperation({ description: 'Used for logging in the user' })
   @ApiStandardOkResponse('void')
-  @UseGuards(CookieAuthGuard)
+  @UseGuards(OptionalAuthGuard)
   @HttpCode(HttpStatus.OK)
   @Post('start')
-  async start(@CurrentUser() user: User) {
-    return this.aiService.start(user);
+  async start(@CurrentUser() user: User | null) {
+    if (user) {
+      return this.aiService.start(user);
+    }
+
+    return this.aiService.startGuest();
   }
 
-  @UseGuards(CookieAuthGuard)
+  @UseGuards(OptionalAuthGuard)
   @Post('message')
   @HttpCode(204)
   async send(
-    @CurrentUser() user: User,
+    @CurrentUser() user: User | null,
     @Body() body: { conversationId?: string; text: string },
   ) {
+    if (!body?.text?.trim()) {
+      throw new BadRequestException('Message text is required.');
+    }
+
+    if (!user) {
+      if (!body.conversationId) {
+        throw new BadRequestException(
+          'conversationId is required for guest messages.',
+        );
+      }
+
+      await this.aiService.sendGuest(body.conversationId, body.text);
+      return;
+    }
+
     const actualConversationId = (
       await this.aiService.getConversation(user, true)
     ).id; // FIXME: Found the root cause of frontend sometimes creating more than 1 conversation or selecting invalid one.

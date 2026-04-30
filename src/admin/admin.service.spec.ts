@@ -184,10 +184,13 @@ describe('AdminService', () => {
       });
 
       expect(result.firstname).toBe(updatedName);
-      expect(prisma.user.update).toHaveBeenCalledWith({
-        where: { id: mockRegularUser.id },
-        data: { firstname: updatedName },
-      });
+      expect(prisma.user.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: mockRegularUser.id },
+          data: { firstname: updatedName },
+          select: expect.any(Object),
+        }),
+      );
     });
 
     it('should throw NotFoundException if user not found', async () => {
@@ -212,10 +215,13 @@ describe('AdminService', () => {
       const result = await service.deactivateUser(mockRegularUser.id);
 
       expect(result.isActive).toBe(false);
-      expect(prisma.user.update).toHaveBeenCalledWith({
-        where: { id: mockRegularUser.id },
-        data: { isActive: false },
-      });
+      expect(prisma.user.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: mockRegularUser.id },
+          data: { isActive: false },
+          select: expect.any(Object),
+        }),
+      );
     });
 
     it('should throw NotFoundException if user not found', async () => {
@@ -389,10 +395,13 @@ describe('AdminService', () => {
       const result = await service.promoteToAdmin(mockRegularUser.id);
 
       expect(result.isAdmin).toBe(true);
-      expect(prisma.user.update).toHaveBeenCalledWith({
-        where: { id: mockRegularUser.id },
-        data: { isAdmin: true },
-      });
+      expect(prisma.user.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: mockRegularUser.id },
+          data: { isAdmin: true },
+          select: expect.any(Object),
+        }),
+      );
     });
 
     it('should throw NotFoundException if user not found', async () => {
@@ -436,10 +445,13 @@ describe('AdminService', () => {
       );
 
       expect(result.isAdmin).toBe(false);
-      expect(prisma.user.update).toHaveBeenCalledWith({
-        where: { id: mockAdminUser.id },
-        data: { isAdmin: false },
-      });
+      expect(prisma.user.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: mockAdminUser.id },
+          data: { isAdmin: false },
+          select: expect.any(Object),
+        }),
+      );
     });
 
     it('should throw ForbiddenException if trying to self-demote', async () => {

@@ -82,6 +82,7 @@ export class AdminService {
     return this.prisma.user.update({
       where: { id: userId },
       data: dto,
+      select: this.safeAdminUserSelect(),
     });
   }
 
@@ -99,6 +100,7 @@ export class AdminService {
     return this.prisma.user.update({
       where: { id: userId },
       data: { isActive: false },
+      select: this.safeAdminUserSelect(),
     });
   }
 
@@ -176,6 +178,7 @@ export class AdminService {
     return this.prisma.user.update({
       where: { id: userId },
       data: { isAdmin: true },
+      select: this.safeAdminUserSelect(),
     });
   }
 
@@ -200,6 +203,7 @@ export class AdminService {
     return this.prisma.user.update({
       where: { id: userId },
       data: { isAdmin: false },
+      select: this.safeAdminUserSelect(),
     });
   }
 
@@ -233,5 +237,22 @@ export class AdminService {
 
   async removeReview(reviewId: number, admin: User) {
     await this.reviewService.delete(reviewId, admin);
+  }
+
+  private safeAdminUserSelect() {
+    return {
+      id: true,
+      firstname: true,
+      lastname: true,
+      email: true,
+      role: true,
+      isActive: true,
+      isAdmin: true,
+      isSuperAdmin: true,
+      isPrivate: true,
+      avatar: true,
+      createdAt: true,
+      updatedAt: true,
+    } as const;
   }
 }

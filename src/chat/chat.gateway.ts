@@ -190,16 +190,18 @@ export class ChatGateway
    * Broadcasts to other participants in the chat room.
    */
   @SubscribeMessage('chat:typing')
-  handleTyping(
+  async handleTyping(
     @ConnectedSocket() client: Socket,
     @MessageBody() payload: { chatId: string; isTyping: boolean },
-  ): void {
+  ): Promise<void> {
     const user = client.data.user;
     if (!user) throw new WsException('Unauthorized');
 
     if (!payload.chatId) {
       throw new WsException('chatId is required');
     }
+
+    await this.chatService.assertChatParticipant(payload.chatId, user.id);
 
     // Broadcast to others (not back to sender)
     client.to(`chat:${payload.chatId}`).emit('chat:typing', {
@@ -323,16 +325,18 @@ export class ChatGateway
    * Client explicitly joins a chat room (e.g. when viewing a chat).
    */
   @SubscribeMessage('chat:join')
-  handleJoin(
+  async handleJoin(
     @ConnectedSocket() client: Socket,
     @MessageBody() payload: { chatId: string },
-  ): void {
+  ): Promise<void> {
     const user = client.data.user;
     if (!user) throw new WsException('Unauthorized');
 
     if (!payload.chatId) {
       throw new WsException('chatId is required');
     }
+
+    await this.chatService.assertChatParticipant(payload.chatId, user.id);
 
     client.join(`chat:${payload.chatId}`);
     this.logger.debug(`User ${user.id} joined room chat:${payload.chatId}`);

@@ -91,18 +91,22 @@ export class UserService {
       throw new BadRequestException(
         'Provide some new data to continue modifying user data.',
       );
-    if (
-      updateUserData.email &&
-      (await this.emailExists(updateUserData.email))
-    ) {
-      throw new ConflictException('This email is used before.');
+    if (updateUserData.email) {
+      const existingByEmail = await this.getBy(
+        { email: updateUserData.email },
+        { select: { id: true } },
+      );
+      if (existingByEmail && existingByEmail.id !== user.id) {
+        throw new ConflictException('This email is used before.');
+      }
     }
-    // FIXME: further check required
+
     return this.prisma.user.update({
       where: { id: user.id },
       data: {
         ...updateUserData,
       },
+      select: this.safeUserSelect(),
     });
   }
 
@@ -131,5 +135,22 @@ export class UserService {
       data: { avatar: uploaded.url },
       select: { id: true, avatar: true },
     });
+  }
+
+  private safeUserSelect() {
+    return {
+      id: true,
+      email: true,
+      firstname: true,
+      lastname: true,
+      role: true,
+      isAdmin: true,
+      isSuperAdmin: true,
+      isPrivate: true,
+      isActive: true,
+      avatar: true,
+      createdAt: true,
+      updatedAt: true,
+    } as const;
   }
 }

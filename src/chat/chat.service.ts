@@ -229,6 +229,22 @@ export class ChatService {
     return participants.map((p) => p.chatId);
   }
 
+  async assertChatParticipant(chatId: string, userId: string): Promise<void> {
+    const participant = await this.prisma.chatParticipant.findUnique({
+      where: {
+        chatId_userId: {
+          chatId,
+          userId,
+        },
+      },
+      select: { chatId: true },
+    });
+
+    if (!participant) {
+      throw new ForbiddenException('You are not a participant in this chat');
+    }
+  }
+
   // ─────────────────────────── Message Management ───────────────────────────
 
   /**

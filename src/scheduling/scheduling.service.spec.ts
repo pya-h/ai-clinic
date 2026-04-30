@@ -539,10 +539,15 @@ describe('SchedulingService', () => {
       method: 'CHAT' as any,
     };
 
+    beforeEach(() => {
+      prisma.slotDuration.findFirst.mockResolvedValue({ price: 50 });
+    });
+
     it('should book an appointment', async () => {
       prisma.doctorProfile.findUnique.mockResolvedValue({
         id: 42,
         verified: true,
+        visitMethods: ['CHAT'],
       });
       const created = { id: 1, ...bookDto, patientId: patient.id, status: 'PENDING' };
       prisma.appointment.create.mockResolvedValue(created);
@@ -580,6 +585,7 @@ describe('SchedulingService', () => {
       prisma.doctorProfile.findUnique.mockResolvedValue({
         id: 42,
         verified: true,
+        visitMethods: ['CHAT'],
       });
       prisma.consultation.findUnique.mockResolvedValue({
         id: 'cons-1',
@@ -599,6 +605,7 @@ describe('SchedulingService', () => {
       prisma.doctorProfile.findUnique.mockResolvedValue({
         id: 42,
         verified: true,
+        visitMethods: ['CHAT'],
       });
       prisma.consultation.findUnique.mockResolvedValue({
         id: 'cons-1',
@@ -611,6 +618,31 @@ describe('SchedulingService', () => {
           ...bookDto,
           consultationId: 'cons-1',
         }),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('should throw BadRequestException when doctor does not support method', async () => {
+      prisma.doctorProfile.findUnique.mockResolvedValue({
+        id: 42,
+        verified: true,
+        visitMethods: ['VOICE_CALL'],
+      });
+
+      await expect(
+        service.bookAppointment(patient as any, bookDto),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('should throw BadRequestException when slot duration is not configured', async () => {
+      prisma.doctorProfile.findUnique.mockResolvedValue({
+        id: 42,
+        verified: true,
+        visitMethods: ['CHAT'],
+      });
+      prisma.slotDuration.findFirst.mockResolvedValue(null);
+
+      await expect(
+        service.bookAppointment(patient as any, bookDto),
       ).rejects.toThrow(BadRequestException);
     });
   });

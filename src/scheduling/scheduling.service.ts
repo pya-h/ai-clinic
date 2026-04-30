@@ -400,6 +400,29 @@ export class SchedulingService {
       throw new NotFoundException('Doctor not found or not verified.');
     }
 
+    if (
+      Array.isArray(doctor.visitMethods) &&
+      !doctor.visitMethods.includes(dto.method)
+    ) {
+      throw new BadRequestException(
+        'Selected visit method is not available for this doctor.',
+      );
+    }
+
+    const slotDuration = await this.prisma.slotDuration.findFirst({
+      where: {
+        doctorId: dto.doctorId,
+        minutes: dto.durationMinutes,
+        isActive: true,
+      },
+      select: { price: true },
+    });
+    if (!slotDuration) {
+      throw new BadRequestException(
+        'Invalid duration: doctor has no active slot configuration for this duration.',
+      );
+    }
+
     // If consultationId provided, validate ownership and status
     if (dto.consultationId) {
       const consultation = await this.prisma.consultation.findUnique({
@@ -427,7 +450,7 @@ export class SchedulingService {
         consultationId: dto.consultationId ?? null,
         dateTime: new Date(dto.dateTime),
         durationMinutes: dto.durationMinutes,
-        price: dto.price,
+        price: slotDuration.price,
         method: dto.method,
         notes: dto.notes ?? null,
         status: AppointmentStatusEnum.PENDING,

@@ -1,7 +1,9 @@
 import {
+  BadRequestException,
   Inject,
   Injectable,
   Logger,
+  NotFoundException,
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -20,7 +22,15 @@ import { CacheService } from '../cache/cache.service';
 export class BotpressService {
   private readonly logger = new Logger(BotpressService.name);
   private readonly webhookId: string;
-  private readonly cachingOptions = { group: 'bp-ctx', ttl: 300000 }; // 5 secs
+  private readonly cachingOptions = { group: 'bp-ctx', ttl: 300000 }; // 5 minutes
+  private readonly guestTtlMs = 30 * 60 * 1000;
+  private readonly guestContexts = new Map<
+    string,
+    {
+      client: chat.AuthenticatedClient;
+      expiresAt: number;
+    }
+  >();
 
   constructor(
     readonly configService: ConfigService,
@@ -117,6 +127,24 @@ export class BotpressService {
     }
   }
 
+  async startGuest(): Promise<{ id: string; guest: true }> {
+    this.pruneGuestContexts();
+
+    const client = await chat.Client.connect({
+      webhookId: this.webhookId,
+      debug: false,
+    });
+
+    const { conversation } = await client.createConversation({});
+
+    this.guestContexts.set(conversation.id, {
+      client,
+      expiresAt: Date.now() + this.guestTtlMs,
+    });
+
+    return { id: conversation.id, guest: true };
+  }
+
   async send(user: User, conversationId: string, text: string): Promise<void> {
     const ctx = await this.getClient(user);
 
@@ -133,6 +161,26 @@ export class BotpressService {
       );
       throw error;
     }
+  }
+
+  async sendGuest(conversationId: string, text: string): Promise<void> {
+    this.pruneGuestContexts();
+
+    const guestCtx = this.guestContexts.get(conversationId);
+    if (!guestCtx) {
+      throw new NotFoundException('Guest conversation not found or expired.');
+    }
+
+    if (!text?.trim()) {
+      throw new BadRequestException('Message text is required.');
+    }
+
+    await guestCtx.client.createMessage({
+      conversationId,
+      payload: { type: 'text', text },
+    });
+
+    guestCtx.expiresAt = Date.now() + this.guestTtlMs;
   }
 
   async listen(
@@ -293,6 +341,15 @@ export class BotpressService {
     } catch (error) {
       this.logger.error(`Error polling for messages:`, error);
       return [];
+    }
+  }
+
+  private pruneGuestContexts(): void {
+    const now = Date.now();
+    for (const [conversationId, context] of this.guestContexts.entries()) {
+      if (context.expiresAt <= now) {
+        this.guestContexts.delete(conversationId);
+      }
     }
   }
 }

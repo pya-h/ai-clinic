@@ -56,9 +56,9 @@ export class OpenAiService {
     return result;
   }
 
-  async openNewChat(userId: number, message: string) {
+  async openNewChat(userId: string, message: string) {
     // TODO: Create a new chat
-    return (await this.runCompletion(userId.toString(), message)).choices[0]
+    return (await this.runCompletion(userId, message)).choices[0]
       .message.content;
   }
 }
