@@ -22,6 +22,7 @@ import { CacheService } from '../cache/cache.service';
 export class BotpressService {
   private readonly logger = new Logger(BotpressService.name);
   private readonly webhookId: string;
+  readonly deliveryMode: 'sse' | 'poll';
   private readonly cachingOptions = { group: 'bp-ctx', ttl: 300000 }; // 5 minutes
   private readonly guestTtlMs = 30 * 60 * 1000;
   private readonly guestContexts = new Map<
@@ -31,6 +32,8 @@ export class BotpressService {
       expiresAt: number;
     }
   >();
+  // Deduplicates concurrent getClient() calls for the same user (race-condition guard)
+  private readonly pendingClientCreations = new Map<string, Promise<IUserContext>>();
 
   constructor(
     readonly configService: ConfigService,
@@ -41,6 +44,8 @@ export class BotpressService {
     if (!this.webhookId) {
       throw new ServiceUnavailableException('Bot Agent Key is missing');
     }
+    this.deliveryMode = configService.get<'sse' | 'poll'>('botpress.deliveryMode') ?? 'sse';
+    this.logger.log(`Botpress delivery mode: ${this.deliveryMode}`);
     this.cacheService.registerDelEvent(
       this.cachingOptions.group,
       this.cleanupUserContext.bind(this),
@@ -57,21 +62,35 @@ export class BotpressService {
       return existing;
     }
 
+    // Deduplicate: if another concurrent call is already creating the client for
+    // this user, wait for that same promise instead of creating a second client.
+    const pending = this.pendingClientCreations.get(user.id);
+    if (pending) {
+      this.logger.debug(`Waiting for in-flight client creation for user ${user.id}`);
+      return pending;
+    }
+
     this.logger.debug(`Creating new Botpress client for user ${user.id}`);
-    const client = await chat.Client.connect({
-      webhookId: this.webhookId,
-      debug: false,
-    });
+    const creationPromise = (async () => {
+      const client = await chat.Client.connect({
+        webhookId: this.webhookId,
+        debug: false,
+      });
 
-    const ctx = await this.cacheService.set<IUserContext>(
-      this.cachingOptions.group,
-      user.id,
-      { client },
-      this.cachingOptions.ttl,
-    );
+      const ctx = await this.cacheService.set<IUserContext>(
+        this.cachingOptions.group,
+        user.id,
+        { client },
+        this.cachingOptions.ttl,
+      );
 
-    this.logger.log(`Connected Botpress client for user ${user.id}`);
-    return ctx;
+      this.logger.log(`Connected Botpress client for user ${user.id}`);
+      return ctx;
+    })();
+
+    this.pendingClientCreations.set(user.id, creationPromise);
+    creationPromise.finally(() => this.pendingClientCreations.delete(user.id));
+    return creationPromise;
   }
 
   async getConversation(user: User, updateCacheDeadline?: boolean): Promise<AiConversation> {
@@ -328,6 +347,9 @@ export class BotpressService {
 
     try {
       const messages = await ctx.client.listMessages({ conversationId });
+      this.logger.debug(
+        `pollForNewMessages: total=${messages.messages.length}, botUserId=${ctx.client.user.id}, dateOffset=${dateOffset?.toISOString()}`,
+      );
 
       const dateCheck = dateOffset
         ? (date: Date | string) => new Date(date) > dateOffset
@@ -335,6 +357,10 @@ export class BotpressService {
 
       const newBotMessages = messages.messages.filter(
         (msg) => msg.userId !== ctx.client.user.id && dateCheck(msg.createdAt),
+      );
+
+      this.logger.debug(
+        `pollForNewMessages: filtered bot messages=${newBotMessages.length}, ids=${newBotMessages.map((m) => m.id).join(',')}`,
       );
 
       return newBotMessages;

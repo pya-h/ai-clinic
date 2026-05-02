@@ -115,20 +115,30 @@ export class AiAgentsController {
     // Take full control of the underlying socket (required for long-lived streams in Fastify)
     reply.hijack();
 
-    const actualConversationId = (await this.aiService.getConversation(user))
-      .id;
+    // Use the conversationId from the URL — this is what the client received from /start.
+    // Do NOT call getConversation() again here; that can create a brand-new conversation
+    // instead of using the one the client already has, breaking the message flow.
+    const actualConversationId = conversationId;
     this.logger.log(
-      `Setting up SSE stream for conversation ${actualConversationId}`,
+      `Setting up SSE stream for conversation ${actualConversationId} (mode=${this.aiService.deliveryMode})`,
     );
 
     try {
-      // Set SSE headers before any writes
-      reply.raw.writeHead(200, {
+      // reply.hijack() bypasses all Fastify/NestJS middleware including CORS.
+      // We must emit CORS headers ourselves so the browser does not reject the SSE connection.
+      const requestOrigin = (req.headers['origin'] as string | undefined) ?? '';
+      const corsHeaders: Record<string, string> = {
         'Content-Type': 'text/event-stream',
         'Cache-Control': 'no-cache, no-transform',
         Connection: 'keep-alive',
         'X-Accel-Buffering': 'no', // Disable buffering in nginx
-      });
+      };
+      if (requestOrigin) {
+        corsHeaders['Access-Control-Allow-Origin'] = requestOrigin;
+        corsHeaders['Access-Control-Allow-Credentials'] = 'true';
+      }
+      // Set SSE headers before any writes
+      reply.raw.writeHead(200, corsHeaders);
 
       // Helper to send SSE events with proper formatting
       const sendEvent = (event: string, data: unknown): boolean => {
@@ -143,6 +153,15 @@ export class AiAgentsController {
         }
       };
 
+      // ── Poll mode: tell the client to use polling then close immediately ──────
+      if (this.aiService.deliveryMode === 'poll') {
+        sendEvent('mode', { mode: 'poll' });
+        reply.raw.end();
+        this.logger.log(`SSE stream closed immediately (poll mode) for conversation ${actualConversationId}`);
+        return;
+      }
+
+      // ── SSE mode (default) ────────────────────────────────────────────────────
       // Send initial connection confirmation
       sendEvent('connected', {
         conversationId: actualConversationId,
@@ -150,14 +169,18 @@ export class AiAgentsController {
       });
 
       // Get listener from service
-      const { listener } = await this.aiService.listen(
+      const { listener, client } = await this.aiService.listen(
         user,
         actualConversationId,
       );
 
+      // The Botpress SDK (v0.5.x) routes all signals through 'unknown' instead of named listeners.
+      // We keep the named handler registrations (listener.on('message_created', ...)) for forward
+      // compatibility but the real work happens in onUnknown below.
+
       // Set up event handlers BEFORE the listener starts receiving events
       const onMessage = (ev: chat.Signals['message_created']) => {
-        this.logger.debug('Botpress message received:', ev);
+        this.logger.debug('Botpress message received (named):', ev);
         sendEvent('message_created', ev);
 
         // Check for SOAP tags in AI messages and persist if found
@@ -183,25 +206,70 @@ export class AiAgentsController {
       };
 
       const onUnknown = (payload: unknown) => {
-        this.logger.warn('Botpress emitted unknown signal:', payload);
-        let normalized: any = payload;
+        // ── Raw dump so we can see exactly what Botpress sends ───────────────
+        this.logger.debug(
+          `[onUnknown] raw type=${typeof payload}, value=${
+            typeof payload === 'string' ? payload.slice(0, 300) : JSON.stringify(payload)?.slice(0, 300)
+          }`,
+        );
+
+        let normalized: unknown = payload;
         if (typeof payload === 'string') {
           try {
-            normalized = JSON.parse(payload);
-          } catch (error) {
-            this.logger.warn(
-              'Failed to parse unknown Botpress payload as JSON:',
-              error,
-            );
+            normalized = JSON.parse(payload) as unknown;
+          } catch {
+            // Non-JSON payload (e.g. Botpress "ping" keepalive) — silently ignore
+            return;
           }
         }
 
-        if (normalized?.type && normalized.data) {
-          sendEvent(normalized.type, normalized.data);
+        const norm = normalized as Record<string, unknown> | null;
+        if (!norm || typeof norm.type !== 'string') {
+          return; // unrecognised shape, drop silently
+        }
+
+        const eventType = norm.type;
+        const data = norm.data as Record<string, unknown> | undefined;
+
+        // Route message_created through the same logic as the named handler
+        if (eventType === 'message_created' && data) {
+          // Filter out echoes of the user's own messages.
+          // client.user.id is the Botpress userId assigned to this authenticated user.
+          if (data.userId === client.user.id) {
+            this.logger.debug('Skipping user-echo message_created from unknown handler');
+            return;
+          }
+
+          this.logger.debug('Botpress bot message received (unknown handler):', data);
+          sendEvent('message_created', data);
+
+          // SOAP detection for bot replies
+          const msgPayload = data.payload as Record<string, unknown> | undefined;
+          const messageText = typeof msgPayload?.text === 'string' ? msgPayload.text : undefined;
+          if (messageText && user?.id && this.soapService.containsSoapTag(messageText)) {
+            this.soapService
+              .detectAndUpsert(user.id, actualConversationId, messageText)
+              .then((soap) => {
+                if (soap) {
+                  this.logger.log(`SOAP note saved for conversation ${actualConversationId}`);
+                  sendEvent('soap_ready', { soapId: soap.id, conversationId: actualConversationId });
+                }
+              })
+              .catch((err) => {
+                this.logger.error('Failed to save SOAP note:', err);
+              });
+          }
           return;
         }
 
-        sendEvent('unknown', payload);
+        // message_status_changed is an internal Botpress event — clients don't need it
+        if (eventType === 'message_status_changed') {
+          return;
+        }
+
+        // Forward all other unknown events as-is
+        this.logger.debug(`Forwarding unknown Botpress event: ${eventType}`);
+        sendEvent(eventType, data ?? norm);
       };
 
       // Attach event handlers
@@ -223,8 +291,11 @@ export class AiAgentsController {
         `SSE stream established for conversation ${actualConversationId}`,
       );
 
-      // Cleanup function
+      // Cleanup function — guarded to be idempotent (multiple close/aborted events can fire)
+      let cleaned = false;
       const cleanup = async () => {
+        if (cleaned) return;
+        cleaned = true;
         clearInterval(heartbeatInterval);
         try {
           listener.off('message_created', onMessage);
@@ -250,7 +321,8 @@ export class AiAgentsController {
       req.raw.on('close', cleanup);
       req.raw.on('aborted', cleanup);
       reply.raw.on('close', cleanup);
-      reply.raw.on('finish', cleanup);
+      // NOTE: 'finish' is intentionally excluded — for SSE streams it fires when data is
+      // flushed but the connection may still be live; 'close' handles actual disconnects.
 
       // Handle errors on the response stream
       reply.raw.on('error', (error) => {
