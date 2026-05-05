@@ -1,6 +1,5 @@
 import {
   BadRequestException,
-  Inject,
   Injectable,
   Logger,
   NotFoundException,
@@ -15,8 +14,6 @@ import {
   TConversationListener,
 } from './types/user-client-context.type';
 import { CacheService } from '../cache/cache.service';
-
-// TODO: Save conversations, chats and then SOAPs in database.
 
 @Injectable()
 export class BotpressService {
@@ -34,6 +31,9 @@ export class BotpressService {
   >();
   // Deduplicates concurrent getClient() calls for the same user (race-condition guard)
   private readonly pendingClientCreations = new Map<string, Promise<IUserContext>>();
+  // Persists Botpress userKey so we can reconnect to the same Botpress identity
+  // after the in-memory cache expires, preserving conversation continuity.
+  private readonly userKeys = new Map<string, string>();
 
   constructor(
     readonly configService: ConfigService,
@@ -72,10 +72,20 @@ export class BotpressService {
 
     this.logger.debug(`Creating new Botpress client for user ${user.id}`);
     const creationPromise = (async () => {
+      // Reuse the Botpress userKey if we have one from a previous session.
+      // This preserves the same Botpress identity so old conversations remain accessible.
+      const savedKey = this.userKeys.get(user.id);
+
       const client = await chat.Client.connect({
         webhookId: this.webhookId,
         debug: false,
+        ...(savedKey ? { userKey: savedKey } : {}),
       });
+
+      // Persist the key for future reconnections
+      if (client.user?.key) {
+        this.userKeys.set(user.id, client.user.key);
+      }
 
       const ctx = await this.cacheService.set<IUserContext>(
         this.cachingOptions.group,
@@ -344,23 +354,61 @@ export class BotpressService {
     dateOffset?: Date,
   ): Promise<any[]> {
     const ctx = await this.getClient(user);
+    return this.pollFromClient(ctx.client, conversationId, dateOffset);
+  }
 
+  /**
+   * Poll for guest conversation messages (no auth required).
+   */
+  async pollGuestMessages(
+    conversationId: string,
+    dateOffset?: Date,
+  ): Promise<any[]> {
+    this.pruneGuestContexts();
+    const guestCtx = this.guestContexts.get(conversationId);
+    if (!guestCtx) {
+      throw new NotFoundException('Guest conversation not found or expired.');
+    }
+    guestCtx.expiresAt = Date.now() + this.guestTtlMs;
+    return this.pollFromClient(guestCtx.client, conversationId, dateOffset);
+  }
+
+  /**
+   * Shared poll logic — fetches all pages via nextToken cursor pagination.
+   */
+  private async pollFromClient(
+    client: chat.AuthenticatedClient,
+    conversationId: string,
+    dateOffset?: Date,
+  ): Promise<any[]> {
     try {
-      const messages = await ctx.client.listMessages({ conversationId });
+      const allMessages: any[] = [];
+      let nextToken: string | undefined;
+
+      // Paginate through all message pages
+      do {
+        const page = await client.listMessages({
+          conversationId,
+          ...(nextToken ? { nextToken } : {}),
+        });
+        allMessages.push(...page.messages);
+        nextToken = (page as any).meta?.nextToken;
+      } while (nextToken);
+
       this.logger.debug(
-        `pollForNewMessages: total=${messages.messages.length}, botUserId=${ctx.client.user.id}, dateOffset=${dateOffset?.toISOString()}`,
+        `pollFromClient: total=${allMessages.length}, botUserId=${client.user.id}, dateOffset=${dateOffset?.toISOString()}`,
       );
 
       const dateCheck = dateOffset
         ? (date: Date | string) => new Date(date) > dateOffset
-        : (..._args: unknown[]) => true;
+        : () => true;
 
-      const newBotMessages = messages.messages.filter(
-        (msg) => msg.userId !== ctx.client.user.id && dateCheck(msg.createdAt),
+      const newBotMessages = allMessages.filter(
+        (msg) => msg.userId !== client.user.id && dateCheck(msg.createdAt),
       );
 
       this.logger.debug(
-        `pollForNewMessages: filtered bot messages=${newBotMessages.length}, ids=${newBotMessages.map((m) => m.id).join(',')}`,
+        `pollFromClient: filtered bot messages=${newBotMessages.length}`,
       );
 
       return newBotMessages;
@@ -368,6 +416,18 @@ export class BotpressService {
       this.logger.error(`Error polling for messages:`, error);
       return [];
     }
+  }
+
+  /**
+   * Extract displayable text from any Botpress message payload.
+   * Handles both `text` and `markdown` payload types.
+   */
+  static extractPayloadText(payload: unknown): string | undefined {
+    if (!payload || typeof payload !== 'object') return undefined;
+    const p = payload as Record<string, unknown>;
+    if (typeof p.text === 'string') return p.text;
+    if (typeof p.markdown === 'string') return p.markdown;
+    return undefined;
   }
 
   private pruneGuestContexts(): void {

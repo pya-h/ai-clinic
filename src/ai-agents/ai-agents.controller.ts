@@ -23,6 +23,7 @@ import { CookieAuthGuard } from '../auth/guards/cookie-auth.guard';
 import { OptionalAuthGuard } from '../auth/guards/optional-auth.guard';
 import { ApiStandardOkResponse } from '../common/decorators/api-standard-ok-response.decorator';
 import { SoapService } from '../soap/soap.service';
+import { SendAiMessageDto } from './dto/send-ai-message.dto';
 
 @ApiTags('Ai Agents')
 @Controller('ai-agents')
@@ -52,12 +53,8 @@ export class AiAgentsController {
   @HttpCode(204)
   async send(
     @CurrentUser() user: User | null,
-    @Body() body: { conversationId?: string; text: string },
+    @Body() body: SendAiMessageDto,
   ) {
-    if (!body?.text?.trim()) {
-      throw new BadRequestException('Message text is required.');
-    }
-
     if (!user) {
       if (!body.conversationId) {
         throw new BadRequestException(
@@ -88,9 +85,9 @@ export class AiAgentsController {
       dateOffset ? new Date(dateOffset) : undefined,
     );
 
-    // Check each new message for SOAP tags
+    // Check each new message for SOAP tags (handles text + markdown payloads)
     for (const msg of messages) {
-      const messageText = msg?.payload?.text;
+      const messageText = BotpressService.extractPayloadText(msg?.payload);
       if (messageText && user?.id && this.soapService.containsSoapTag(messageText)) {
         try {
           await this.soapService.detectAndUpsert(user.id, conversationId, messageText);
@@ -102,6 +99,21 @@ export class AiAgentsController {
     }
 
     return messages;
+  }
+
+  /**
+   * Guest message polling — allows guests to receive AI responses.
+   * No auth required; uses the conversationId from /start as identifier.
+   */
+  @Get('guest/messages/:conversationId')
+  async pollGuestMessages(
+    @Param('conversationId') conversationId: string,
+    @Query('dateOffset') dateOffset?: string,
+  ) {
+    return this.aiService.pollGuestMessages(
+      conversationId,
+      dateOffset ? new Date(dateOffset) : undefined,
+    );
   }
 
   @UseGuards(CookieAuthGuard)
@@ -140,8 +152,11 @@ export class AiAgentsController {
       // Set SSE headers before any writes
       reply.raw.writeHead(200, corsHeaders);
 
-      // Helper to send SSE events with proper formatting
+      // Helper to send SSE events with proper formatting.
+      // Guards against writes after the stream is closed/destroyed.
+      let cleaned = false;
       const sendEvent = (event: string, data: unknown): boolean => {
+        if (cleaned || reply.raw.destroyed || !reply.raw.writable) return false;
         try {
           const payload = JSON.stringify(data);
           reply.raw.write(`event: ${event}\n`);
@@ -174,17 +189,33 @@ export class AiAgentsController {
         actualConversationId,
       );
 
-      // The Botpress SDK (v0.5.x) routes all signals through 'unknown' instead of named listeners.
-      // We keep the named handler registrations (listener.on('message_created', ...)) for forward
-      // compatibility but the real work happens in onUnknown below.
+      // Deduplication: the SDK may fire both the named 'message_created' handler AND
+      // the 'unknown' handler for the same event. Track processed IDs to avoid
+      // sending duplicates to the client and running SOAP detection twice.
+      const processedMessageIds = new Set<string>();
 
-      // Set up event handlers BEFORE the listener starts receiving events
-      const onMessage = (ev: chat.Signals['message_created']) => {
-        this.logger.debug('Botpress message received (named):', ev);
-        sendEvent('message_created', ev);
+      // Shared logic for handling a bot message_created event.
+      // Used by both the named handler and the unknown handler.
+      const handleBotMessage = (data: Record<string, unknown>, source: string) => {
+        // Filter user echoes — only forward bot messages
+        if (data.userId === client.user.id) {
+          this.logger.debug(`Skipping user-echo message_created from ${source}`);
+          return;
+        }
 
-        // Check for SOAP tags in AI messages and persist if found
-        const messageText = ev?.payload?.text;
+        // Deduplicate — skip if we already processed this message ID
+        const msgId = data.id as string;
+        if (msgId && processedMessageIds.has(msgId)) {
+          this.logger.debug(`Skipping duplicate message ${msgId} from ${source}`);
+          return;
+        }
+        if (msgId) processedMessageIds.add(msgId);
+
+        this.logger.debug(`Botpress bot message received (${source}):`, data);
+        sendEvent('message_created', data);
+
+        // SOAP detection — handles both text and markdown payload types
+        const messageText = BotpressService.extractPayloadText(data.payload);
         if (messageText && user?.id && this.soapService.containsSoapTag(messageText)) {
           this.soapService
             .detectAndUpsert(user.id, actualConversationId, messageText)
@@ -200,19 +231,20 @@ export class AiAgentsController {
         }
       };
 
+      // Named handler — fires when the SDK successfully parses the signal type.
+      // In SDK v0.5.x this rarely fires (signals usually arrive via 'unknown'),
+      // but we register it for forward compatibility with newer SDK versions.
+      const onMessage = (ev: chat.Signals['message_created']) => {
+        handleBotMessage(ev as unknown as Record<string, unknown>, 'named');
+      };
+
       const onError = (err: unknown) => {
         this.logger.error('Botpress listener error:', err);
         sendEvent('error', { message: String(err) });
       };
 
+      // Fallback handler — catches signals the SDK doesn't parse into named events.
       const onUnknown = (payload: unknown) => {
-        // ── Raw dump so we can see exactly what Botpress sends ───────────────
-        this.logger.debug(
-          `[onUnknown] raw type=${typeof payload}, value=${
-            typeof payload === 'string' ? payload.slice(0, 300) : JSON.stringify(payload)?.slice(0, 300)
-          }`,
-        );
-
         let normalized: unknown = payload;
         if (typeof payload === 'string') {
           try {
@@ -231,34 +263,8 @@ export class AiAgentsController {
         const eventType = norm.type;
         const data = norm.data as Record<string, unknown> | undefined;
 
-        // Route message_created through the same logic as the named handler
         if (eventType === 'message_created' && data) {
-          // Filter out echoes of the user's own messages.
-          // client.user.id is the Botpress userId assigned to this authenticated user.
-          if (data.userId === client.user.id) {
-            this.logger.debug('Skipping user-echo message_created from unknown handler');
-            return;
-          }
-
-          this.logger.debug('Botpress bot message received (unknown handler):', data);
-          sendEvent('message_created', data);
-
-          // SOAP detection for bot replies
-          const msgPayload = data.payload as Record<string, unknown> | undefined;
-          const messageText = typeof msgPayload?.text === 'string' ? msgPayload.text : undefined;
-          if (messageText && user?.id && this.soapService.containsSoapTag(messageText)) {
-            this.soapService
-              .detectAndUpsert(user.id, actualConversationId, messageText)
-              .then((soap) => {
-                if (soap) {
-                  this.logger.log(`SOAP note saved for conversation ${actualConversationId}`);
-                  sendEvent('soap_ready', { soapId: soap.id, conversationId: actualConversationId });
-                }
-              })
-              .catch((err) => {
-                this.logger.error('Failed to save SOAP note:', err);
-              });
-          }
+          handleBotMessage(data, 'unknown');
           return;
         }
 
@@ -277,10 +283,18 @@ export class AiAgentsController {
       listener.on('error', onError);
       listener.on('unknown', onUnknown);
 
-      // Heartbeat to keep connection alive (every 30 seconds)
+      // Heartbeat to keep the HTTP connection alive (every 30 seconds).
+      // Also refreshes the Botpress client cache deadline so the listener
+      // isn't disconnected by the cron cleanup while the stream is active.
       const heartbeatInterval = setInterval(() => {
+        if (cleaned || reply.raw.destroyed || !reply.raw.writable) {
+          clearInterval(heartbeatInterval);
+          return;
+        }
         try {
           reply.raw.write(`: heartbeat ${Date.now()}\n\n`);
+          // Keep the Botpress client cache alive for the duration of this stream
+          this.aiService.getConversation(user, true).catch(() => {});
         } catch (error) {
           this.logger.warn('Failed to send heartbeat:', error);
           clearInterval(heartbeatInterval);
@@ -292,7 +306,6 @@ export class AiAgentsController {
       );
 
       // Cleanup function — guarded to be idempotent (multiple close/aborted events can fire)
-      let cleaned = false;
       const cleanup = async () => {
         if (cleaned) return;
         cleaned = true;
