@@ -189,18 +189,18 @@ export class AiAgentsController {
       // sending duplicates to the client and running SOAP detection twice.
       const processedMessageIds = new Set<string>();
 
-      // Shared logic for handling a bot message_created event.
-      const handleBotMessage = (data: Record<string, unknown>) => {
-        // Filter user echoes — only forward bot messages
-        if (data.userId === client.user.id) {
-          return;
-        }
+      // Debounce buffer: Botpress may fire multiple message_created signals in
+      // rapid succession as the bot composes its response (each with partial text
+      // and potentially different IDs). We buffer the latest and only forward
+      // after a 500ms quiet window so only the final/complete message is sent.
+      let pendingBotMsg: { data: Record<string, unknown>; timer: ReturnType<typeof setTimeout> } | null = null;
 
-        // Deduplicate — skip if we already processed this message ID
+      const flushPendingBotMsg = () => {
+        if (!pendingBotMsg) return;
+        const { data } = pendingBotMsg;
+        pendingBotMsg = null;
+
         const msgId = data.id as string;
-        if (msgId && processedMessageIds.has(msgId)) {
-          return;
-        }
         if (msgId) processedMessageIds.add(msgId);
 
         sendEvent('message_created', data);
@@ -219,6 +219,30 @@ export class AiAgentsController {
               this.logger.error('Failed to save SOAP note:', err);
             });
         }
+      };
+
+      // Shared logic for handling a bot message_created event.
+      const handleBotMessage = (data: Record<string, unknown>) => {
+        // Filter user echoes — only forward bot messages
+        if (data.userId === client.user.id) {
+          return;
+        }
+
+        // Deduplicate — skip if we already processed this message ID
+        const msgId = data.id as string;
+        if (msgId && processedMessageIds.has(msgId)) {
+          return;
+        }
+
+        // Replace any pending buffered message with this newer one
+        if (pendingBotMsg) {
+          clearTimeout(pendingBotMsg.timer);
+        }
+
+        pendingBotMsg = {
+          data,
+          timer: setTimeout(flushPendingBotMsg, 500),
+        };
       };
 
       // Named handler — fires when the SDK successfully parses the signal type.
@@ -295,6 +319,10 @@ export class AiAgentsController {
         if (cleaned) return;
         cleaned = true;
         clearInterval(heartbeatInterval);
+        if (pendingBotMsg) {
+          clearTimeout(pendingBotMsg.timer);
+          pendingBotMsg = null;
+        }
         try {
           listener.off('message_created', onMessage);
           listener.off('error', onError);
