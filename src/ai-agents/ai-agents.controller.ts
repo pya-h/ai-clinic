@@ -91,7 +91,6 @@ export class AiAgentsController {
       if (messageText && user?.id && this.soapService.containsSoapTag(messageText)) {
         try {
           await this.soapService.detectAndUpsert(user.id, conversationId, messageText);
-          this.logger.log(`SOAP note saved from poll for conversation ${conversationId}`);
         } catch (err) {
           this.logger.error('Failed to save SOAP note during poll:', err);
         }
@@ -131,9 +130,6 @@ export class AiAgentsController {
     // Do NOT call getConversation() again here; that can create a brand-new conversation
     // instead of using the one the client already has, breaking the message flow.
     const actualConversationId = conversationId;
-    this.logger.log(
-      `Setting up SSE stream for conversation ${actualConversationId} (mode=${this.aiService.deliveryMode})`,
-    );
 
     try {
       // reply.hijack() bypasses all Fastify/NestJS middleware including CORS.
@@ -172,7 +168,6 @@ export class AiAgentsController {
       if (this.aiService.deliveryMode === 'poll') {
         sendEvent('mode', { mode: 'poll' });
         reply.raw.end();
-        this.logger.log(`SSE stream closed immediately (poll mode) for conversation ${actualConversationId}`);
         return;
       }
 
@@ -195,23 +190,19 @@ export class AiAgentsController {
       const processedMessageIds = new Set<string>();
 
       // Shared logic for handling a bot message_created event.
-      // Used by both the named handler and the unknown handler.
-      const handleBotMessage = (data: Record<string, unknown>, source: string) => {
+      const handleBotMessage = (data: Record<string, unknown>) => {
         // Filter user echoes — only forward bot messages
         if (data.userId === client.user.id) {
-          this.logger.debug(`Skipping user-echo message_created from ${source}`);
           return;
         }
 
         // Deduplicate — skip if we already processed this message ID
         const msgId = data.id as string;
         if (msgId && processedMessageIds.has(msgId)) {
-          this.logger.debug(`Skipping duplicate message ${msgId} from ${source}`);
           return;
         }
         if (msgId) processedMessageIds.add(msgId);
 
-        this.logger.debug(`Botpress bot message received (${source}):`, data);
         sendEvent('message_created', data);
 
         // SOAP detection — handles both text and markdown payload types
@@ -221,7 +212,6 @@ export class AiAgentsController {
             .detectAndUpsert(user.id, actualConversationId, messageText)
             .then((soap) => {
               if (soap) {
-                this.logger.log(`SOAP note saved for conversation ${actualConversationId}`);
                 sendEvent('soap_ready', { soapId: soap.id, conversationId: actualConversationId });
               }
             })
@@ -235,7 +225,7 @@ export class AiAgentsController {
       // In SDK v0.5.x this rarely fires (signals usually arrive via 'unknown'),
       // but we register it for forward compatibility with newer SDK versions.
       const onMessage = (ev: chat.Signals['message_created']) => {
-        handleBotMessage(ev as unknown as Record<string, unknown>, 'named');
+        handleBotMessage(ev as unknown as Record<string, unknown>);
       };
 
       const onError = (err: unknown) => {
@@ -264,7 +254,7 @@ export class AiAgentsController {
         const data = norm.data as Record<string, unknown> | undefined;
 
         if (eventType === 'message_created' && data) {
-          handleBotMessage(data, 'unknown');
+          handleBotMessage(data);
           return;
         }
 
@@ -274,7 +264,6 @@ export class AiAgentsController {
         }
 
         // Forward all other unknown events as-is
-        this.logger.debug(`Forwarding unknown Botpress event: ${eventType}`);
         sendEvent(eventType, data ?? norm);
       };
 
@@ -301,10 +290,6 @@ export class AiAgentsController {
         }
       }, 30000);
 
-      this.logger.log(
-        `SSE stream established for conversation ${actualConversationId}`,
-      );
-
       // Cleanup function — guarded to be idempotent (multiple close/aborted events can fire)
       const cleanup = async () => {
         if (cleaned) return;
@@ -325,9 +310,6 @@ export class AiAgentsController {
         } catch (error) {
           this.logger.warn('Error closing SSE connection:', error);
         }
-        this.logger.debug(
-          `SSE stream closed for conversation ${actualConversationId}`,
-        );
       };
 
       // Handle client disconnect

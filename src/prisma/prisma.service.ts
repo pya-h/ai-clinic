@@ -15,7 +15,7 @@ export class PrismaService
 
   onModuleInit() {
     this.$connect()
-      .then(() => this.logger.debug('Database successfully connected.'))
+      .then(() => this.logger.log('Database connected'))
       .catch((ex) =>
         this.logger.error(
           'Database failed connecting: ',

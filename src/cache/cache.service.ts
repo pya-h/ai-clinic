@@ -183,8 +183,6 @@ export class CacheService {
       allValues,
       (item) => item.deadline < exactTime,
     );
-    this.logger.debug({ remaining: remaining.length, passedDues: passedDues.length });
-
     // Rebuild Map from remaining items
     const newMap = new Map<string, ICacheItemIdentifier>();
     for (const item of remaining) {

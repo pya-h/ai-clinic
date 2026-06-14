@@ -84,8 +84,6 @@ export class ChatGateway
       return;
     }
 
-    this.logger.log(`Client connected: ${user.id} (socket: ${client.id})`);
-
     const wasOnline = this.chatService.isOnline(user.id);
     this.chatService.setOnline(user.id, client.id);
 
@@ -119,8 +117,6 @@ export class ChatGateway
   handleDisconnect(client: Socket): void {
     const user = client.data.user;
     if (!user) return;
-
-    this.logger.log(`Client disconnected: ${user.id} (socket: ${client.id})`);
 
     this.chatService.setOffline(user.id, client.id);
 
@@ -339,7 +335,6 @@ export class ChatGateway
     await this.chatService.assertChatParticipant(payload.chatId, user.id);
 
     client.join(`chat:${payload.chatId}`);
-    this.logger.debug(`User ${user.id} joined room chat:${payload.chatId}`);
   }
 
   /**
@@ -358,7 +353,6 @@ export class ChatGateway
     }
 
     client.leave(`chat:${payload.chatId}`);
-    this.logger.debug(`User ${user.id} left room chat:${payload.chatId}`);
   }
 
   // ─────────────────────────── Helpers ───────────────────────────

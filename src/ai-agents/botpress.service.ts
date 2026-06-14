@@ -1,6 +1,6 @@
 import {
   BadRequestException,
-  Injectable,
+    Injectable,
   Logger,
   NotFoundException,
   ServiceUnavailableException,
@@ -66,11 +66,9 @@ export class BotpressService {
     // this user, wait for that same promise instead of creating a second client.
     const pending = this.pendingClientCreations.get(user.id);
     if (pending) {
-      this.logger.debug(`Waiting for in-flight client creation for user ${user.id}`);
       return pending;
     }
 
-    this.logger.debug(`Creating new Botpress client for user ${user.id}`);
     const creationPromise = (async () => {
       // Reuse the Botpress userKey if we have one from a previous session.
       // This preserves the same Botpress identity so old conversations remain accessible.
@@ -94,7 +92,6 @@ export class BotpressService {
         this.cachingOptions.ttl,
       );
 
-      this.logger.log(`Connected Botpress client for user ${user.id}`);
       return ctx;
     })();
 
@@ -133,7 +130,6 @@ export class BotpressService {
       }
     }
 
-    this.logger.debug(`Creating new conversation for user ${user.id}`);
     const { conversation } = await ctx.client.createConversation({});
     ctx.conversationId = conversation.id;
 
@@ -182,7 +178,6 @@ export class BotpressService {
         conversationId,
         payload: { type: 'text', text },
       });
-      this.logger.debug(`Message sent to conversation ${conversationId}`);
     } catch (error) {
       this.logger.error(
         `Failed to send message to conversation ${conversationId}:`,
@@ -227,38 +222,22 @@ export class BotpressService {
       ctx.conversationId &&
       ctx.conversationId !== conversationId
     ) {
-      this.logger.debug(
-        `Existing listener is bound to conversation ${ctx.conversationId}, disconnecting before switching to ${conversationId}`,
-      );
       await this.releaseListener(user.id, ctx.listener);
     }
 
     if (ctx.listener && ctx.listener.status === 'connected') {
-      this.logger.debug(
-        `Reusing existing listener for conversation ${conversationId}`,
-      );
       return { client: ctx.client, listener: ctx.listener };
     }
 
     try {
       if (ctx.listener && ctx.listener.status !== 'connected') {
-        this.logger.debug(
-          `Reconnecting listener for conversation ${conversationId}`,
-        );
         await ctx.listener.connect();
-        this.logger.debug(
-          `Listener reconnected for conversation ${conversationId}, status: ${ctx.listener.status}`,
-        );
         return { client: ctx.client, listener: ctx.listener };
       }
 
-      this.logger.debug(`Creating listener for conversation ${conversationId}`);
       const listener = await ctx.client.listenConversation({
         id: conversationId,
       });
-      this.logger.debug(
-        `Listener status for conversation ${conversationId}: ${listener.status}`,
-      );
 
       ctx.listener = listener;
       ctx.conversationId = conversationId;
@@ -273,9 +252,6 @@ export class BotpressService {
         }
       });
 
-      this.logger.log(
-        `Listener established for conversation ${conversationId}`,
-      );
       return { client: ctx.client, listener };
     } catch (error) {
       this.logger.error(
@@ -301,7 +277,6 @@ export class BotpressService {
     }
 
     if (ctx.listener !== listener) {
-      // Listener not tracked anymore, just disconnect
       try {
         await listener.disconnect?.();
       } catch (error) {
@@ -327,7 +302,6 @@ export class BotpressService {
 
   /**
    * Clean up user context and disconnect listener
-   * Useful for cleanup when user disconnects or on errors
    */
   async cleanupUserContext(userId: string) {
     const ctx = await this.cacheService.get<IUserContext>(
@@ -344,7 +318,6 @@ export class BotpressService {
         );
       }
     }
-    this.logger.debug(`Cleaned up context for user ${userId}`);
   }
 
   // workaround for SSE issues
@@ -395,23 +368,13 @@ export class BotpressService {
         nextToken = (page as any).meta?.nextToken;
       } while (nextToken);
 
-      this.logger.debug(
-        `pollFromClient: total=${allMessages.length}, botUserId=${client.user.id}, dateOffset=${dateOffset?.toISOString()}`,
-      );
-
       const dateCheck = dateOffset
         ? (date: Date | string) => new Date(date) > dateOffset
         : () => true;
 
-      const newBotMessages = allMessages.filter(
+      return allMessages.filter(
         (msg) => msg.userId !== client.user.id && dateCheck(msg.createdAt),
       );
-
-      this.logger.debug(
-        `pollFromClient: filtered bot messages=${newBotMessages.length}`,
-      );
-
-      return newBotMessages;
     } catch (error) {
       this.logger.error(`Error polling for messages:`, error);
       return [];

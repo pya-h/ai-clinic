@@ -18,9 +18,7 @@ export class ApiService {
   private timeout: number = null;
 
   constructor(private readonly configService: ConfigService) {
-    this.api = axios.create({
-      // timeout: 10000,
-    });
+    this.api = axios.create({});
   }
 
   updateInstance() {

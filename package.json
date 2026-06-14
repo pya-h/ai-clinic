@@ -23,7 +23,7 @@
     "gen": "prisma generate"
   },
   "dependencies": {
-    "@botpress/chat": "^0.5.1",
+    "@botpress/chat": "^0.5.5",
     "@fastify/cookie": "^11.0.2",
     "@fastify/multipart": "^9.0.0",
     "@fastify/secure-session": "^8.2.0",
