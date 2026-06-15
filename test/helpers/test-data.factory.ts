@@ -119,6 +119,7 @@ export interface TestUser {
   isActive: boolean;
   avatar: string | null;
   password: string;
+  botpressUserKey: string | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -137,6 +138,7 @@ export function buildUser(overrides: Partial<TestUser> = {}): TestUser {
     isActive: true,
     avatar: null,
     password: 'hashed_' + slug(),
+    botpressUserKey: null,
     createdAt: now,
     updatedAt: now,
     ...overrides,

@@ -31,9 +31,6 @@ export class BotpressService {
   >();
   // Deduplicates concurrent getClient() calls for the same user (race-condition guard)
   private readonly pendingClientCreations = new Map<string, Promise<IUserContext>>();
-  // Persists Botpress userKey so we can reconnect to the same Botpress identity
-  // after the in-memory cache expires, preserving conversation continuity.
-  private readonly userKeys = new Map<string, string>();
 
   constructor(
     readonly configService: ConfigService,
@@ -70,9 +67,9 @@ export class BotpressService {
     }
 
     const creationPromise = (async () => {
-      // Reuse the Botpress userKey if we have one from a previous session.
-      // This preserves the same Botpress identity so old conversations remain accessible.
-      const savedKey = this.userKeys.get(user.id);
+      // Reuse the Botpress userKey persisted in DB so old conversations
+      // remain accessible even after a server restart.
+      const savedKey = user.botpressUserKey ?? undefined;
 
       const client = await chat.Client.connect({
         webhookId: this.webhookId,
@@ -80,9 +77,12 @@ export class BotpressService {
         ...(savedKey ? { userKey: savedKey } : {}),
       });
 
-      // Persist the key for future reconnections
-      if (client.user?.key) {
-        this.userKeys.set(user.id, client.user.key);
+      // Persist the key to DB for future reconnections (survives restarts)
+      if (client.user?.key && client.user.key !== savedKey) {
+        await this.prismaService.user.update({
+          where: { id: user.id },
+          data: { botpressUserKey: client.user.key },
+        }).catch((err) => this.logger.warn('Failed to persist botpress userKey:', err));
       }
 
       const ctx = await this.cacheService.set<IUserContext>(
@@ -123,10 +123,12 @@ export class BotpressService {
         await ctx.client.getConversation({ id: dbConversation.id });
         ctx.conversationId = dbConversation.id;
         return dbConversation;
-      } catch (error) {
+      } catch {
+        // Botpress lost this conversation (restart / expiry) — renew it
         this.logger.warn(
-          `Conversation ${dbConversation.id} not found in Botpress, creating new one`,
+          `Conversation ${dbConversation.id} not found in Botpress, renewing`,
         );
+        return this.renewConversation(ctx, user, dbConversation);
       }
     }
 
@@ -177,6 +179,9 @@ export class BotpressService {
 
   /**
    * Resume a specific conversation by ID (must belong to the user).
+   * If Botpress no longer has the conversation (server restart / expiry),
+   * a fresh Botpress conversation is created transparently and the DB
+   * record is migrated so the user keeps their topic & SOAP link.
    */
   async resumeConversation(
     user: User,
@@ -192,14 +197,41 @@ export class BotpressService {
     const ctx = await this.getClient(user);
     try {
       await ctx.client.getConversation({ id: conversationId });
+      ctx.conversationId = conversationId;
+      return existing;
     } catch {
-      throw new NotFoundException(
-        'Conversation no longer available in AI service.',
+      // Botpress lost this conversation — renew transparently
+      this.logger.warn(
+        `Botpress conversation ${conversationId} expired; renewing`,
       );
+      return this.renewConversation(ctx, user, existing);
     }
+  }
 
-    ctx.conversationId = conversationId;
-    return existing;
+  /**
+   * Create a fresh Botpress conversation and migrate the DB record
+   * (topic + SOAP link) from the expired one to the new one.
+   */
+  private async renewConversation(
+    ctx: IUserContext,
+    user: User,
+    old: AiConversation,
+  ): Promise<AiConversation> {
+    const { conversation: fresh } = await ctx.client.createConversation({});
+    ctx.conversationId = fresh.id;
+
+    return this.prismaService.$transaction(async (tx) => {
+      const renewed = await tx.aiConversation.create({
+        data: { id: fresh.id, userId: user.id, topic: old.topic },
+      });
+      // Re-point any SOAP that referenced the old conversation
+      await tx.patientSOAP.updateMany({
+        where: { conversationId: old.id },
+        data: { conversationId: fresh.id },
+      });
+      await tx.aiConversation.delete({ where: { id: old.id } });
+      return renewed;
+    });
   }
 
   /**

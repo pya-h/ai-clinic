@@ -145,6 +145,7 @@ model User {
   isActive            Boolean           @default(true) @map("is_active")
   avatar              String?           @map("avatar")
   password            String
+  botpressUserKey     String?           @map("botpress_user_key")
   chatHistory         ChatParticipant[]
   conversationsWithAI AiConversation[]
   patientSOAPs        PatientSOAP[]
