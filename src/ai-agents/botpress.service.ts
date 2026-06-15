@@ -32,6 +32,13 @@ export class BotpressService {
   // Deduplicates concurrent getClient() calls for the same user (race-condition guard)
   private readonly pendingClientCreations = new Map<string, Promise<IUserContext>>();
 
+  /**
+   * Runtime mapping: DB conversation ID → actual Botpress conversation ID.
+   * Populated when Botpress no longer has the original conversation (e.g.
+   * after a Botpress-side expiry). Keeps DB records stable — no PK changes.
+   */
+  private readonly renewedConversations = new Map<string, string>();
+
   constructor(
     readonly configService: ConfigService,
     private readonly prismaService: PrismaService,
@@ -47,6 +54,14 @@ export class BotpressService {
       this.cachingOptions.group,
       this.cleanupUserContext.bind(this),
     );
+  }
+
+  /**
+   * Resolve a DB conversation ID to the actual Botpress conversation ID.
+   * Returns the original ID if no renewal has happened.
+   */
+  private resolveBotpressId(dbConversationId: string): string {
+    return this.renewedConversations.get(dbConversationId) ?? dbConversationId;
   }
 
   private async getClient(user: User, updateCacheDeadline?: boolean): Promise<IUserContext> {
@@ -67,15 +82,30 @@ export class BotpressService {
     }
 
     const creationPromise = (async () => {
-      // Reuse the Botpress userKey persisted in DB so old conversations
-      // remain accessible even after a server restart.
-      const savedKey = user.botpressUserKey ?? undefined;
-
-      const client = await chat.Client.connect({
-        webhookId: this.webhookId,
-        debug: false,
-        ...(savedKey ? { userKey: savedKey } : {}),
+      // Always read botpressUserKey from DB — the session user object is a
+      // stale snapshot from login time and won't reflect keys saved later.
+      const dbUser = await this.prismaService.user.findUnique({
+        where: { id: user.id },
+        select: { botpressUserKey: true },
       });
+      const savedKey = dbUser?.botpressUserKey ?? undefined;
+
+      let client: chat.AuthenticatedClient;
+      try {
+        client = await chat.Client.connect({
+          webhookId: this.webhookId,
+          debug: false,
+          ...(savedKey ? { userKey: savedKey } : {}),
+        });
+      } catch (err) {
+        if (!savedKey) throw err;
+        // Saved key is stale (Botpress route deleted / webhook changed) — retry fresh
+        this.logger.warn(`Botpress connect failed with saved key, retrying without it: ${err}`);
+        client = await chat.Client.connect({
+          webhookId: this.webhookId,
+          debug: false,
+        });
+      }
 
       // Persist the key to DB for future reconnections (survives restarts)
       if (client.user?.key && client.user.key !== savedKey) {
@@ -96,7 +126,12 @@ export class BotpressService {
     })();
 
     this.pendingClientCreations.set(user.id, creationPromise);
-    creationPromise.finally(() => this.pendingClientCreations.delete(user.id));
+    // Swallow rejections on this side-chain — callers handle errors from
+    // the returned creationPromise directly. Without .catch() here,
+    // a rejection would create an unhandled promise rejection that crashes Node.
+    creationPromise
+      .catch(() => {})
+      .finally(() => this.pendingClientCreations.delete(user.id));
     return creationPromise;
   }
 
@@ -119,16 +154,20 @@ export class BotpressService {
     });
 
     if (dbConversation) {
+      const bpId = this.resolveBotpressId(dbConversation.id);
       try {
-        await ctx.client.getConversation({ id: dbConversation.id });
+        await ctx.client.getConversation({ id: bpId });
         ctx.conversationId = dbConversation.id;
         return dbConversation;
       } catch {
-        // Botpress lost this conversation (restart / expiry) — renew it
+        // Botpress lost this conversation — create a fresh one and map it
         this.logger.warn(
-          `Conversation ${dbConversation.id} not found in Botpress, renewing`,
+          `Conversation ${dbConversation.id} not found in Botpress, creating replacement`,
         );
-        return this.renewConversation(ctx, user, dbConversation);
+        const { conversation: fresh } = await ctx.client.createConversation({});
+        this.renewedConversations.set(dbConversation.id, fresh.id);
+        ctx.conversationId = dbConversation.id;
+        return dbConversation;
       }
     }
 
@@ -180,8 +219,8 @@ export class BotpressService {
   /**
    * Resume a specific conversation by ID (must belong to the user).
    * If Botpress no longer has the conversation (server restart / expiry),
-   * a fresh Botpress conversation is created transparently and the DB
-   * record is migrated so the user keeps their topic & SOAP link.
+   * a fresh Botpress conversation is created transparently. The DB record
+   * stays unchanged — a runtime mapping redirects API calls to the new one.
    */
   async resumeConversation(
     user: User,
@@ -194,44 +233,29 @@ export class BotpressService {
       throw new NotFoundException('Conversation not found.');
     }
 
-    const ctx = await this.getClient(user);
+    let ctx: IUserContext;
     try {
-      await ctx.client.getConversation({ id: conversationId });
+      ctx = await this.getClient(user);
+    } catch (err) {
+      this.logger.error(`Failed to connect to AI service for user ${user.id}:`, err);
+      throw new ServiceUnavailableException('AI service is temporarily unavailable.');
+    }
+
+    const bpId = this.resolveBotpressId(conversationId);
+    try {
+      await ctx.client.getConversation({ id: bpId });
       ctx.conversationId = conversationId;
       return existing;
     } catch {
-      // Botpress lost this conversation — renew transparently
+      // Botpress lost this conversation — create a replacement and map it
       this.logger.warn(
-        `Botpress conversation ${conversationId} expired; renewing`,
+        `Botpress conversation ${conversationId} expired; creating replacement`,
       );
-      return this.renewConversation(ctx, user, existing);
+      const { conversation: fresh } = await ctx.client.createConversation({});
+      this.renewedConversations.set(conversationId, fresh.id);
+      ctx.conversationId = conversationId;
+      return existing;
     }
-  }
-
-  /**
-   * Create a fresh Botpress conversation and migrate the DB record
-   * (topic + SOAP link) from the expired one to the new one.
-   */
-  private async renewConversation(
-    ctx: IUserContext,
-    user: User,
-    old: AiConversation,
-  ): Promise<AiConversation> {
-    const { conversation: fresh } = await ctx.client.createConversation({});
-    ctx.conversationId = fresh.id;
-
-    return this.prismaService.$transaction(async (tx) => {
-      const renewed = await tx.aiConversation.create({
-        data: { id: fresh.id, userId: user.id, topic: old.topic },
-      });
-      // Re-point any SOAP that referenced the old conversation
-      await tx.patientSOAP.updateMany({
-        where: { conversationId: old.id },
-        data: { conversationId: fresh.id },
-      });
-      await tx.aiConversation.delete({ where: { id: old.id } });
-      return renewed;
-    });
   }
 
   /**
@@ -284,11 +308,18 @@ export class BotpressService {
   }
 
   async send(user: User, conversationId: string, text: string): Promise<void> {
-    const ctx = await this.getClient(user);
+    let ctx: IUserContext;
+    try {
+      ctx = await this.getClient(user);
+    } catch (err) {
+      this.logger.error(`Failed to connect to AI service for send:`, err);
+      throw new ServiceUnavailableException('AI service is temporarily unavailable.');
+    }
+    const bpId = this.resolveBotpressId(conversationId);
 
     try {
       await ctx.client.createMessage({
-        conversationId,
+        conversationId: bpId,
         payload: { type: 'text', text },
       });
     } catch (error) {
@@ -327,7 +358,14 @@ export class BotpressService {
     client: chat.AuthenticatedClient;
     listener: TConversationListener;
   }> {
-    const ctx = await this.getClient(user);
+    let ctx: IUserContext;
+    try {
+      ctx = await this.getClient(user);
+    } catch (err) {
+      this.logger.error(`Failed to connect to AI service for listen:`, err);
+      throw new ServiceUnavailableException('AI service is temporarily unavailable.');
+    }
+    const bpId = this.resolveBotpressId(conversationId);
 
     // If we already have a listener but it's for another conversation, disconnect it
     if (
@@ -349,7 +387,7 @@ export class BotpressService {
       }
 
       const listener = await ctx.client.listenConversation({
-        id: conversationId,
+        id: bpId,
       });
 
       ctx.listener = listener;
@@ -439,8 +477,15 @@ export class BotpressService {
     conversationId: string,
     dateOffset?: Date,
   ): Promise<any[]> {
-    const ctx = await this.getClient(user);
-    return this.pollFromClient(ctx.client, conversationId, dateOffset);
+    let ctx: IUserContext;
+    try {
+      ctx = await this.getClient(user);
+    } catch (err) {
+      this.logger.error(`Failed to connect to AI service for poll:`, err);
+      return [];
+    }
+    const bpId = this.resolveBotpressId(conversationId);
+    return this.pollFromClient(ctx.client, bpId, dateOffset);
   }
 
   /**
@@ -457,14 +502,21 @@ export class BotpressService {
     });
     if (!convo) return [];
 
-    const ctx = await this.getClient(user);
+    let ctx: IUserContext;
+    try {
+      ctx = await this.getClient(user);
+    } catch (err) {
+      this.logger.error(`Failed to connect to AI service for history:`, err);
+      return [];
+    }
+    const bpId = this.resolveBotpressId(conversationId);
     try {
       const allMessages: any[] = [];
       let nextToken: string | undefined;
 
       do {
         const page = await ctx.client.listMessages({
-          conversationId,
+          conversationId: bpId,
           ...(nextToken ? { nextToken } : {}),
         });
         allMessages.push(...page.messages);
