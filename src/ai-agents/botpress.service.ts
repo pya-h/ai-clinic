@@ -152,6 +152,87 @@ export class BotpressService {
     }
   }
 
+  /**
+   * Force-start a brand-new conversation (ignores any existing ones).
+   */
+  async startNew(user: User): Promise<AiConversation> {
+    try {
+      const ctx = await this.getClient(user);
+      const { conversation } = await ctx.client.createConversation({});
+      ctx.conversationId = conversation.id;
+
+      return this.prismaService.aiConversation.create({
+        data: { userId: user.id, id: conversation.id },
+      });
+    } catch (err) {
+      this.logger.error(
+        `Failed to create new conversation for user ${user.id}:`,
+        err,
+      );
+      throw new ServiceUnavailableException(
+        'Cannot start a new AI conversation at the time!',
+      );
+    }
+  }
+
+  /**
+   * Resume a specific conversation by ID (must belong to the user).
+   */
+  async resumeConversation(
+    user: User,
+    conversationId: string,
+  ): Promise<AiConversation> {
+    const existing = await this.prismaService.aiConversation.findFirst({
+      where: { id: conversationId, userId: user.id },
+    });
+    if (!existing) {
+      throw new NotFoundException('Conversation not found.');
+    }
+
+    const ctx = await this.getClient(user);
+    try {
+      await ctx.client.getConversation({ id: conversationId });
+    } catch {
+      throw new NotFoundException(
+        'Conversation no longer available in AI service.',
+      );
+    }
+
+    ctx.conversationId = conversationId;
+    return existing;
+  }
+
+  /**
+   * List all AI conversations for a user (paginated, newest first).
+   */
+  async listConversations(
+    userId: string,
+    skip = 0,
+    take = 20,
+  ): Promise<{ data: AiConversation[]; total: number; skip: number; take: number }> {
+    const [data, total] = await Promise.all([
+      this.prismaService.aiConversation.findMany({
+        where: { userId },
+        orderBy: { createdAt: 'desc' },
+        include: {
+          soap: {
+            select: {
+              id: true,
+              suggestedSpecialty: true,
+              triageLevel: true,
+              createdAt: true,
+            },
+          },
+        },
+        skip,
+        take,
+      }),
+      this.prismaService.aiConversation.count({ where: { userId } }),
+    ]);
+
+    return { data, total, skip, take };
+  }
+
   async startGuest(): Promise<{ id: string; guest: true }> {
     this.pruneGuestContexts();
 
@@ -328,6 +409,56 @@ export class BotpressService {
   ): Promise<any[]> {
     const ctx = await this.getClient(user);
     return this.pollFromClient(ctx.client, conversationId, dateOffset);
+  }
+
+  /**
+   * Load full conversation history — returns ALL messages (user + bot)
+   * in chronological (ascending) order, each annotated with a `role` field.
+   */
+  async getConversationHistory(
+    user: User,
+    conversationId: string,
+  ): Promise<{ id: string; role: 'user' | 'bot'; text: string; createdAt: string }[]> {
+    // Validate ownership
+    const convo = await this.prismaService.aiConversation.findFirst({
+      where: { id: conversationId, userId: user.id },
+    });
+    if (!convo) return [];
+
+    const ctx = await this.getClient(user);
+    try {
+      const allMessages: any[] = [];
+      let nextToken: string | undefined;
+
+      do {
+        const page = await ctx.client.listMessages({
+          conversationId,
+          ...(nextToken ? { nextToken } : {}),
+        });
+        allMessages.push(...page.messages);
+        nextToken = (page as any).meta?.nextToken;
+      } while (nextToken);
+
+      // Map each message, annotating with role
+      const results: { id: string; role: 'user' | 'bot'; text: string; createdAt: string }[] = [];
+      for (const msg of allMessages) {
+        const text = BotpressService.extractPayloadText(msg.payload);
+        if (!text) continue;
+        results.push({
+          id: msg.id,
+          role: msg.userId === ctx.client.user.id ? 'user' : 'bot',
+          text,
+          createdAt: msg.createdAt,
+        });
+      }
+
+      // Botpress returns newest-first; reverse to chronological (ascending)
+      results.reverse();
+      return results;
+    } catch (error) {
+      this.logger.error(`Error loading conversation history:`, error);
+      return [];
+    }
   }
 
   /**

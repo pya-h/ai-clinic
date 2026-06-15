@@ -2,11 +2,13 @@ import {
   BadRequestException,
   Body,
   Controller,
+  DefaultValuePipe,
   Get,
   HttpCode,
   HttpStatus,
   Logger,
   Param,
+  ParseIntPipe,
   Post,
   Query,
   Req,
@@ -113,6 +115,46 @@ export class AiAgentsController {
       conversationId,
       dateOffset ? new Date(dateOffset) : undefined,
     );
+  }
+
+  @ApiOperation({ description: 'Full conversation history — all messages (user + bot) in chronological order.' })
+  @UseGuards(CookieAuthGuard)
+  @Get('history/:conversationId')
+  async getConversationHistory(
+    @CurrentUser() user: User,
+    @Param('conversationId') conversationId: string,
+  ) {
+    return this.aiService.getConversationHistory(user, conversationId);
+  }
+
+  @ApiOperation({ description: 'List all AI conversations for the current user.' })
+  @UseGuards(CookieAuthGuard)
+  @Get('conversations')
+  async listConversations(
+    @CurrentUser() user: User,
+    @Query('skip', new DefaultValuePipe(0), ParseIntPipe) skip: number,
+    @Query('take', new DefaultValuePipe(20), ParseIntPipe) take: number,
+  ) {
+    return this.aiService.listConversations(user.id, skip, take);
+  }
+
+  @ApiOperation({ description: 'Start a brand-new AI conversation (ignores existing).' })
+  @UseGuards(CookieAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  @Post('start/new')
+  async startNew(@CurrentUser() user: User) {
+    return this.aiService.startNew(user);
+  }
+
+  @ApiOperation({ description: 'Resume a specific AI conversation by ID.' })
+  @UseGuards(CookieAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  @Post('start/:conversationId')
+  async resumeConversation(
+    @CurrentUser() user: User,
+    @Param('conversationId') conversationId: string,
+  ) {
+    return this.aiService.resumeConversation(user, conversationId);
   }
 
   @UseGuards(CookieAuthGuard)
