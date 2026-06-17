@@ -15,27 +15,31 @@ export class SoapService {
 
   constructor(private readonly prisma: PrismaService) {}
 
-  /**
-   * Check if a text contains SOAP tags.
-   */
+  private static readonly HEADING_RE =
+    /^[ \t]*\*{0,2}[ \t]*(Subjective|Objective|Assessment|Plan)[ \t]*:?[ \t]*\*{0,2}[ \t]*/gim;
+
   containsSoapTag(text: string): boolean {
-    return text.includes(this.SOAP_TAG);
+    if (text.includes(this.SOAP_TAG)) return true;
+    const headings = ['Subjective', 'Objective', 'Assessment', 'Plan'];
+    return headings.every((h) =>
+      new RegExp(`^[ \\t]*\\*{0,2}[ \\t]*${h}\\b`, 'im').test(text),
+    );
   }
 
-  /**
-   * Extract the raw SOAP content between ***SOAP*** tags.
-   * Returns null if no valid SOAP block is found.
-   */
   extractSoapContent(text: string): string | null {
-    const regex = /\*\*\*SOAP\*\*\*([\s\S]*?)\*\*\*SOAP\*\*\*/;
-    const match = text.match(regex);
-    return match ? match[1].trim() : null;
+    const taggedRegex = /\*\*\*SOAP\*\*\*([\s\S]*?)\*\*\*SOAP\*\*\*/;
+    const taggedMatch = text.match(taggedRegex);
+    if (taggedMatch) return taggedMatch[1].trim();
+
+    const firstHeading = text.match(
+      /^[ \t]*\*{0,2}[ \t]*Subjective\b/im,
+    );
+    if (firstHeading && firstHeading.index !== undefined) {
+      return text.slice(firstHeading.index).trim();
+    }
+    return null;
   }
 
-  /**
-   * Parse the raw SOAP note into individual sections
-   * (Subjective, Objective, Assessment, Plan).
-   */
   parseSoapSections(rawNote: string): {
     subjective: string;
     objective: string;
@@ -44,13 +48,24 @@ export class SoapService {
     rawNote: string;
   } {
     const sections = { subjective: '', objective: '', assessment: '', plan: '' };
-    const sectionRegex =
-      /(?:\*{2})?\s*(Subjective|Objective|Assessment|Plan)\s*:\s*(?:\*{2})?\s*([\s\S]*?)(?=(?:\*{2})?\s*(?:Subjective|Objective|Assessment|Plan)\s*:\s*(?:\*{2})?|$)/gi;
 
-    let match: RegExpExecArray | null;
-    while ((match = sectionRegex.exec(rawNote)) !== null) {
-      const key = match[1].toLowerCase() as keyof typeof sections;
-      sections[key] = match[2].trim();
+    const headings: { key: string; start: number; end: number }[] = [];
+    const re = new RegExp(SoapService.HEADING_RE.source, 'gim');
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(rawNote)) !== null) {
+      headings.push({
+        key: m[1].toLowerCase(),
+        start: m.index,
+        end: m.index + m[0].length,
+      });
+    }
+
+    for (let i = 0; i < headings.length; i++) {
+      const start = headings[i].end;
+      const end =
+        i + 1 < headings.length ? headings[i + 1].start : rawNote.length;
+      const key = headings[i].key as keyof typeof sections;
+      sections[key] = rawNote.slice(start, end).trim();
     }
 
     return { ...sections, rawNote };

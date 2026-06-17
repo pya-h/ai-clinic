@@ -68,9 +68,9 @@ export class AiAgentsController {
       return;
     }
 
-    const actualConversationId = (
-      await this.aiService.getConversation(user, true)
-    ).id;
+    const actualConversationId =
+      body.conversationId ??
+      (await this.aiService.getConversation(user, true)).id;
     await this.aiService.send(user, actualConversationId, body.text);
   }
 
@@ -210,20 +210,36 @@ export class AiAgentsController {
 
       const processedMessageIds = new Set<string>();
 
-      // Debounce: buffer the latest bot message and flush after 500ms quiet window
+      // Debounce: buffer bot messages; merge consecutive ones within 500ms.
+      // Botpress splits text + quick-reply options into separate events.
+      // Merging keeps them as one message for the client and for SOAP detection.
       let pendingBotMsg: { data: Record<string, unknown>; timer: ReturnType<typeof setTimeout> } | null = null;
 
-      const flushPendingBotMsg = () => {
-        if (!pendingBotMsg) return;
-        const { data } = pendingBotMsg;
-        pendingBotMsg = null;
+      const mergePayloads = (
+        a: Record<string, unknown> | undefined,
+        b: Record<string, unknown> | undefined,
+      ): Record<string, unknown> => {
+        const pa = (a ?? {}) as Record<string, unknown>;
+        const pb = (b ?? {}) as Record<string, unknown>;
+        const result = { ...pa, ...pb };
+        if (typeof pa.text === 'string' && typeof pb.text === 'string') {
+          result.text = pa.text.length >= pb.text.length ? pa.text : pb.text;
+        }
+        if (typeof pa.markdown === 'string' && typeof pb.markdown === 'string') {
+          result.markdown = pa.markdown.length >= pb.markdown.length ? pa.markdown : pb.markdown;
+        }
+        return result;
+      };
 
+      const processBotMessage = (data: Record<string, unknown>) => {
         const msgId = data.id as string;
         if (msgId) processedMessageIds.add(msgId);
 
         sendEvent('message_created', data);
 
-        const messageText = BotpressService.extractPayloadText(data.payload);
+        const messageText =
+          BotpressService.extractPayloadText(data.payload) ??
+          BotpressService.extractPayloadText(data as unknown);
         if (messageText && user?.id && this.soapService.containsSoapTag(messageText)) {
           this.soapService
             .detectAndUpsert(user.id, actualConversationId, messageText)
@@ -238,6 +254,13 @@ export class AiAgentsController {
         }
       };
 
+      const flushPendingBotMsg = () => {
+        if (!pendingBotMsg) return;
+        const { data } = pendingBotMsg;
+        pendingBotMsg = null;
+        processBotMessage(data);
+      };
+
       const handleBotMessage = (data: Record<string, unknown>) => {
         if (data.userId === client.user.id) return;
 
@@ -246,12 +269,23 @@ export class AiAgentsController {
 
         if (pendingBotMsg) {
           clearTimeout(pendingBotMsg.timer);
+          const prevId = pendingBotMsg.data.id as string | undefined;
+          if (prevId) processedMessageIds.add(prevId);
+          const merged = { ...data };
+          merged.payload = mergePayloads(
+            pendingBotMsg.data.payload as Record<string, unknown> | undefined,
+            data.payload as Record<string, unknown> | undefined,
+          );
+          pendingBotMsg = {
+            data: merged,
+            timer: setTimeout(flushPendingBotMsg, 500),
+          };
+        } else {
+          pendingBotMsg = {
+            data,
+            timer: setTimeout(flushPendingBotMsg, 500),
+          };
         }
-
-        pendingBotMsg = {
-          data,
-          timer: setTimeout(flushPendingBotMsg, 500),
-        };
       };
 
       const onMessage = (ev: chat.Signals['message_created']) => {

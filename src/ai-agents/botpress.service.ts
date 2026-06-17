@@ -473,7 +473,15 @@ export class BotpressService {
   async getConversationHistory(
     user: User,
     conversationId: string,
-  ): Promise<{ id: string; role: string; text: string; createdAt: string }[]> {
+  ): Promise<
+    {
+      id: string;
+      role: string;
+      text: string;
+      createdAt: string;
+      choices?: { label: string; value: string }[];
+    }[]
+  > {
     const convo = await this.prismaService.aiConversation.findFirst({
       where: { id: conversationId, userId: user.id },
     });
@@ -490,15 +498,37 @@ export class BotpressService {
         nextToken = (page as any).meta?.nextToken;
       } while (nextToken);
 
-      return allMessages
+      const sorted = allMessages
         .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
-        .map((msg) => ({
-          id: msg.id,
-          role: msg.userId === ctx.client.user.id ? 'user' : 'bot',
-          text: BotpressService.extractPayloadText(msg.payload) ?? '',
-          createdAt: msg.createdAt,
-        }))
-        .filter((m) => m.text);
+        .map((msg) => {
+          const text = BotpressService.extractPayloadText(msg.payload) ?? '';
+          const choices = BotpressService.extractPayloadChoices(msg.payload);
+          return {
+            id: msg.id,
+            role: msg.userId === ctx.client.user.id ? 'user' : 'bot',
+            text,
+            createdAt: msg.createdAt,
+            ...(choices ? { choices } : {}),
+          };
+        });
+
+      // Botpress splits text + quick-reply options into separate messages.
+      // Merge consecutive bot messages so they appear as one.
+      const merged: typeof sorted = [];
+      for (const msg of sorted) {
+        const prev = merged[merged.length - 1];
+        if (prev && prev.role === 'bot' && msg.role === 'bot') {
+          const oneHasChoices = (!prev.choices && msg.choices) || (prev.choices && !msg.choices);
+          if (oneHasChoices) {
+            if (msg.choices) prev.choices = msg.choices;
+            if (msg.text && msg.text.length > prev.text.length) prev.text = msg.text;
+            continue;
+          }
+        }
+        merged.push(msg);
+      }
+
+      return merged.filter((m) => m.text);
     } catch {
       return [];
     }
@@ -556,6 +586,20 @@ export class BotpressService {
     if (typeof p.markdown === 'string') return p.markdown;
     if (typeof p.title === 'string') return p.title;
     return undefined;
+  }
+
+  static extractPayloadChoices(
+    payload: unknown,
+  ): { label: string; value: string }[] | undefined {
+    if (!payload || typeof payload !== 'object') return undefined;
+    const p = payload as Record<string, unknown>;
+    if (!Array.isArray(p.options) || p.options.length === 0) return undefined;
+    const choices = (p.options as any[])
+      .filter(
+        (o) => typeof o?.label === 'string' && typeof o?.value === 'string',
+      )
+      .map((o) => ({ label: o.label as string, value: o.value as string }));
+    return choices.length > 0 ? choices : undefined;
   }
 
   private pruneGuestContexts(): void {
