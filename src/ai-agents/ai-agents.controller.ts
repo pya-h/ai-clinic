@@ -87,7 +87,6 @@ export class AiAgentsController {
       dateOffset ? new Date(dateOffset) : undefined,
     );
 
-    // Check each new message for SOAP tags (handles text + markdown payloads)
     for (const msg of messages) {
       const messageText = BotpressService.extractPayloadText(msg?.payload);
       if (messageText && user?.id && this.soapService.containsSoapTag(messageText)) {
@@ -247,7 +246,6 @@ export class AiAgentsController {
 
         sendEvent('message_created', data);
 
-        // SOAP detection — handles both text and markdown payload types
         const messageText = BotpressService.extractPayloadText(data.payload);
         if (messageText && user?.id && this.soapService.containsSoapTag(messageText)) {
           this.soapService

@@ -82,8 +82,6 @@ export class BotpressService {
     }
 
     const creationPromise = (async () => {
-      // Always read botpressUserKey from DB — the session user object is a
-      // stale snapshot from login time and won't reflect keys saved later.
       const dbUser = await this.prismaService.user.findUnique({
         where: { id: user.id },
         select: { botpressUserKey: true },
@@ -91,23 +89,26 @@ export class BotpressService {
       const savedKey = dbUser?.botpressUserKey ?? undefined;
 
       let client: chat.AuthenticatedClient;
-      try {
-        client = await chat.Client.connect({
-          webhookId: this.webhookId,
-          debug: false,
-          ...(savedKey ? { userKey: savedKey } : {}),
-        });
-      } catch (err) {
-        if (!savedKey) throw err;
-        // Saved key is stale (Botpress route deleted / webhook changed) — retry fresh
-        this.logger.warn(`Botpress connect failed with saved key, retrying without it: ${err}`);
-        client = await chat.Client.connect({
-          webhookId: this.webhookId,
-          debug: false,
-        });
+
+      if (savedKey) {
+        // Reconnect with saved key — bypass chat.Client.connect() because its
+        // getOrCreateUser endpoint doesn't exist on this Botpress server.
+        // Instead, construct the AuthenticatedClient manually via getUser.
+        try {
+          const rawClient = new chat.Client({ webhookId: this.webhookId });
+          const { user: bpUser } = await rawClient.getUser({ 'x-user-key': savedKey });
+          // AuthenticatedClient's constructor is marked private in .d.ts but
+          // works at runtime — the SDK's own connect() uses it the same way.
+          client = new (chat.AuthenticatedClient as any)(rawClient, { ...bpUser, key: savedKey }) as chat.AuthenticatedClient;
+        } catch {
+          this.logger.warn('Saved Botpress key invalid, creating fresh identity');
+          client = await chat.Client.connect({ webhookId: this.webhookId });
+        }
+      } else {
+        client = await chat.Client.connect({ webhookId: this.webhookId });
       }
 
-      // Persist the key to DB for future reconnections (survives restarts)
+      // Persist the key for future reconnections
       if (client.user?.key && client.user.key !== savedKey) {
         await this.prismaService.user.update({
           where: { id: user.id },
@@ -317,17 +318,32 @@ export class BotpressService {
     }
     const bpId = this.resolveBotpressId(conversationId);
 
-    try {
-      await ctx.client.createMessage({
-        conversationId: bpId,
-        payload: { type: 'text', text },
-      });
-    } catch (error) {
-      this.logger.error(
-        `Failed to send message to conversation ${conversationId}:`,
-        error,
-      );
-      throw error;
+    const maxRetries = 2;
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        await ctx.client.createMessage({
+          conversationId: bpId,
+          payload: { type: 'text', text },
+        });
+        return;
+      } catch (error: any) {
+        const isTransient =
+          error?.error?.code === 'ECONNRESET' ||
+          error?.error?.code === 'ETIMEDOUT' ||
+          error?.error?.code === 'ENOTFOUND' ||
+          error?.error?.code === 'EAI_AGAIN' ||
+          error?.code === 500;
+        if (isTransient && attempt < maxRetries) {
+          this.logger.warn(`Transient error sending message (attempt ${attempt + 1}/${maxRetries + 1}), retrying...`);
+          await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)));
+          continue;
+        }
+        this.logger.error(
+          `Failed to send message to conversation ${conversationId}:`,
+          error,
+        );
+        throw error;
+      }
     }
   }
 
@@ -489,58 +505,39 @@ export class BotpressService {
   }
 
   /**
-   * Load full conversation history — returns ALL messages (user + bot)
-   * in chronological (ascending) order, each annotated with a `role` field.
+   * Load full conversation history from our local DB.
+   * Returns ALL messages (user + bot) in chronological (ascending) order.
    */
   async getConversationHistory(
     user: User,
     conversationId: string,
-  ): Promise<{ id: string; role: 'user' | 'bot'; text: string; createdAt: string }[]> {
-    // Validate ownership
+  ): Promise<{ id: string; role: string; text: string; createdAt: string }[]> {
     const convo = await this.prismaService.aiConversation.findFirst({
       where: { id: conversationId, userId: user.id },
     });
     if (!convo) return [];
 
-    let ctx: IUserContext;
     try {
-      ctx = await this.getClient(user);
-    } catch (err) {
-      this.logger.error(`Failed to connect to AI service for history:`, err);
-      return [];
-    }
-    const bpId = this.resolveBotpressId(conversationId);
-    try {
+      const ctx = await this.getClient(user);
+      const bpId = this.resolveBotpressId(conversationId);
       const allMessages: any[] = [];
       let nextToken: string | undefined;
-
       do {
-        const page = await ctx.client.listMessages({
-          conversationId: bpId,
-          ...(nextToken ? { nextToken } : {}),
-        });
+        const page = await ctx.client.listMessages({ conversationId: bpId, ...(nextToken ? { nextToken } : {}) });
         allMessages.push(...page.messages);
         nextToken = (page as any).meta?.nextToken;
       } while (nextToken);
 
-      // Map each message, annotating with role
-      const results: { id: string; role: 'user' | 'bot'; text: string; createdAt: string }[] = [];
-      for (const msg of allMessages) {
-        const text = BotpressService.extractPayloadText(msg.payload);
-        if (!text) continue;
-        results.push({
+      return allMessages
+        .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
+        .map((msg) => ({
           id: msg.id,
           role: msg.userId === ctx.client.user.id ? 'user' : 'bot',
-          text,
+          text: BotpressService.extractPayloadText(msg.payload) ?? '',
           createdAt: msg.createdAt,
-        });
-      }
-
-      // Botpress returns newest-first; reverse to chronological (ascending)
-      results.reverse();
-      return results;
-    } catch (error) {
-      this.logger.error(`Error loading conversation history:`, error);
+        }))
+        .filter((m) => m.text);
+    } catch {
       return [];
     }
   }
@@ -605,6 +602,7 @@ export class BotpressService {
     const p = payload as Record<string, unknown>;
     if (typeof p.text === 'string') return p.text;
     if (typeof p.markdown === 'string') return p.markdown;
+    if (typeof p.title === 'string') return p.title;
     return undefined;
   }
 
