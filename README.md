@@ -197,9 +197,14 @@ server/
 
 | Method | Endpoint | Auth | Description |
 |--------|----------|------|-------------|
-| POST | `/ai-agents/start` | Session | Start a new AI conversation |
-| POST | `/ai-agents/message` | Session | Send message to AI |
-| GET | `/ai-agents/messages/:conversationId` | Session | Get conversation messages |
+| POST | `/ai-agents/start` | Optional | Start/resume AI conversation (guest if unauthenticated) |
+| POST | `/ai-agents/start/new` | Session | Force-start a brand-new conversation |
+| POST | `/ai-agents/start/:conversationId` | Session | Resume a specific conversation |
+| POST | `/ai-agents/message` | Optional | Send message to AI |
+| GET | `/ai-agents/messages/:conversationId` | Session | Poll for new bot messages |
+| GET | `/ai-agents/guest/messages/:conversationId` | — | Poll guest conversation messages |
+| GET | `/ai-agents/history/:conversationId` | Session | Full conversation history (user + bot) |
+| GET | `/ai-agents/conversations` | Session | List all AI conversations (paginated) |
 | GET | `/ai-agents/stream/:conversationId` | Session | SSE stream for real-time AI responses |
 
 ### OpenAI (`/openai`)
@@ -296,9 +301,9 @@ npm run test:cov
 
 | Type | Suites | Tests |
 |------|--------|-------|
-| Unit | 12 | 229 |
+| Unit | ~15 | ~318 |
 | E2E | 5 | 61 |
-| **Total** | **17** | **290** |
+| **Total** | **~20** | **~379** |
 
 Tests use:
 - Mocked `PrismaService` (no real DB needed)

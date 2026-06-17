@@ -70,6 +70,7 @@ export type MockPrismaService = {
     findMany: jest.Mock;
     create: jest.Mock;
     update: jest.Mock;
+    count: jest.Mock;
   };
   patientSOAP: {
     findFirst: jest.Mock;
@@ -155,7 +156,7 @@ export function createMockPrismaService(): MockPrismaService {
     chat: createModelMock(['count']) as any,
     chatParticipant: createModelMock() as any,
     message: createModelMock(['count']) as any,
-    aiConversation: createModelMock() as any,
+    aiConversation: createModelMock(['count']) as any,
     patientSOAP: createModelMock(['upsert']) as any,
     consultation: createModelMock(['count']) as any,
     appointment: createModelMock(['count']) as any,

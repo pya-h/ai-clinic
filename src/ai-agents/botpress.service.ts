@@ -32,11 +32,7 @@ export class BotpressService {
   // Deduplicates concurrent getClient() calls for the same user (race-condition guard)
   private readonly pendingClientCreations = new Map<string, Promise<IUserContext>>();
 
-  /**
-   * Runtime mapping: DB conversation ID → actual Botpress conversation ID.
-   * Populated when Botpress no longer has the original conversation (e.g.
-   * after a Botpress-side expiry). Keeps DB records stable — no PK changes.
-   */
+  // DB conversation ID → replacement Botpress ID (after Botpress-side expiry)
   private readonly renewedConversations = new Map<string, string>();
 
   constructor(
@@ -56,10 +52,6 @@ export class BotpressService {
     );
   }
 
-  /**
-   * Resolve a DB conversation ID to the actual Botpress conversation ID.
-   * Returns the original ID if no renewal has happened.
-   */
   private resolveBotpressId(dbConversationId: string): string {
     return this.renewedConversations.get(dbConversationId) ?? dbConversationId;
   }
@@ -74,8 +66,6 @@ export class BotpressService {
       return existing;
     }
 
-    // Deduplicate: if another concurrent call is already creating the client for
-    // this user, wait for that same promise instead of creating a second client.
     const pending = this.pendingClientCreations.get(user.id);
     if (pending) {
       return pending;
@@ -91,14 +81,10 @@ export class BotpressService {
       let client: chat.AuthenticatedClient;
 
       if (savedKey) {
-        // Reconnect with saved key — bypass chat.Client.connect() because its
-        // getOrCreateUser endpoint doesn't exist on this Botpress server.
-        // Instead, construct the AuthenticatedClient manually via getUser.
         try {
           const rawClient = new chat.Client({ webhookId: this.webhookId });
           const { user: bpUser } = await rawClient.getUser({ 'x-user-key': savedKey });
-          // AuthenticatedClient's constructor is marked private in .d.ts but
-          // works at runtime — the SDK's own connect() uses it the same way.
+          // Private constructor, but the SDK's own connect() uses it the same way
           client = new (chat.AuthenticatedClient as any)(rawClient, { ...bpUser, key: savedKey }) as chat.AuthenticatedClient;
         } catch {
           this.logger.warn('Saved Botpress key invalid, creating fresh identity');
@@ -108,7 +94,6 @@ export class BotpressService {
         client = await chat.Client.connect({ webhookId: this.webhookId });
       }
 
-      // Persist the key for future reconnections
       if (client.user?.key && client.user.key !== savedKey) {
         await this.prismaService.user.update({
           where: { id: user.id },
@@ -127,9 +112,6 @@ export class BotpressService {
     })();
 
     this.pendingClientCreations.set(user.id, creationPromise);
-    // Swallow rejections on this side-chain — callers handle errors from
-    // the returned creationPromise directly. Without .catch() here,
-    // a rejection would create an unhandled promise rejection that crashes Node.
     creationPromise
       .catch(() => {})
       .finally(() => this.pendingClientCreations.delete(user.id));
@@ -194,9 +176,6 @@ export class BotpressService {
     }
   }
 
-  /**
-   * Force-start a brand-new conversation (ignores any existing ones).
-   */
   async startNew(user: User): Promise<AiConversation> {
     try {
       const ctx = await this.getClient(user);
@@ -217,12 +196,6 @@ export class BotpressService {
     }
   }
 
-  /**
-   * Resume a specific conversation by ID (must belong to the user).
-   * If Botpress no longer has the conversation (server restart / expiry),
-   * a fresh Botpress conversation is created transparently. The DB record
-   * stays unchanged — a runtime mapping redirects API calls to the new one.
-   */
   async resumeConversation(
     user: User,
     conversationId: string,
@@ -259,9 +232,6 @@ export class BotpressService {
     }
   }
 
-  /**
-   * List all AI conversations for a user (paginated, newest first).
-   */
   async listConversations(
     userId: string,
     skip = 0,
@@ -467,9 +437,6 @@ export class BotpressService {
     }
   }
 
-  /**
-   * Clean up user context and disconnect listener
-   */
   async cleanupUserContext(userId: string) {
     const ctx = await this.cacheService.get<IUserContext>(
       this.cachingOptions.group,
@@ -487,7 +454,6 @@ export class BotpressService {
     }
   }
 
-  // workaround for SSE issues
   async pollForNewMessages(
     user: User,
     conversationId: string,
@@ -504,10 +470,6 @@ export class BotpressService {
     return this.pollFromClient(ctx.client, bpId, dateOffset);
   }
 
-  /**
-   * Load full conversation history from our local DB.
-   * Returns ALL messages (user + bot) in chronological (ascending) order.
-   */
   async getConversationHistory(
     user: User,
     conversationId: string,
@@ -542,9 +504,6 @@ export class BotpressService {
     }
   }
 
-  /**
-   * Poll for guest conversation messages (no auth required).
-   */
   async pollGuestMessages(
     conversationId: string,
     dateOffset?: Date,
@@ -558,9 +517,6 @@ export class BotpressService {
     return this.pollFromClient(guestCtx.client, conversationId, dateOffset);
   }
 
-  /**
-   * Shared poll logic — fetches all pages via nextToken cursor pagination.
-   */
   private async pollFromClient(
     client: chat.AuthenticatedClient,
     conversationId: string,
@@ -593,10 +549,6 @@ export class BotpressService {
     }
   }
 
-  /**
-   * Extract displayable text from any Botpress message payload.
-   * Handles both `text` and `markdown` payload types.
-   */
   static extractPayloadText(payload: unknown): string | undefined {
     if (!payload || typeof payload !== 'object') return undefined;
     const p = payload as Record<string, unknown>;

@@ -101,10 +101,6 @@ export class AiAgentsController {
     return messages;
   }
 
-  /**
-   * Guest message polling — allows guests to receive AI responses.
-   * No auth required; uses the conversationId from /start as identifier.
-   */
   @Get('guest/messages/:conversationId')
   async pollGuestMessages(
     @Param('conversationId') conversationId: string,
@@ -164,33 +160,24 @@ export class AiAgentsController {
     @CurrentUser() user: User,
     @Param('conversationId') conversationId: string,
   ) {
-    // Take full control of the underlying socket (required for long-lived streams in Fastify)
     reply.hijack();
-
-    // Use the conversationId from the URL — this is what the client received from /start.
-    // Do NOT call getConversation() again here; that can create a brand-new conversation
-    // instead of using the one the client already has, breaking the message flow.
     const actualConversationId = conversationId;
 
     try {
-      // reply.hijack() bypasses all Fastify/NestJS middleware including CORS.
-      // We must emit CORS headers ourselves so the browser does not reject the SSE connection.
+      // hijack() bypasses Fastify CORS — emit headers manually
       const requestOrigin = (req.headers['origin'] as string | undefined) ?? '';
       const corsHeaders: Record<string, string> = {
         'Content-Type': 'text/event-stream',
         'Cache-Control': 'no-cache, no-transform',
         Connection: 'keep-alive',
-        'X-Accel-Buffering': 'no', // Disable buffering in nginx
+        'X-Accel-Buffering': 'no',
       };
       if (requestOrigin) {
         corsHeaders['Access-Control-Allow-Origin'] = requestOrigin;
         corsHeaders['Access-Control-Allow-Credentials'] = 'true';
       }
-      // Set SSE headers before any writes
       reply.raw.writeHead(200, corsHeaders);
 
-      // Helper to send SSE events with proper formatting.
-      // Guards against writes after the stream is closed/destroyed.
       let cleaned = false;
       const sendEvent = (event: string, data: unknown): boolean => {
         if (cleaned || reply.raw.destroyed || !reply.raw.writable) return false;
@@ -205,35 +192,25 @@ export class AiAgentsController {
         }
       };
 
-      // ── Poll mode: tell the client to use polling then close immediately ──────
       if (this.aiService.deliveryMode === 'poll') {
         sendEvent('mode', { mode: 'poll' });
         reply.raw.end();
         return;
       }
 
-      // ── SSE mode (default) ────────────────────────────────────────────────────
-      // Send initial connection confirmation
       sendEvent('connected', {
         conversationId: actualConversationId,
         timestamp: new Date().toISOString(),
       });
 
-      // Get listener from service
       const { listener, client } = await this.aiService.listen(
         user,
         actualConversationId,
       );
 
-      // Deduplication: the SDK may fire both the named 'message_created' handler AND
-      // the 'unknown' handler for the same event. Track processed IDs to avoid
-      // sending duplicates to the client and running SOAP detection twice.
       const processedMessageIds = new Set<string>();
 
-      // Debounce buffer: Botpress may fire multiple message_created signals in
-      // rapid succession as the bot composes its response (each with partial text
-      // and potentially different IDs). We buffer the latest and only forward
-      // after a 500ms quiet window so only the final/complete message is sent.
+      // Debounce: buffer the latest bot message and flush after 500ms quiet window
       let pendingBotMsg: { data: Record<string, unknown>; timer: ReturnType<typeof setTimeout> } | null = null;
 
       const flushPendingBotMsg = () => {
@@ -261,20 +238,12 @@ export class AiAgentsController {
         }
       };
 
-      // Shared logic for handling a bot message_created event.
       const handleBotMessage = (data: Record<string, unknown>) => {
-        // Filter user echoes — only forward bot messages
-        if (data.userId === client.user.id) {
-          return;
-        }
+        if (data.userId === client.user.id) return;
 
-        // Deduplicate — skip if we already processed this message ID
         const msgId = data.id as string;
-        if (msgId && processedMessageIds.has(msgId)) {
-          return;
-        }
+        if (msgId && processedMessageIds.has(msgId)) return;
 
-        // Replace any pending buffered message with this newer one
         if (pendingBotMsg) {
           clearTimeout(pendingBotMsg.timer);
         }
@@ -285,9 +254,6 @@ export class AiAgentsController {
         };
       };
 
-      // Named handler — fires when the SDK successfully parses the signal type.
-      // In SDK v0.5.x this rarely fires (signals usually arrive via 'unknown'),
-      // but we register it for forward compatibility with newer SDK versions.
       const onMessage = (ev: chat.Signals['message_created']) => {
         handleBotMessage(ev as unknown as Record<string, unknown>);
       };
@@ -297,22 +263,18 @@ export class AiAgentsController {
         sendEvent('error', { message: String(err) });
       };
 
-      // Fallback handler — catches signals the SDK doesn't parse into named events.
       const onUnknown = (payload: unknown) => {
         let normalized: unknown = payload;
         if (typeof payload === 'string') {
           try {
             normalized = JSON.parse(payload) as unknown;
           } catch {
-            // Non-JSON payload (e.g. Botpress "ping" keepalive) — silently ignore
             return;
           }
         }
 
         const norm = normalized as Record<string, unknown> | null;
-        if (!norm || typeof norm.type !== 'string') {
-          return; // unrecognised shape, drop silently
-        }
+        if (!norm || typeof norm.type !== 'string') return;
 
         const eventType = norm.type;
         const data = norm.data as Record<string, unknown> | undefined;
@@ -322,23 +284,15 @@ export class AiAgentsController {
           return;
         }
 
-        // message_status_changed is an internal Botpress event — clients don't need it
-        if (eventType === 'message_status_changed') {
-          return;
-        }
+        if (eventType === 'message_status_changed') return;
 
-        // Forward all other unknown events as-is
         sendEvent(eventType, data ?? norm);
       };
 
-      // Attach event handlers
       listener.on('message_created', onMessage);
       listener.on('error', onError);
       listener.on('unknown', onUnknown);
 
-      // Heartbeat to keep the HTTP connection alive (every 30 seconds).
-      // Also refreshes the Botpress client cache deadline so the listener
-      // isn't disconnected by the cron cleanup while the stream is active.
       const heartbeatInterval = setInterval(() => {
         if (cleaned || reply.raw.destroyed || !reply.raw.writable) {
           clearInterval(heartbeatInterval);
@@ -354,7 +308,6 @@ export class AiAgentsController {
         }
       }, 30000);
 
-      // Cleanup function — guarded to be idempotent (multiple close/aborted events can fire)
       const cleanup = async () => {
         if (cleaned) return;
         cleaned = true;
@@ -380,14 +333,10 @@ export class AiAgentsController {
         }
       };
 
-      // Handle client disconnect
       req.raw.on('close', cleanup);
       req.raw.on('aborted', cleanup);
       reply.raw.on('close', cleanup);
-      // NOTE: 'finish' is intentionally excluded — for SSE streams it fires when data is
-      // flushed but the connection may still be live; 'close' handles actual disconnects.
 
-      // Handle errors on the response stream
       reply.raw.on('error', (error) => {
         this.logger.error('SSE stream error:', error);
         cleanup();

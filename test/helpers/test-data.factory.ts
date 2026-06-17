@@ -260,6 +260,28 @@ export function buildPatientProfile(
   };
 }
 
+export interface TestAiConversation {
+  id: string;
+  userId: string;
+  topic: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export function buildAiConversation(
+  overrides: Partial<TestAiConversation> = {},
+): TestAiConversation {
+  const now = new Date();
+  return {
+    id: randomUuid(),
+    userId: randomUuid(),
+    topic: null,
+    createdAt: now,
+    updatedAt: now,
+    ...overrides,
+  };
+}
+
 export interface TestChat {
   id: string;
   topic: string | null;
