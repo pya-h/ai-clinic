@@ -1,19 +1,26 @@
 import {
+  Inject,
   Injectable,
   Logger,
   NotFoundException,
   ForbiddenException,
+  forwardRef,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { PatientSOAP } from '@prisma/client';
 import { PaginationOptionsDto } from '../common/dtos/pagination-options.dto';
+import { NotificationService } from '../notification/notification.service';
 
 @Injectable()
 export class SoapService {
   private readonly logger = new Logger(SoapService.name);
   private readonly SOAP_TAG = '***SOAP***';
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    @Inject(forwardRef(() => NotificationService))
+    private readonly notificationService: NotificationService,
+  ) {}
 
   private static readonly HEADING_RE =
     /^[ \t]*\*{0,2}[ \t]*(Subjective|Objective|Assessment|Plan)[ \t]*:?[ \t]*\*{0,2}[ \t]*/gim;
@@ -89,7 +96,7 @@ export class SoapService {
       `SOAP detected for conversation ${conversationId}, upserting...`,
     );
 
-    return this.prisma.patientSOAP.upsert({
+    const soap = await this.prisma.patientSOAP.upsert({
       where: { conversationId },
       create: {
         userId,
@@ -108,6 +115,12 @@ export class SoapService {
         rawNote: parsed.rawNote,
       },
     });
+
+    this.notificationService
+      .onSoapReady(userId, conversationId)
+      .catch((e) => this.logger.error(`Notification failed: ${e.message}`));
+
+    return soap;
   }
 
   /**

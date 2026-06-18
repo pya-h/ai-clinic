@@ -2,9 +2,11 @@ import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
+  Inject,
   Injectable,
   Logger,
   NotFoundException,
+  forwardRef,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CacheService } from '../cache/cache.service';
@@ -12,6 +14,7 @@ import { DoctorReview, User, UserRolesEnum } from '@prisma/client';
 import { CreateReviewDto } from './dto/create-review.dto';
 import { UpdateReviewDto } from './dto/update-review.dto';
 import { PaginationOptionsDto } from '../common/dtos/pagination-options.dto';
+import { NotificationService } from '../notification/notification.service';
 
 export interface AggregateRating {
   averageRating: number | null;
@@ -28,6 +31,8 @@ export class ReviewService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly cacheService: CacheService,
+    @Inject(forwardRef(() => NotificationService))
+    private readonly notificationService: NotificationService,
   ) {}
 
   /**
@@ -92,6 +97,10 @@ export class ReviewService {
 
     // Invalidate cached rating for this doctor
     await this.invalidateRatingCache(dto.doctorId);
+
+    this.notificationService
+      .onNewReview(doctor.userId, `${user.firstname} ${user.lastname}`)
+      .catch((e) => this.logger.error(`Notification failed: ${e.message}`));
 
     return review;
   }

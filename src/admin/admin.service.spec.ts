@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { AdminService } from './admin.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { ReviewService } from '../review/review.service';
+import { NotificationService } from '../notification/notification.service';
 import {
   BadRequestException,
   ForbiddenException,
@@ -72,6 +73,10 @@ describe('AdminService', () => {
         AdminService,
         { provide: PrismaService, useValue: prisma },
         { provide: ReviewService, useValue: reviewService },
+        {
+          provide: NotificationService,
+          useValue: { onDoctorVerified: jest.fn().mockResolvedValue(undefined) },
+        },
       ],
     }).compile();
 

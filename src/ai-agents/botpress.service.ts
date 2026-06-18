@@ -260,6 +260,24 @@ export class BotpressService {
     return { data, total, skip, take };
   }
 
+  async renameConversation(
+    userId: string,
+    conversationId: string,
+    topic: string,
+  ): Promise<AiConversation> {
+    const conversation = await this.prismaService.aiConversation.findFirst({
+      where: { id: conversationId, userId },
+    });
+    if (!conversation) {
+      throw new NotFoundException('Conversation not found.');
+    }
+
+    return this.prismaService.aiConversation.update({
+      where: { id: conversationId },
+      data: { topic },
+    });
+  }
+
   async startGuest(): Promise<{ id: string; guest: true }> {
     this.pruneGuestContexts();
 

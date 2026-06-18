@@ -9,6 +9,7 @@ import {
   Logger,
   Param,
   ParseIntPipe,
+  Patch,
   Post,
   Query,
   Req,
@@ -26,6 +27,7 @@ import { OptionalAuthGuard } from '../auth/guards/optional-auth.guard';
 import { ApiStandardOkResponse } from '../common/decorators/api-standard-ok-response.decorator';
 import { SoapService } from '../soap/soap.service';
 import { SendAiMessageDto } from './dto/send-ai-message.dto';
+import { RenameConversationDto } from './dto/rename-conversation.dto';
 
 @ApiTags('Ai Agents')
 @Controller('ai-agents')
@@ -131,6 +133,17 @@ export class AiAgentsController {
     @Query('take', new DefaultValuePipe(20), ParseIntPipe) take: number,
   ) {
     return this.aiService.listConversations(user.id, skip, take);
+  }
+
+  @ApiOperation({ description: 'Rename an AI conversation.' })
+  @UseGuards(CookieAuthGuard)
+  @Patch('conversations/:conversationId/rename')
+  async renameConversation(
+    @CurrentUser() user: User,
+    @Param('conversationId') conversationId: string,
+    @Body() body: RenameConversationDto,
+  ) {
+    return this.aiService.renameConversation(user.id, conversationId, body.topic);
   }
 
   @ApiOperation({ description: 'Start a brand-new AI conversation (ignores existing).' })

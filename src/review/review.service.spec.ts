@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { ReviewService, AggregateRating } from './review.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { CacheService } from '../cache/cache.service';
+import { NotificationService } from '../notification/notification.service';
 import {
   BadRequestException,
   ConflictException,
@@ -83,6 +84,10 @@ describe('ReviewService', () => {
         ReviewService,
         { provide: PrismaService, useValue: prisma },
         { provide: CacheService, useValue: cache },
+        {
+          provide: NotificationService,
+          useValue: { onNewReview: jest.fn().mockResolvedValue(undefined) },
+        },
       ],
     }).compile();
 

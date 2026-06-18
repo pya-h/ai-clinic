@@ -24,6 +24,8 @@ import { ConsultationModule } from './consultation/consultation.module';
 import { SchedulingModule } from './scheduling/scheduling.module';
 import { AdminModule } from './admin/admin.module';
 import { ChatModule } from './chat/chat.module';
+import { MatchingModule } from './matching/matching.module';
+import { NotificationModule } from './notification/notification.module';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 
 @Module({
@@ -50,6 +52,8 @@ import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
     SchedulingModule,
     AdminModule,
     ChatModule,
+    MatchingModule,
+    NotificationModule,
   ],
   controllers: [AppController],
   providers: [

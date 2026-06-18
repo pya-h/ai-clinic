@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConsultationService } from './consultation.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { NotificationService } from '../notification/notification.service';
 import {
   createMockPrismaService,
   MockPrismaService,
@@ -40,6 +41,14 @@ describe('ConsultationService', () => {
       providers: [
         ConsultationService,
         { provide: PrismaService, useValue: prisma },
+        {
+          provide: NotificationService,
+          useValue: {
+            onNewConsultation: jest.fn().mockResolvedValue(undefined),
+            onDoctorDecision: jest.fn().mockResolvedValue(undefined),
+            onPaymentConfirmed: jest.fn().mockResolvedValue(undefined),
+          },
+        },
       ],
     }).compile();
 

@@ -1,9 +1,11 @@
 import {
   BadRequestException,
   ForbiddenException,
+  Inject,
   Injectable,
   Logger,
   NotFoundException,
+  forwardRef,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { ReviewService } from '../review/review.service';
@@ -11,6 +13,7 @@ import { User } from '@prisma/client';
 import { AdminUserFilterDto } from './dto/admin-user-filter.dto';
 import { AdminUpdateUserDto } from './dto/admin-update-user.dto';
 import { VerifyDoctorDto } from './dto/verify-doctor.dto';
+import { NotificationService } from '../notification/notification.service';
 
 @Injectable()
 export class AdminService {
@@ -19,6 +22,8 @@ export class AdminService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly reviewService: ReviewService,
+    @Inject(forwardRef(() => NotificationService))
+    private readonly notificationService: NotificationService,
   ) {}
 
   /* ── B-55  User management ─────────────────────────────── */
@@ -151,7 +156,7 @@ export class AdminService {
       );
     }
 
-    return this.prisma.doctorProfile.update({
+    const updated = await this.prisma.doctorProfile.update({
       where: { id: doctorId },
       data: {
         verified: dto.approved,
@@ -160,6 +165,14 @@ export class AdminService {
         rejectionReason: dto.approved ? null : dto.reason,
       },
     });
+
+    if (dto.approved) {
+      this.notificationService
+        .onDoctorVerified(doctor.userId)
+        .catch((e) => this.logger.error(`Notification failed: ${e.message}`));
+    }
+
+    return updated;
   }
 
   /* ── B-57  Promote / demote ────────────────────────────── */

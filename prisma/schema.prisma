@@ -111,6 +111,16 @@ enum SubscriptionStatusEnum {
   EXPIRED
 }
 
+enum MatchStatusEnum {
+  SEARCHING
+  MATCHED
+  ACCEPTED
+  CONSULTATION_CREATED
+  TIMEOUT
+  MANUAL_BROWSE
+  CANCELLED
+}
+
 enum NotificationTypeEnum {
   CONSULTATION_REQUEST
   DOCTOR_DECISION
@@ -162,6 +172,7 @@ model User {
   subscription           Subscription?
   notifications          Notification[]
   pushSubscriptions      PushSubscription[]
+  matchRequests          MatchRequest[]     @relation("PatientMatchRequests")
 
   @@map("user")
 }
@@ -266,7 +277,8 @@ model PatientSOAP {
   triageLevel        TriageLevelEnum?       @map("triage_level")
   confidenceScores   Json?                  @map("confidence_scores")
 
-  consultations Consultation[]
+  consultations  Consultation[]
+  matchRequests  MatchRequest[]
 
   @@map("patient_soap")
 }
@@ -341,6 +353,8 @@ model DoctorProfile {
   availability     DoctorAvailability[]
   slotDurations    SlotDuration[]
   exceptions       AvailabilityException[]
+
+  matchRequests    MatchRequest[]
 
   @@map("doctor_profile")
 }
@@ -536,6 +550,34 @@ model DoctorNurseAssignment {
 
   @@unique([doctorId, nurseId])
   @@map("doctor_nurse_assignment")
+}
+
+// ────────────── MATCHING ──────────────
+
+model MatchRequest {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  patientId String @map("patient_id")
+  patient   User   @relation("PatientMatchRequests", fields: [patientId], references: [id])
+
+  soapId String?      @map("soap_id")
+  soap   PatientSOAP? @relation(fields: [soapId], references: [id])
+
+  specialty   DoctorSpecialtiesEnum? @map("specialty")
+  triageLevel TriageLevelEnum?       @map("triage_level")
+
+  status          MatchStatusEnum @default(SEARCHING)
+  matchedDoctorId Int?            @map("matched_doctor_id")
+  matchedDoctor   DoctorProfile?  @relation(fields: [matchedDoctorId], references: [id])
+
+  consultationId String? @unique @map("consultation_id")
+
+  resolvedAt DateTime? @map("resolved_at")
+
+  @@index([patientId, status])
+  @@map("match_request")
 }
 
 // ────────────── CALLS ──────────────

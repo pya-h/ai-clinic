@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { SoapService } from './soap.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { NotificationService } from '../notification/notification.service';
 import { NotFoundException, ForbiddenException } from '@nestjs/common';
 import { randomUuid } from '../../test/helpers/test-data.factory';
 
@@ -44,6 +45,10 @@ describe('SoapService', () => {
       providers: [
         SoapService,
         { provide: PrismaService, useValue: prisma },
+        {
+          provide: NotificationService,
+          useValue: { onSoapReady: jest.fn().mockResolvedValue(undefined) },
+        },
       ],
     }).compile();
 

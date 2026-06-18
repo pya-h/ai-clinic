@@ -9,12 +9,13 @@ import {
   WebSocketServer,
   WsException,
 } from '@nestjs/websockets';
-import { Logger } from '@nestjs/common';
+import { Inject, Logger, forwardRef } from '@nestjs/common';
 import { Server, Socket } from 'socket.io';
 import { ChatService } from './chat.service';
 import { MessageTypeEnum } from '@prisma/client';
 import { ConfigService } from '@nestjs/config';
 import { createHash } from 'crypto';
+import { NotificationService } from '../notification/notification.service';
 
 /**
  * Chat WebSocket Gateway
@@ -43,6 +44,8 @@ export class ChatGateway
   constructor(
     private readonly chatService: ChatService,
     private readonly configService: ConfigService,
+    @Inject(forwardRef(() => NotificationService))
+    private readonly notificationService: NotificationService,
   ) {}
 
   /**
@@ -172,6 +175,14 @@ export class ChatGateway
       this.server.to(`chat:${payload.chatId}`).emit('chat:message', {
         message: serialized,
       });
+
+      this.notifyOfflineParticipants(
+        payload.chatId,
+        user.id,
+        `${user.firstname} ${user.lastname}`,
+      ).catch((e) =>
+        this.logger.error(`Chat notification failed: ${e.message}`),
+      );
     } catch (err) {
       this.logger.error(`chat:message error: ${err.message}`);
       client.emit('chat:error', {
@@ -379,6 +390,31 @@ export class ChatGateway
    * For WebSocket auth, we attempt to parse the signed session cookie.
    * Since the WS handshake is an HTTP upgrade, the cookie header is available.
    */
+  private async notifyOfflineParticipants(
+    chatId: string,
+    senderId: string,
+    senderName: string,
+  ): Promise<void> {
+    const participants = await this.chatService['prisma'].chatParticipant.findMany({
+      where: { chatId },
+      select: { userId: true },
+    });
+
+    for (const p of participants) {
+      if (p.userId === senderId) continue;
+      const room = this.server.adapter;
+      const sockets = await this.server.in(`user:${p.userId}`).fetchSockets();
+      if (sockets.length === 0) {
+        await this.notificationService.onNewChatMessage(
+          chatId,
+          senderId,
+          p.userId,
+          senderName,
+        );
+      }
+    }
+  }
+
   private extractUserFromSocket(socket: Socket): any | null {
     try {
       const cookieHeader = socket.handshake.headers.cookie;

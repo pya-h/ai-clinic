@@ -1,9 +1,11 @@
 import {
   BadRequestException,
   ForbiddenException,
+  Inject,
   Injectable,
   Logger,
   NotFoundException,
+  forwardRef,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import {
@@ -17,6 +19,7 @@ import { CreateConsultationDto } from './dto/create-consultation.dto';
 import { DoctorDecisionDto } from './dto/doctor-decision.dto';
 import { CompleteConsultationDto } from './dto/complete-consultation.dto';
 import { ConsultationFilterDto } from './dto/consultation-filter.dto';
+import { NotificationService } from '../notification/notification.service';
 
 /**
  * Allowed state transitions for the consultation state machine.
@@ -62,7 +65,11 @@ const ALLOWED_TRANSITIONS: Record<
 export class ConsultationService {
   private readonly logger = new Logger(ConsultationService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    @Inject(forwardRef(() => NotificationService))
+    private readonly notificationService: NotificationService,
+  ) {}
 
   // ──────────────── State Machine ────────────────
 
@@ -147,6 +154,10 @@ export class ConsultationService {
       `Consultation ${consultation.id} created by patient ${user.id} for doctor ${dto.doctorId}`,
     );
 
+    this.notificationService
+      .onNewConsultation(consultation.id, doctor.userId)
+      .catch((e) => this.logger.error(`Notification failed: ${e.message}`));
+
     return consultation;
   }
 
@@ -182,6 +193,10 @@ export class ConsultationService {
     this.logger.log(
       `Doctor decided on consultation ${consultationId}: ${dto.doctorDecision}`,
     );
+
+    this.notificationService
+      .onDoctorDecision(consultationId, consultation.patientId, true)
+      .catch((e) => this.logger.error(`Notification failed: ${e.message}`));
 
     return updated;
   }
