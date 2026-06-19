@@ -128,6 +128,53 @@ export type MockPrismaService = {
     update: jest.Mock;
     delete: jest.Mock;
   };
+  matchRequest: {
+    findFirst: jest.Mock;
+    findUnique: jest.Mock;
+    findMany: jest.Mock;
+    create: jest.Mock;
+    update: jest.Mock;
+    delete: jest.Mock;
+  };
+  notification: {
+    findFirst: jest.Mock;
+    findUnique: jest.Mock;
+    findMany: jest.Mock;
+    create: jest.Mock;
+    update: jest.Mock;
+    delete: jest.Mock;
+    count: jest.Mock;
+    updateMany: jest.Mock;
+  };
+  pushSubscription: {
+    findFirst: jest.Mock;
+    findUnique: jest.Mock;
+    findMany: jest.Mock;
+    create: jest.Mock;
+    update: jest.Mock;
+    delete: jest.Mock;
+    upsert: jest.Mock;
+    updateMany: jest.Mock;
+  };
+  payment: {
+    findFirst: jest.Mock;
+    findUnique: jest.Mock;
+    findMany: jest.Mock;
+    create: jest.Mock;
+    update: jest.Mock;
+    delete: jest.Mock;
+    count: jest.Mock;
+  };
+  call: {
+    findFirst: jest.Mock;
+    findUnique: jest.Mock;
+    findMany: jest.Mock;
+    create: jest.Mock;
+    update: jest.Mock;
+    delete: jest.Mock;
+    count: jest.Mock;
+  };
+  $transaction: jest.Mock;
   $connect: jest.Mock;
   $disconnect: jest.Mock;
 };
@@ -164,6 +211,12 @@ export function createMockPrismaService(): MockPrismaService {
     slotDuration: createModelMock() as any,
     availabilityException: createModelMock() as any,
     doctorDocument: createModelMock() as any,
+    matchRequest: createModelMock() as any,
+    notification: createModelMock(['count', 'updateMany']) as any,
+    pushSubscription: createModelMock(['upsert', 'updateMany']) as any,
+    payment: createModelMock(['count']) as any,
+    call: createModelMock(['count']) as any,
+    $transaction: jest.fn(),
     $connect: jest.fn(),
     $disconnect: jest.fn(),
   };
