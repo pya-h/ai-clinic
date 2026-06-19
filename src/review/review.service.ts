@@ -10,7 +10,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CacheService } from '../cache/cache.service';
-import { DoctorReview, User, UserRolesEnum } from '@prisma/client';
+import { ConsultationStatusEnum, DoctorReview, User, UserRolesEnum } from '@prisma/client';
 import { CreateReviewDto } from './dto/create-review.dto';
 import { UpdateReviewDto } from './dto/update-review.dto';
 import { PaginationOptionsDto } from '../common/dtos/pagination-options.dto';
@@ -61,7 +61,7 @@ export class ReviewService {
       where: {
         patientId: user.id,
         doctorId: dto.doctorId,
-        status: 'COMPLETED',
+        status: ConsultationStatusEnum.COMPLETED,
       },
     });
     if (!completedConsultation) {

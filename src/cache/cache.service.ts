@@ -150,7 +150,7 @@ export class CacheService {
   }
 
   async mdel2(...items: { g: string; k: string }[]): Promise<boolean> {
-    const [withDelEvents, normals] = splitIn2(
+    const [withDelEvents] = splitIn2(
       items,
       (item) => item.g in this.delEvents,
     );

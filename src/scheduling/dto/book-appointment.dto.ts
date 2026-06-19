@@ -1,6 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { VisitMethodsEnum } from '@prisma/client';
 import {
+  IsDateString,
   IsEnum,
   IsInt,
   IsNumber,
@@ -30,7 +31,7 @@ export class BookAppointmentDto {
     description: 'Appointment date and time in ISO-8601 format.',
     example: '2026-03-15T10:00:00.000Z',
   })
-  @IsString()
+  @IsDateString()
   dateTime: string;
 
   @ApiProperty({

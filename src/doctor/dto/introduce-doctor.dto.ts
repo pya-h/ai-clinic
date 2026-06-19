@@ -7,13 +7,10 @@ import {
 import { Type } from 'class-transformer';
 import {
   IsArray,
-  IsBoolean,
   IsDate,
   IsNotEmpty,
   IsOptional,
   IsString,
-  IsUrl,
-  MinLength,
 } from 'class-validator';
 import { IsEnumDetailed } from '../../common/decorators/is-enum-detailed.decorator';
 

@@ -2,7 +2,6 @@ import {
   IsEmail,
   IsString,
   IsBoolean,
-  IsEnum,
   IsNotEmpty,
   IsOptional,
   Matches,

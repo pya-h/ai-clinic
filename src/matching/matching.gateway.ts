@@ -266,11 +266,7 @@ export class MatchingGateway
   }
 
   private async getDoctorUserId(doctorProfileId: number): Promise<string | null> {
-    const profile = await this.matchingService['prisma'].doctorProfile.findUnique({
-      where: { id: doctorProfileId },
-      select: { userId: true },
-    });
-    return profile?.userId ?? null;
+    return this.matchingService.getDoctorUserId(doctorProfileId);
   }
 
   private extractUserFromSocket(socket: Socket): any | null {

@@ -395,20 +395,16 @@ export class ChatGateway
     senderId: string,
     senderName: string,
   ): Promise<void> {
-    const participants = await this.chatService['prisma'].chatParticipant.findMany({
-      where: { chatId },
-      select: { userId: true },
-    });
+    const participantIds = await this.chatService.getChatParticipantUserIds(chatId);
 
-    for (const p of participants) {
-      if (p.userId === senderId) continue;
-      const room = this.server.adapter;
-      const sockets = await this.server.in(`user:${p.userId}`).fetchSockets();
+    for (const participantUserId of participantIds) {
+      if (participantUserId === senderId) continue;
+      const sockets = await this.server.in(`user:${participantUserId}`).fetchSockets();
       if (sockets.length === 0) {
         await this.notificationService.onNewChatMessage(
           chatId,
           senderId,
-          p.userId,
+          participantUserId,
           senderName,
         );
       }

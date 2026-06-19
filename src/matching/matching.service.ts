@@ -524,9 +524,17 @@ export class MatchingService {
   }
 
   private async getRejectedDoctorIds(
-    matchRequestId: string,
+    _matchRequestId: string,
     currentRejectorId: number,
   ): Promise<number[]> {
     return [currentRejectorId];
+  }
+
+  async getDoctorUserId(doctorProfileId: number): Promise<string | null> {
+    const profile = await this.prisma.doctorProfile.findUnique({
+      where: { id: doctorProfileId },
+      select: { userId: true },
+    });
+    return profile?.userId ?? null;
   }
 }

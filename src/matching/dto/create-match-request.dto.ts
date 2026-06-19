@@ -1,4 +1,4 @@
-import { IsEnum, IsOptional, IsString, IsUUID } from 'class-validator';
+import { IsEnum, IsOptional, IsUUID } from 'class-validator';
 import { DoctorSpecialtiesEnum } from '@prisma/client';
 
 export class CreateMatchRequestDto {

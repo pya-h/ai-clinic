@@ -613,6 +613,17 @@ export class ChatService {
   }
 
   /**
+   * Get participant user IDs for a chat room.
+   */
+  async getChatParticipantUserIds(chatId: string): Promise<string[]> {
+    const participants = await this.prisma.chatParticipant.findMany({
+      where: { chatId },
+      select: { userId: true },
+    });
+    return participants.map((p) => p.userId);
+  }
+
+  /**
    * Shared user select fields (exclude sensitive data).
    */
   private userSelect() {
