@@ -5,6 +5,7 @@ import {
   IsOptional,
   IsString,
   Max,
+  MaxLength,
   Min,
 } from 'class-validator';
 
@@ -24,10 +25,12 @@ export class CreateReviewDto {
   @ApiPropertyOptional({ description: 'Review title.' })
   @IsOptional()
   @IsString()
+  @MaxLength(200)
   title?: string;
 
   @ApiPropertyOptional({ description: 'Review body / overview text.' })
   @IsOptional()
   @IsString()
+  @MaxLength(5000)
   overview?: string;
 }

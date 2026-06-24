@@ -3,6 +3,7 @@ import {
   Body,
   Controller,
   DefaultValuePipe,
+  ForbiddenException,
   Get,
   HttpCode,
   HttpStatus,
@@ -26,6 +27,7 @@ import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { CookieAuthGuard } from '../auth/guards/cookie-auth.guard';
 import { OptionalAuthGuard } from '../auth/guards/optional-auth.guard';
 import { ApiStandardOkResponse } from '../common/decorators/api-standard-ok-response.decorator';
+import { PrismaService } from '../prisma/prisma.service';
 import { SoapService } from '../soap/soap.service';
 import { SendAiMessageDto } from './dto/send-ai-message.dto';
 import { RenameConversationDto } from './dto/rename-conversation.dto';
@@ -38,11 +40,13 @@ export class AiAgentsController {
   constructor(
     private readonly aiService: BotpressService,
     private readonly soapService: SoapService,
+    private readonly prisma: PrismaService,
   ) {}
 
   @ApiOperation({ description: 'Used for logging in the user' })
   @ApiStandardOkResponse('void')
   @UseGuards(OptionalAuthGuard)
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
   @HttpCode(HttpStatus.OK)
   @Post('start')
   async start(@CurrentUser() user: User | null) {
@@ -72,6 +76,13 @@ export class AiAgentsController {
       return;
     }
 
+    if (body.conversationId) {
+      const conv = await this.prisma.aiConversation.findFirst({
+        where: { id: body.conversationId, userId: user.id },
+      });
+      if (!conv) throw new ForbiddenException('Access denied.');
+    }
+
     const actualConversationId =
       body.conversationId ??
       (await this.aiService.getConversation(user, true)).id;
@@ -85,6 +96,11 @@ export class AiAgentsController {
     @Param('conversationId') conversationId: string,
     @Query('dateOffset') dateOffset?: string,
   ) {
+    const conversation = await this.prisma.aiConversation.findFirst({
+      where: { id: conversationId, userId: user.id },
+    });
+    if (!conversation) throw new ForbiddenException('Access denied.');
+
     const messages = await this.aiService.pollForNewMessages(
       user,
       conversationId,
@@ -179,15 +195,21 @@ export class AiAgentsController {
     const actualConversationId = conversationId;
 
     try {
+      const conversation = await this.prisma.aiConversation.findFirst({
+        where: { id: conversationId, userId: user.id },
+      });
+      if (!conversation) throw new ForbiddenException('Access denied.');
+
       // hijack() bypasses Fastify CORS — emit headers manually
       const requestOrigin = (req.headers['origin'] as string | undefined) ?? '';
+      const allowedOrigins = (process.env.CORS_ORIGIN || 'http://localhost:5173').split(',').map(o => o.trim());
       const corsHeaders: Record<string, string> = {
         'Content-Type': 'text/event-stream',
         'Cache-Control': 'no-cache, no-transform',
         Connection: 'keep-alive',
         'X-Accel-Buffering': 'no',
       };
-      if (requestOrigin) {
+      if (requestOrigin && allowedOrigins.includes(requestOrigin)) {
         corsHeaders['Access-Control-Allow-Origin'] = requestOrigin;
         corsHeaders['Access-Control-Allow-Credentials'] = 'true';
       }
@@ -309,7 +331,7 @@ export class AiAgentsController {
 
       const onError = (err: unknown) => {
         this.logger.error('Botpress listener error:', err);
-        sendEvent('error', { message: String(err) });
+        sendEvent('error', { message: 'An internal error occurred.' });
       };
 
       const onUnknown = (payload: unknown) => {

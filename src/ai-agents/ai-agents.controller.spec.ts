@@ -3,6 +3,7 @@ import { BadRequestException } from '@nestjs/common';
 import { AiAgentsController } from './ai-agents.controller';
 import { BotpressService } from './botpress.service';
 import { SoapService } from '../soap/soap.service';
+import { PrismaService } from '../prisma/prisma.service';
 import {
   randomUuid,
   buildUser,
@@ -41,6 +42,14 @@ describe('AiAgentsController', () => {
       providers: [
         { provide: BotpressService, useValue: botpressService },
         { provide: SoapService, useValue: soapService },
+        {
+          provide: PrismaService,
+          useValue: {
+            aiConversation: {
+              findFirst: jest.fn().mockResolvedValue({ id: 'conv-1', userId: 'user-1' }),
+            },
+          },
+        },
       ],
     }).compile();
 

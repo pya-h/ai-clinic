@@ -64,13 +64,13 @@ export class UserService {
     if (await this.emailExists(userData.email)) {
       throw new ConflictException('Email is unavailable!');
     }
-    if (!this.utilsService.isEnumElement(UserRolesEnum, userData.role)) {
+    if (userData.role !== undefined && !this.utilsService.isEnumElement(UserRolesEnum, userData.role)) {
       throw new BadRequestException('Invalid role!');
     }
 
     const hashedPassword = await this.utilsService.getHash(userData.password);
 
-    const user = await this.prisma.user.create({
+    const { password: _, ...user } = await this.prisma.user.create({
       data: {
         firstname: userData.firstname,
         lastname: userData.lastname,
@@ -134,6 +134,20 @@ export class UserService {
       where: { id: user.id },
       data: { avatar: uploaded.url },
       select: { id: true, avatar: true },
+    });
+  }
+
+  getPublicProfile(id: string) {
+    return this.prisma.user.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        firstname: true,
+        lastname: true,
+        role: true,
+        avatar: true,
+        isPrivate: true,
+      },
     });
   }
 

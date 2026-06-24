@@ -80,7 +80,7 @@ describe('AuthService', () => {
       );
 
       expect(result.email).toBe(mockUser.email);
-      expect(result.password).toBeUndefined();
+      expect((result as any).password).toBeUndefined();
       expect(mockSession.set).toHaveBeenCalledWith(
         'user',
         expect.objectContaining({ email: mockUser.email }),
@@ -131,7 +131,7 @@ describe('AuthService', () => {
       );
 
       expect(result.email).toBe(mockUser.email);
-      expect(result.password).toBeUndefined();
+      expect((result as any).password).toBeUndefined();
       expect(mockSession.set).toHaveBeenCalledWith(
         'user',
         expect.objectContaining({ id: newId }),
@@ -162,7 +162,7 @@ describe('AuthService', () => {
       );
 
       expect(result.firstname).toBe(updatedName);
-      expect(result.password).toBeUndefined();
+      expect((result as any).password).toBeUndefined();
       expect(mockSession.set).toHaveBeenCalledWith(
         'user',
         expect.objectContaining({ firstname: updatedName }),

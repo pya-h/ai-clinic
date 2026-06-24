@@ -48,6 +48,15 @@ describe('MatchingService', () => {
     admin = createMockAdminUser();
     superAdmin = createMockSuperAdminUser();
 
+    // Make $transaction execute the callback with the mock prisma as the tx client
+    prisma.$transaction.mockImplementation((fn) => fn(prisma));
+
+    // Add matchRejection model mock (used by rejectMatch and getRejectedDoctorIds)
+    (prisma as any).matchRejection = {
+      create: jest.fn().mockResolvedValue({}),
+      findMany: jest.fn().mockResolvedValue([]),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         MatchingService,
@@ -1119,6 +1128,7 @@ describe('MatchingService', () => {
       const requestId = randomUUID();
       prisma.matchRequest.findUnique.mockResolvedValue({
         id: requestId,
+        patientId: patient.id,
         status: MatchStatusEnum.TIMEOUT,
       });
       const updated = {
@@ -1128,7 +1138,7 @@ describe('MatchingService', () => {
       };
       prisma.matchRequest.update.mockResolvedValue(updated);
 
-      const result = await service.fallbackToManualBrowse(requestId);
+      const result = await service.fallbackToManualBrowse(requestId, patient as any);
 
       expect(result).toEqual(updated);
       expect(prisma.matchRequest.update).toHaveBeenCalledWith({
@@ -1143,22 +1153,24 @@ describe('MatchingService', () => {
     it('should reject from SEARCHING status', async () => {
       prisma.matchRequest.findUnique.mockResolvedValue({
         id: randomUUID(),
+        patientId: patient.id,
         status: MatchStatusEnum.SEARCHING,
       });
 
       await expect(
-        service.fallbackToManualBrowse(randomUUID()),
+        service.fallbackToManualBrowse(randomUUID(), patient as any),
       ).rejects.toThrow(BadRequestException);
     });
 
     it('should reject from CANCELLED status', async () => {
       prisma.matchRequest.findUnique.mockResolvedValue({
         id: randomUUID(),
+        patientId: patient.id,
         status: MatchStatusEnum.CANCELLED,
       });
 
       await expect(
-        service.fallbackToManualBrowse(randomUUID()),
+        service.fallbackToManualBrowse(randomUUID(), patient as any),
       ).rejects.toThrow(BadRequestException);
     });
 
@@ -1166,7 +1178,7 @@ describe('MatchingService', () => {
       prisma.matchRequest.findUnique.mockResolvedValue(null);
 
       await expect(
-        service.fallbackToManualBrowse(randomUUID()),
+        service.fallbackToManualBrowse(randomUUID(), patient as any),
       ).rejects.toThrow(NotFoundException);
     });
   });

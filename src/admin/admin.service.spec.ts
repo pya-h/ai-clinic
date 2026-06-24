@@ -186,7 +186,7 @@ describe('AdminService', () => {
 
       const result = await service.updateUser(mockRegularUser.id, {
         firstname: updatedName,
-      });
+      }, mockSuperAdmin as any);
 
       expect(result.firstname).toBe(updatedName);
       expect(prisma.user.update).toHaveBeenCalledWith(
@@ -202,7 +202,7 @@ describe('AdminService', () => {
       prisma.user.findUnique.mockResolvedValue(null);
 
       await expect(
-        service.updateUser(randomUuid(), { firstname: randomFirstName() }),
+        service.updateUser(randomUuid(), { firstname: randomFirstName() }, mockSuperAdmin as any),
       ).rejects.toThrow(NotFoundException);
     });
   });
@@ -217,7 +217,7 @@ describe('AdminService', () => {
         isActive: false,
       });
 
-      const result = await service.deactivateUser(mockRegularUser.id);
+      const result = await service.deactivateUser(mockRegularUser.id, mockSuperAdmin as any);
 
       expect(result.isActive).toBe(false);
       expect(prisma.user.update).toHaveBeenCalledWith(
@@ -232,7 +232,7 @@ describe('AdminService', () => {
     it('should throw NotFoundException if user not found', async () => {
       prisma.user.findUnique.mockResolvedValue(null);
 
-      await expect(service.deactivateUser('nonexistent')).rejects.toThrow(
+      await expect(service.deactivateUser('nonexistent', mockSuperAdmin as any)).rejects.toThrow(
         NotFoundException,
       );
     });
@@ -244,7 +244,7 @@ describe('AdminService', () => {
       });
 
       await expect(
-        service.deactivateUser(mockRegularUser.id),
+        service.deactivateUser(mockRegularUser.id, mockSuperAdmin as any),
       ).rejects.toThrow(BadRequestException);
     });
   });

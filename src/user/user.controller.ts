@@ -5,6 +5,7 @@ import {
   Get,
   NotFoundException,
   Param,
+  ParseUUIDPipe,
   Patch,
   Post,
   Req,
@@ -78,9 +79,15 @@ export class UserController {
   @Get(':id')
   async getUser(
     @CurrentUser() currentUser: User,
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
   ) {
     if (id === currentUser.id) return currentUser;
+
+    if (!currentUser.isAdmin && !currentUser.isSuperAdmin) {
+      const user = await this.userService.getPublicProfile(id);
+      if (!user) throw new NotFoundException('User Not Found!');
+      return user;
+    }
 
     const user = await this.userService.getById(id);
     if (!user) throw new NotFoundException('User Not Found!');

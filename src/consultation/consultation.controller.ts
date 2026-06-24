@@ -90,6 +90,44 @@ export class ConsultationController {
   }
 
   @ApiOperation({
+    description:
+      'Advance consultation to pending payment (DOCTOR_DECIDED → PENDING_PAYMENT).',
+  })
+  @Patch(':id/advance-payment')
+  async advanceToPayment(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: User,
+  ) {
+    return this.consultationService.advanceToPayment(id, user);
+  }
+
+  @ApiOperation({
+    description:
+      'Confirm payment for a consultation (PENDING_PAYMENT → PAYMENT_CONFIRMED).',
+  })
+  @Patch(':id/confirm-payment')
+  async confirmPayment(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: User,
+  ) {
+    return this.consultationService.confirmPayment(id, user);
+  }
+
+  @ApiOperation({
+    description:
+      'Doctor starts the consultation (PAYMENT_CONFIRMED → IN_PROGRESS).',
+  })
+  @UseGuards(RolesGuard)
+  @Roles(UserRolesEnum.DOCTOR)
+  @Patch(':id/start')
+  async start(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: User,
+  ) {
+    return this.consultationService.startConsultation(id, user);
+  }
+
+  @ApiOperation({
     description: 'Cancel a consultation (patient, doctor, or admin).',
   })
   @Patch(':id/cancel')

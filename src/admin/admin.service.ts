@@ -76,12 +76,16 @@ export class AdminService {
     return { data, total, skip, take };
   }
 
-  async updateUser(userId: string, dto: AdminUpdateUserDto) {
-    const user = await this.prisma.user.findUnique({
+  async updateUser(userId: string, dto: AdminUpdateUserDto, currentUser: User) {
+    const target = await this.prisma.user.findUnique({
       where: { id: userId },
     });
-    if (!user) {
+    if (!target) {
       throw new NotFoundException('User not found.');
+    }
+
+    if (!currentUser.isSuperAdmin && (target.isAdmin || target.isSuperAdmin)) {
+      throw new ForbiddenException('Only superadmins can modify admin accounts.');
     }
 
     return this.prisma.user.update({
@@ -91,15 +95,23 @@ export class AdminService {
     });
   }
 
-  async deactivateUser(userId: string) {
-    const user = await this.prisma.user.findUnique({
+  async deactivateUser(userId: string, currentUser: User) {
+    const target = await this.prisma.user.findUnique({
       where: { id: userId },
     });
-    if (!user) {
+    if (!target) {
       throw new NotFoundException('User not found.');
     }
-    if (!user.isActive) {
+    if (!target.isActive) {
       throw new BadRequestException('User is already deactivated.');
+    }
+
+    if (!currentUser.isSuperAdmin && (target.isAdmin || target.isSuperAdmin)) {
+      throw new ForbiddenException('Only superadmins can deactivate admin accounts.');
+    }
+
+    if (userId === currentUser.id) {
+      throw new ForbiddenException('You cannot deactivate your own account.');
     }
 
     return this.prisma.user.update({

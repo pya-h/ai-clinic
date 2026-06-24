@@ -81,7 +81,8 @@ export class MatchingController {
   @Patch(':id/browse')
   async fallbackToBrowse(
     @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: User,
   ) {
-    return this.matchingService.fallbackToManualBrowse(id);
+    return this.matchingService.fallbackToManualBrowse(id, user);
   }
 }

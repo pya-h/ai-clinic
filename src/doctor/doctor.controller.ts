@@ -35,7 +35,8 @@ export class DoctorController {
   @ApiOperation({
     description: 'Introduce user as a doctor and create a doctor profile.',
   })
-  @UseGuards(CookieAuthGuard)
+  @UseGuards(CookieAuthGuard, RolesGuard)
+  @Roles(UserRolesEnum.DOCTOR)
   @Post()
   async createDoctorProfile(
     @CurrentUser() user: User,

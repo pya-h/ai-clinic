@@ -79,6 +79,6 @@ async function bootstrap() {
   }
   app.useWebSocketAdapter(new FastifyIoAdapter(app));
 
-  await app.listen(appPort);
+  await app.listen(appPort, '0.0.0.0');
 }
 bootstrap();

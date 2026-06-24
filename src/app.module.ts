@@ -30,12 +30,14 @@ import { NotificationModule } from './notification/notification.module';
 import { PaymentModule } from './payment/payment.module';
 import { CalendlyModule } from './calendly/calendly.module';
 import { NurseModule } from './nurse/nurse.module';
-import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
+import { ThrottlerModule } from '@nestjs/throttler';
+import { FastifyThrottlerGuard } from './common/guards/fastify-throttler.guard';
 
 @Module({
   imports: [
     PrismaModule,
     ConfigModule.forRoot({
+      isGlobal: true,
       load: [appGeneralConfigs, authConfigs, aiConfigs, notificationConfigs, storageConfigs, calendlyConfigs],
     }),
     CacheModule,
@@ -65,7 +67,7 @@ import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
   controllers: [AppController],
   providers: [
     AppService,
-    { provide: APP_GUARD, useClass: ThrottlerGuard },
+    { provide: APP_GUARD, useClass: FastifyThrottlerGuard },
   ],
 })
 export class AppModule {}

@@ -6,7 +6,12 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { Payment, PaymentStatusEnum, User } from '@prisma/client';
+import {
+  ConsultationStatusEnum,
+  Payment,
+  PaymentStatusEnum,
+  User,
+} from '@prisma/client';
 import { CreatePaymentDto } from './dto/create-payment.dto';
 import { PaymentFilterDto } from './dto/payment-filter.dto';
 
@@ -112,12 +117,22 @@ export class PaymentService {
       `Stub: confirming payment ${id} without real provider integration.`,
     );
 
-    return this.prisma.payment.update({
+    const updated = await this.prisma.payment.update({
       where: { id },
       data: {
         status: PaymentStatusEnum.COMPLETED,
         paidAt: new Date(),
       },
     });
+
+    // Transition the linked consultation to PAYMENT_CONFIRMED
+    if (payment.consultationId) {
+      await this.prisma.consultation.update({
+        where: { id: payment.consultationId },
+        data: { status: ConsultationStatusEnum.PAYMENT_CONFIRMED },
+      });
+    }
+
+    return updated;
   }
 }

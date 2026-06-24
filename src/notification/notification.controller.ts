@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  DefaultValuePipe,
   Delete,
   Get,
   HttpCode,
@@ -30,13 +31,13 @@ export class NotificationController {
   @Get()
   async getNotifications(
     @CurrentUser() user: User,
-    @Query('skip') skip?: string,
-    @Query('take') take?: string,
+    @Query('skip', new DefaultValuePipe(0), ParseIntPipe) skip: number,
+    @Query('take', new DefaultValuePipe(20), ParseIntPipe) take: number,
   ) {
     return this.notificationService.getUserNotifications(
       user.id,
-      skip ? parseInt(skip, 10) : 0,
-      take ? parseInt(take, 10) : 20,
+      skip,
+      take,
     );
   }
 

@@ -13,6 +13,11 @@ export class OptionalAuthGuard implements CanActivate {
     const session: any = (request as any).session;
     const user = session?.get('user');
 
+    if (user?.isActive === false) {
+      (request as any).user = null;
+      return true;
+    }
+
     (request as any).user = user || null;
     return true;
   }

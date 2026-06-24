@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsInt, IsNotEmpty, IsOptional, IsString } from 'class-validator';
+import { IsInt, IsNotEmpty, IsOptional, IsUUID } from 'class-validator';
 
 export class CreateConsultationDto {
   @ApiProperty({
@@ -13,6 +13,6 @@ export class CreateConsultationDto {
     description: 'The SOAP note ID linked to this consultation.',
   })
   @IsOptional()
-  @IsString()
+  @IsUUID()
   soapId?: string;
 }

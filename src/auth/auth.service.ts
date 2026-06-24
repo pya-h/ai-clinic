@@ -32,7 +32,6 @@ export class AuthService {
 
   async register(data: RegistrationDto, reply: FastifyReply) {
     const user = await this.userService.createUser(data);
-    delete user.password;
     (reply as any).request.session.set('user', user);
     return user;
   }

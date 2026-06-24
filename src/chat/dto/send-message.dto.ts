@@ -1,4 +1,4 @@
-import { IsEnum, IsNotEmpty, IsOptional, IsString } from 'class-validator';
+import { IsEnum, IsNotEmpty, IsOptional, IsString, Matches, MaxLength } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 import { MessageTypeEnum } from '@prisma/client';
 
@@ -9,6 +9,7 @@ export class SendMessageDto {
   })
   @IsNotEmpty()
   @IsString()
+  @MaxLength(5000)
   content: string;
 
   @ApiProperty({
@@ -27,6 +28,7 @@ export class SendMessageDto {
   })
   @IsOptional()
   @IsString()
+  @MaxLength(2048)
   fileUrl?: string;
 
   @ApiProperty({
@@ -35,5 +37,6 @@ export class SendMessageDto {
   })
   @IsOptional()
   @IsString()
+  @Matches(/^\d+$/, { message: 'repliedToId must be a numeric string.' })
   repliedToId?: string;
 }

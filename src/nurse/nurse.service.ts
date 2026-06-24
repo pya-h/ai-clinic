@@ -116,7 +116,7 @@ export class NurseService {
     if (user.role === UserRolesEnum.DOCTOR) {
       const doctorProfile = await this.getDoctorProfile(user.id);
       return this.prisma.doctorNurseAssignment.findMany({
-        where: { doctorId: doctorProfile.id },
+        where: { doctorId: doctorProfile.id, isActive: true },
         include: this.assignmentInclude(),
         orderBy: { createdAt: 'desc' },
       });
@@ -124,7 +124,7 @@ export class NurseService {
 
     if (user.role === UserRolesEnum.NURSE) {
       return this.prisma.doctorNurseAssignment.findMany({
-        where: { nurseId: user.id },
+        where: { nurseId: user.id, isActive: true },
         include: this.assignmentInclude(),
         orderBy: { createdAt: 'desc' },
       });

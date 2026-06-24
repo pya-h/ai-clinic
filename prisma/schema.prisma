@@ -254,6 +254,7 @@ model AiConversation {
   createdAt    DateTime     @default(now()) @map("created_at")
   soap         PatientSOAP?
 
+  @@index([userId])
   @@map("ai_conversation")
 }
 
@@ -280,6 +281,7 @@ model PatientSOAP {
   consultations  Consultation[]
   matchRequests  MatchRequest[]
 
+  @@index([userId])
   @@map("patient_soap")
 }
 
@@ -432,6 +434,8 @@ model Consultation {
   chat        Chat?
   calls       Call[]
 
+  @@index([patientId, status])
+  @@index([doctorId, status])
   @@map("consultation")
 }
 
@@ -461,6 +465,8 @@ model Appointment {
   calendlyRescheduleUrl String? @map("calendly_reschedule_url")
   calendlyCancelUrl    String? @map("calendly_cancel_url")
 
+  @@index([doctorId, dateTime])
+  @@index([patientId, dateTime])
   @@map("appointment")
 }
 
@@ -581,8 +587,23 @@ model MatchRequest {
 
   resolvedAt DateTime? @map("resolved_at")
 
+  rejections     MatchRejection[]
+
   @@index([patientId, status])
   @@map("match_request")
+}
+
+model MatchRejection {
+  id             String       @id @default(uuid())
+  matchRequestId String       @map("match_request_id")
+  doctorId       Int          @map("doctor_id")
+  rejectedAt     DateTime     @default(now()) @map("rejected_at")
+
+  matchRequest   MatchRequest @relation(fields: [matchRequestId], references: [id], onDelete: Cascade)
+
+  @@unique([matchRequestId, doctorId])
+  @@index([matchRequestId])
+  @@map("match_rejection")
 }
 
 // ────────────── CALLS ──────────────
@@ -607,6 +628,7 @@ model Call {
   duration     Int?
   recordingUrl String?        @map("recording_url")
 
+  @@index([consultationId])
   @@map("call")
 }
 
@@ -631,6 +653,7 @@ model Payment {
   gatewayResponse Json?             @map("gateway_response")
   paidAt          DateTime?         @map("paid_at")
 
+  @@index([userId, status])
   @@map("payment")
 }
 

@@ -9,7 +9,7 @@ import {
   WebSocketServer,
   WsException,
 } from '@nestjs/websockets';
-import { Inject, Logger, forwardRef } from '@nestjs/common';
+import { Inject, Logger, OnModuleDestroy, forwardRef } from '@nestjs/common';
 import { Server, Socket } from 'socket.io';
 import { ConfigService } from '@nestjs/config';
 import { createHash } from 'crypto';
@@ -20,12 +20,12 @@ import { NotificationService } from '../notification/notification.service';
 @WebSocketGateway({
   namespace: '/matching',
   cors: {
-    origin: true,
+    origin: (process.env.CORS_ORIGIN || 'http://localhost:5173').split(',').map(o => o.trim()),
     credentials: true,
   },
 })
 export class MatchingGateway
-  implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect
+  implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect, OnModuleDestroy
 {
   @WebSocketServer()
   server: Server;
@@ -39,6 +39,13 @@ export class MatchingGateway
     @Inject(forwardRef(() => NotificationService))
     private readonly notificationService: NotificationService,
   ) {}
+
+  onModuleDestroy(): void {
+    for (const [, timer] of this.patientTimers) {
+      clearTimeout(timer);
+    }
+    this.patientTimers.clear();
+  }
 
   afterInit(server: Server): void {
     server.use(async (socket: Socket, next) => {

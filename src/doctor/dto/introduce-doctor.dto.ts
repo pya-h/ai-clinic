@@ -11,6 +11,7 @@ import {
   IsNotEmpty,
   IsOptional,
   IsString,
+  MaxLength,
 } from 'class-validator';
 import { IsEnumDetailed } from '../../common/decorators/is-enum-detailed.decorator';
 
@@ -49,16 +50,19 @@ export class IntroduceDoctorDto {
   })
   @IsOptional()
   @IsString()
+  @MaxLength(500)
   clinicLocation?: string;
 
   @ApiProperty({ description: 'About the doctor' })
   @IsOptional()
   @IsString()
+  @MaxLength(500)
   bio?: string;
 
   @ApiProperty({ description: 'The university where the doctor is graduated.' })
   @IsOptional()
   @IsString()
+  @MaxLength(500)
   university?: string;
 
   @ApiPropertyOptional({

@@ -232,7 +232,7 @@ describe('NurseService', () => {
       const result = await service.getMyAssignments(doctorUser as any);
       expect(result).toEqual(assignments);
       expect(prisma.doctorNurseAssignment.findMany).toHaveBeenCalledWith({
-        where: { doctorId: doctorProfile.id },
+        where: { doctorId: doctorProfile.id, isActive: true },
         include: expect.any(Object),
         orderBy: { createdAt: 'desc' },
       });
@@ -245,7 +245,7 @@ describe('NurseService', () => {
       const result = await service.getMyAssignments(nurseUser as any);
       expect(result).toEqual(assignments);
       expect(prisma.doctorNurseAssignment.findMany).toHaveBeenCalledWith({
-        where: { nurseId: nurseUser.id },
+        where: { nurseId: nurseUser.id, isActive: true },
         include: expect.any(Object),
         orderBy: { createdAt: 'desc' },
       });

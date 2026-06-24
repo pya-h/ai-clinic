@@ -40,14 +40,18 @@ export class AdminController {
   async updateUser(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: AdminUpdateUserDto,
+    @CurrentUser() currentUser: User,
   ) {
-    return this.adminService.updateUser(id, dto);
+    return this.adminService.updateUser(id, dto, currentUser);
   }
 
   @ApiOperation({ description: 'Deactivate a user account.' })
   @Patch('users/:id/deactivate')
-  async deactivateUser(@Param('id', ParseUUIDPipe) id: string) {
-    return this.adminService.deactivateUser(id);
+  async deactivateUser(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() currentUser: User,
+  ) {
+    return this.adminService.deactivateUser(id, currentUser);
   }
 
   /* ── B-56  Doctor verification ─────────────────────────── */

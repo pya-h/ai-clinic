@@ -155,7 +155,7 @@ describe('Doctor (e2e)', () => {
       expect(body.contents.specialty).toBe(DoctorSpecialtiesEnum.GENERAL);
     });
 
-    it('should reject non-doctor role (405)', async () => {
+    it('should reject non-doctor role (403)', async () => {
       sessionUser = createMockUser(); // PATIENT role
 
       const res = await app.inject({
@@ -164,7 +164,7 @@ describe('Doctor (e2e)', () => {
         payload: validDoctorPayload,
       });
 
-      expect(res.statusCode).toBe(HttpStatus.METHOD_NOT_ALLOWED);
+      expect(res.statusCode).toBe(HttpStatus.FORBIDDEN);
     });
 
     it('should reject duplicate doctor profile', async () => {

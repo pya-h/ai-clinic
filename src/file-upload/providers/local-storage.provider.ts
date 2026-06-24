@@ -28,7 +28,10 @@ export class LocalStorageProvider implements IStorageProvider {
   }
 
   async delete(key: string): Promise<void> {
-    const filePath = path.join(this.basePath, key);
+    const filePath = path.resolve(this.basePath, key);
+    if (!filePath.startsWith(path.resolve(this.basePath))) {
+      throw new Error('Invalid file key.');
+    }
     try {
       await fs.unlink(filePath);
     } catch (err: any) {
@@ -37,7 +40,10 @@ export class LocalStorageProvider implements IStorageProvider {
   }
 
   async getSignedUrl(key: string, _expiresIn?: number): Promise<string> {
-    // Local storage doesn't need signed URLs — just return the public path
+    const filePath = path.resolve(this.basePath, key);
+    if (!filePath.startsWith(path.resolve(this.basePath))) {
+      throw new Error('Invalid file key.');
+    }
     return `/uploads/${key}`;
   }
 }

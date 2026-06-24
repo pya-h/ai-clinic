@@ -1,4 +1,5 @@
 import { Body, Controller, Post, UseGuards } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { OpenAiService } from './openai.service';
 import { CookieAuthGuard } from '../../auth/guards/cookie-auth.guard';
@@ -13,6 +14,7 @@ export class OpenAiAgentController {
   constructor(private readonly openAiService: OpenAiService) {}
 
   @ApiOperation({ description: 'Start a new OpenAI chat or continue conversation.' })
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
   @Post()
   openNewChat(
     @CurrentUser() user: User,

@@ -554,7 +554,7 @@ describe('SchedulingService', () => {
     const patient = createMockUser();
     const bookDto = {
       doctorId: 42,
-      dateTime: '2026-03-15T10:00:00.000Z',
+      dateTime: new Date(Date.now() + 86400000).toISOString(), // tomorrow
       durationMinutes: 30,
       price: 50,
       method: 'CHAT' as any,
@@ -562,6 +562,7 @@ describe('SchedulingService', () => {
 
     beforeEach(() => {
       prisma.slotDuration.findFirst.mockResolvedValue({ price: 50 });
+      prisma.appointment.findFirst.mockResolvedValue(null); // no overlap
     });
 
     it('should book an appointment', async () => {

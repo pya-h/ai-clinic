@@ -405,7 +405,7 @@ describe('Calendly (e2e)', () => {
       expect(body.contents).toBeDefined();
       expect(body.contents.status).toBe('active');
       expect(body.contents.start_time).toBe('2026-06-25T10:00:00.000000Z');
-      expect(mockCalendlyService.getCalendlyEventDetails).toHaveBeenCalledWith(42);
+      expect(mockCalendlyService.getCalendlyEventDetails).toHaveBeenCalledWith(42, expect.objectContaining({ id: sessionUser.id }));
     });
 
     it('should return null contents when no Calendly event is linked', async () => {
@@ -420,7 +420,7 @@ describe('Calendly (e2e)', () => {
       expect(res.statusCode).toBe(HttpStatus.OK);
       const body = JSON.parse(res.body);
       expect(body.contents).toBeNull();
-      expect(mockCalendlyService.getCalendlyEventDetails).toHaveBeenCalledWith(99);
+      expect(mockCalendlyService.getCalendlyEventDetails).toHaveBeenCalledWith(99, expect.objectContaining({ id: sessionUser.id }));
     });
 
     it('should reject unauthenticated request', async () => {

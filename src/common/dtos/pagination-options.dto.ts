@@ -1,4 +1,4 @@
-import { IsNumberString, IsOptional } from 'class-validator';
+import { IsNumberString, IsOptional, Max } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 
 export class PaginationOptionsDto {
@@ -16,5 +16,6 @@ export class PaginationOptionsDto {
   })
   @IsOptional()
   @IsNumberString()
+  @Max(100)
   take: number;
 }

@@ -289,22 +289,26 @@ export class MatchingService {
 
     this.validateTransition(request.status, MatchStatusEnum.ACCEPTED);
 
-    const consultation = await this.prisma.consultation.create({
-      data: {
-        patientId: request.patientId,
-        doctorId: doctorProfile.id,
-        soapId: request.soapId ?? null,
-        status: ConsultationStatusEnum.PENDING_DOCTOR_REVIEW,
-      },
-    });
+    const [consultation, updated] = await this.prisma.$transaction(async (tx) => {
+      const cons = await tx.consultation.create({
+        data: {
+          patientId: request.patientId,
+          doctorId: doctorProfile.id,
+          soapId: request.soapId ?? null,
+          status: ConsultationStatusEnum.PENDING_DOCTOR_REVIEW,
+        },
+      });
 
-    const updated = await this.prisma.matchRequest.update({
-      where: { id: matchRequestId },
-      data: {
-        status: MatchStatusEnum.CONSULTATION_CREATED,
-        consultationId: consultation.id,
-        resolvedAt: new Date(),
-      },
+      const upd = await tx.matchRequest.update({
+        where: { id: matchRequestId, status: MatchStatusEnum.MATCHED },
+        data: {
+          status: MatchStatusEnum.CONSULTATION_CREATED,
+          consultationId: cons.id,
+          resolvedAt: new Date(),
+        },
+      });
+
+      return [cons, upd];
     });
 
     this.logger.log(
@@ -341,12 +345,21 @@ export class MatchingService {
 
     this.validateTransition(request.status, MatchStatusEnum.SEARCHING);
 
-    const updated = await this.prisma.matchRequest.update({
-      where: { id: matchRequestId },
-      data: {
-        status: MatchStatusEnum.SEARCHING,
-        matchedDoctorId: null,
-      },
+    const updated = await this.prisma.$transaction(async (tx) => {
+      await tx.matchRejection.create({
+        data: {
+          matchRequestId,
+          doctorId: doctorProfile.id,
+        },
+      });
+
+      return tx.matchRequest.update({
+        where: { id: matchRequestId },
+        data: {
+          status: MatchStatusEnum.SEARCHING,
+          matchedDoctorId: null,
+        },
+      });
     });
 
     const previouslyRejected = await this.getRejectedDoctorIds(matchRequestId, doctorProfile.id);
@@ -407,8 +420,13 @@ export class MatchingService {
 
   // ────────────── Manual Browse Fallback ──────────────
 
-  async fallbackToManualBrowse(matchRequestId: string): Promise<MatchRequest> {
+  async fallbackToManualBrowse(matchRequestId: string, user: User): Promise<MatchRequest> {
     const request = await this.getByIdRaw(matchRequestId);
+
+    if (request.patientId !== user.id && !user.isAdmin && !user.isSuperAdmin) {
+      throw new ForbiddenException('You can only modify your own match requests.');
+    }
+
     this.validateTransition(request.status, MatchStatusEnum.MANUAL_BROWSE);
 
     return this.prisma.matchRequest.update({
@@ -524,10 +542,18 @@ export class MatchingService {
   }
 
   private async getRejectedDoctorIds(
-    _matchRequestId: string,
+    matchRequestId: string,
     currentRejectorId: number,
   ): Promise<number[]> {
-    return [currentRejectorId];
+    const rejections = await this.prisma.matchRejection.findMany({
+      where: { matchRequestId },
+      select: { doctorId: true },
+    });
+    const ids = rejections.map((r) => r.doctorId);
+    if (!ids.includes(currentRejectorId)) {
+      ids.push(currentRejectorId);
+    }
+    return ids;
   }
 
   async getDoctorUserId(doctorProfileId: number): Promise<string | null> {

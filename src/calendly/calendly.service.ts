@@ -2,13 +2,14 @@ import {
   Injectable,
   Logger,
   BadRequestException,
+  ForbiddenException,
   NotFoundException,
   InternalServerErrorException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { CacheService } from '../cache/cache.service';
-import { AppointmentStatusEnum, VisitMethodsEnum } from '@prisma/client';
+import { AppointmentStatusEnum, User, VisitMethodsEnum } from '@prisma/client';
 import {
   CalendlyEventType,
   CalendlyEventTypeListResponse,
@@ -332,6 +333,7 @@ export class CalendlyService {
 
   async getCalendlyEventDetails(
     appointmentId: number,
+    user?: User,
   ): Promise<CalendlyScheduledEvent | null> {
     if (!this.isConfigured()) return null;
 
@@ -339,7 +341,21 @@ export class CalendlyService {
       where: { id: appointmentId },
     });
 
-    if (!appointment?.calendlyEventUri) return null;
+    if (!appointment) throw new NotFoundException('Appointment not found.');
+
+    if (user && !user.isAdmin && !user.isSuperAdmin) {
+      if (appointment.patientId !== user.id) {
+        const doctorProfile = await this.prisma.doctorProfile.findUnique({
+          where: { id: appointment.doctorId },
+          select: { userId: true },
+        });
+        if (doctorProfile?.userId !== user.id) {
+          throw new ForbiddenException('Access denied.');
+        }
+      }
+    }
+
+    if (!appointment.calendlyEventUri) return null;
 
     if (!appointment.calendlyEventUri.includes('api.calendly.com/scheduled_events/')) return null;
 
@@ -382,8 +398,9 @@ export class CalendlyService {
 
       if (!response.ok) {
         const errorBody = await response.text();
+        this.logger.error(`Calendly API ${method} ${path} failed (${response.status}): ${errorBody}`);
         throw new InternalServerErrorException(
-          `Calendly API ${method} ${path} failed (${response.status}): ${errorBody}`,
+          'An error occurred while communicating with the scheduling provider.',
         );
       }
 
@@ -392,8 +409,9 @@ export class CalendlyService {
       return (await response.json()) as T;
     } catch (error) {
       if (error instanceof InternalServerErrorException) throw error;
+      this.logger.error(`Calendly API request failed:`, error);
       throw new InternalServerErrorException(
-        `Calendly API request failed: ${error}`,
+        'An error occurred while communicating with the scheduling provider.',
       );
     }
   }

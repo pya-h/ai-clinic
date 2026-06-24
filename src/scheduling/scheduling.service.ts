@@ -325,7 +325,7 @@ export class SchedulingService {
 
     while (current <= end) {
       const dateStr = this.dateToString(current);
-      const dayOfWeek = current.getDay(); // 0 = Sun
+      const dayOfWeek = current.getUTCDay(); // 0 = Sun
 
       const exception = exceptionMap.get(dateStr);
 
@@ -428,6 +428,30 @@ export class SchedulingService {
       throw new BadRequestException(
         'Invalid duration: doctor has no active slot configuration for this duration.',
       );
+    }
+
+    // Validate booking is not in the past
+    const bookingDateTime = new Date(dto.dateTime);
+    if (bookingDateTime <= new Date()) {
+      throw new BadRequestException('Cannot book an appointment in the past.');
+    }
+
+    // Check for overlapping appointments (double-booking prevention)
+    const bookingEndTime = new Date(bookingDateTime.getTime() + dto.durationMinutes * 60000);
+    const overlapping = await this.prisma.appointment.findFirst({
+      where: {
+        doctorId: dto.doctorId,
+        status: { not: AppointmentStatusEnum.CANCELLED },
+        dateTime: { lt: bookingEndTime },
+        AND: {
+          dateTime: {
+            gte: new Date(bookingDateTime.getTime() - (dto.durationMinutes * 60000)),
+          },
+        },
+      },
+    });
+    if (overlapping) {
+      throw new ConflictException('This time slot is no longer available.');
     }
 
     // If consultationId provided, validate ownership and status

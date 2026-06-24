@@ -1,4 +1,4 @@
-import { IsNotEmpty, IsOptional, IsString } from 'class-validator';
+import { IsNotEmpty, IsOptional, IsString, MaxLength } from 'class-validator';
 
 export class SendAiMessageDto {
   @IsOptional()
@@ -7,5 +7,6 @@ export class SendAiMessageDto {
 
   @IsString()
   @IsNotEmpty({ message: 'Message text is required.' })
+  @MaxLength(4000)
   text: string;
 }

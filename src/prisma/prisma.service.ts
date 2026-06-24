@@ -13,15 +13,9 @@ export class PrismaService
 {
   private logger = new Logger(PrismaService.name);
 
-  onModuleInit() {
-    this.$connect()
-      .then(() => this.logger.log('Database connected'))
-      .catch((ex) =>
-        this.logger.error(
-          'Database failed connecting: ',
-          (ex as Error).message,
-        ),
-      );
+  async onModuleInit() {
+    await this.$connect();
+    this.logger.log('Database connected');
   }
 
   async onModuleDestroy() {

@@ -29,7 +29,7 @@ import { NotificationService } from '../notification/notification.service';
 @WebSocketGateway({
   namespace: '/chat',
   cors: {
-    origin: true,
+    origin: (process.env.CORS_ORIGIN || 'http://localhost:5173').split(',').map(o => o.trim()),
     credentials: true,
   },
 })

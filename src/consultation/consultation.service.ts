@@ -204,6 +204,96 @@ export class ConsultationService {
     return updated;
   }
 
+  // ──────────────── Payment & Start ────────────────
+
+  /**
+   * Advance consultation to PENDING_PAYMENT after doctor has decided.
+   * Transitions DOCTOR_DECIDED → PENDING_PAYMENT.
+   */
+  async advanceToPayment(
+    consultationId: string,
+    user: User,
+  ): Promise<Consultation> {
+    const consultation = await this.getByIdRaw(consultationId);
+    await this.assertParticipantOrAdmin(consultation, user);
+
+    this.validateTransition(
+      consultation.status,
+      ConsultationStatusEnum.PENDING_PAYMENT,
+    );
+
+    const updated = await this.prisma.consultation.update({
+      where: { id: consultationId },
+      data: { status: ConsultationStatusEnum.PENDING_PAYMENT },
+      include: this.defaultInclude(),
+    });
+
+    this.logger.log(
+      `Consultation ${consultationId} advanced to PENDING_PAYMENT by user ${user.id}.`,
+    );
+
+    return updated;
+  }
+
+  /**
+   * Confirm payment for a consultation.
+   * Transitions PENDING_PAYMENT → PAYMENT_CONFIRMED.
+   */
+  // TODO: Integrate with real payment provider verification
+  async confirmPayment(
+    consultationId: string,
+    user: User,
+  ): Promise<Consultation> {
+    const consultation = await this.getByIdRaw(consultationId);
+    await this.assertParticipantOrAdmin(consultation, user);
+
+    this.validateTransition(
+      consultation.status,
+      ConsultationStatusEnum.PAYMENT_CONFIRMED,
+    );
+
+    const updated = await this.prisma.consultation.update({
+      where: { id: consultationId },
+      data: { status: ConsultationStatusEnum.PAYMENT_CONFIRMED },
+      include: this.defaultInclude(),
+    });
+
+    this.logger.log(
+      `Consultation ${consultationId} payment confirmed by user ${user.id}.`,
+    );
+
+    return updated;
+  }
+
+  /**
+   * Doctor starts the consultation.
+   * Transitions PAYMENT_CONFIRMED → IN_PROGRESS.
+   */
+  async startConsultation(
+    consultationId: string,
+    user: User,
+  ): Promise<Consultation> {
+    const consultation = await this.getByIdRaw(consultationId);
+    await this.assertDoctorOwnership(consultation, user);
+
+    this.validateTransition(
+      consultation.status,
+      ConsultationStatusEnum.IN_PROGRESS,
+    );
+
+    const updated = await this.prisma.consultation.update({
+      where: { id: consultationId },
+      data: { status: ConsultationStatusEnum.IN_PROGRESS },
+      include: this.defaultInclude(),
+    });
+
+    this.logger.log(
+      `Consultation ${consultationId} started by doctor ${user.id}.`,
+    );
+
+    return updated;
+  }
+
   // ──────────────── Completion ────────────────
 
   /**

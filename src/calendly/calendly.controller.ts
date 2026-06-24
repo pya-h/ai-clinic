@@ -19,6 +19,8 @@ import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { CalendlyService } from './calendly.service';
 import { CalendlyWebhookDto } from './dto/calendly-webhook.dto';
 import { CookieAuthGuard } from '../auth/guards/cookie-auth.guard';
+import { CurrentUser } from '../user/decorators/current-user.decorator';
+import { User } from '@prisma/client';
 import { CalendlyWebhookEvent } from './types/calendly.types';
 import { FastifyRequest } from 'fastify';
 import { SkipThrottle } from '@nestjs/throttler';
@@ -74,7 +76,10 @@ export class CalendlyController {
   })
   @UseGuards(CookieAuthGuard)
   @Get('appointment/:id/event')
-  async getAppointmentEvent(@Param('id', ParseIntPipe) id: number) {
-    return this.calendlyService.getCalendlyEventDetails(id);
+  async getAppointmentEvent(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser() user: User,
+  ) {
+    return this.calendlyService.getCalendlyEventDetails(id, user);
   }
 }
