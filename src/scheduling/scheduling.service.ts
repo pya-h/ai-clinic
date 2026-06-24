@@ -22,6 +22,7 @@ import { CreateSlotDurationDto } from './dto/create-slot-duration.dto';
 import { CreateExceptionDto } from './dto/create-exception.dto';
 import { BookAppointmentDto } from './dto/book-appointment.dto';
 import { AppointmentFilterDto } from './dto/appointment-filter.dto';
+import { CalendlyService } from '../calendly/calendly.service';
 
 export interface AvailableSlot {
   date: string; // YYYY-MM-DD
@@ -34,7 +35,10 @@ export interface AvailableSlot {
 export class SchedulingService {
   private readonly logger = new Logger(SchedulingService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly calendlyService: CalendlyService,
+  ) {}
 
   // ──────────────── Doctor ID Lookup ────────────────
 
@@ -462,6 +466,10 @@ export class SchedulingService {
       `Appointment ${appointment.id} booked by patient ${user.id} with doctor ${dto.doctorId}`,
     );
 
+    this.calendlyService.scheduleForAppointment(appointment.id).catch((err) => {
+      this.logger.error(`Failed to create Calendly event for appointment ${appointment.id}:`, err);
+    });
+
     return appointment;
   }
 
@@ -554,6 +562,10 @@ export class SchedulingService {
     });
 
     this.logger.log(`Appointment ${id} cancelled by user ${user.id}.`);
+
+    this.calendlyService.cancelCalendlyEvent(id, 'Cancelled by user.').catch((err) => {
+      this.logger.error(`Failed to cancel Calendly event for appointment ${id}:`, err);
+    });
 
     return updated;
   }

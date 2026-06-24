@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { SchedulingService, AvailableSlot } from './scheduling.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { CalendlyService } from '../calendly/calendly.service';
 import {
   createMockPrismaService,
   MockPrismaService,
@@ -18,6 +19,12 @@ import {
 } from '@nestjs/common';
 import { AppointmentStatusEnum } from '@prisma/client';
 
+const mockCalendlyService = {
+  scheduleForAppointment: jest.fn().mockResolvedValue(undefined),
+  cancelCalendlyEvent: jest.fn().mockResolvedValue(undefined),
+  isConfigured: jest.fn().mockReturnValue(false),
+};
+
 describe('SchedulingService', () => {
   let service: SchedulingService;
   let prisma: MockPrismaService;
@@ -29,6 +36,7 @@ describe('SchedulingService', () => {
       providers: [
         SchedulingService,
         { provide: PrismaService, useValue: prisma },
+        { provide: CalendlyService, useValue: mockCalendlyService },
       ],
     }).compile();
 

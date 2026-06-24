@@ -12,6 +12,7 @@ import authConfigs from './configs/auth';
 import aiConfigs from './configs/ai';
 import notificationConfigs from './configs/notification';
 import storageConfigs from './configs/storage';
+import calendlyConfigs from './configs/calendly';
 import { AuthModule } from './auth/auth.module';
 import { UserModule } from './user/user.module';
 import { CacheModule } from './cache/cache.module';
@@ -27,13 +28,14 @@ import { ChatModule } from './chat/chat.module';
 import { MatchingModule } from './matching/matching.module';
 import { NotificationModule } from './notification/notification.module';
 import { PaymentModule } from './payment/payment.module';
+import { CalendlyModule } from './calendly/calendly.module';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 
 @Module({
   imports: [
     PrismaModule,
     ConfigModule.forRoot({
-      load: [appGeneralConfigs, authConfigs, aiConfigs, notificationConfigs, storageConfigs],
+      load: [appGeneralConfigs, authConfigs, aiConfigs, notificationConfigs, storageConfigs, calendlyConfigs],
     }),
     CacheModule,
     UtilsModule,
@@ -56,6 +58,7 @@ import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
     MatchingModule,
     NotificationModule,
     PaymentModule,
+    CalendlyModule,
   ],
   controllers: [AppController],
   providers: [

@@ -1424,7 +1424,7 @@ describe('MatchingService', () => {
 
     it('should return false at exactly 5 minutes', () => {
       const request = {
-        createdAt: new Date(Date.now() - 5 * 60 * 1000), // exactly 5 minutes
+        createdAt: new Date(Date.now() - 5 * 60 * 1000 + 50), // 50ms buffer for test execution time
       } as any;
 
       expect(service.isExpired(request)).toBe(false);

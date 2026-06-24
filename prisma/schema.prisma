@@ -456,6 +456,11 @@ model Appointment {
   status          AppointmentStatusEnum @default(PENDING)
   notes           String?
 
+  calendlyEventUri     String? @map("calendly_event_uri")
+  calendlyInviteeUri   String? @map("calendly_invitee_uri")
+  calendlyRescheduleUrl String? @map("calendly_reschedule_url")
+  calendlyCancelUrl    String? @map("calendly_cancel_url")
+
   @@map("appointment")
 }
 
