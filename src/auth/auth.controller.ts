@@ -8,6 +8,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
 import { UserLoginDto } from './dto/login.dto';
 import { RegistrationDto } from './dto/register.dto';
@@ -23,6 +24,7 @@ export class AuthController {
 
   @ApiOperation({ description: 'Used for logging in the user' })
   @ApiStandardOkResponse(AuthenticatedUserDto)
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
   @HttpCode(HttpStatus.OK)
   @Post('login')
   async authenticate(
@@ -36,6 +38,7 @@ export class AuthController {
     description: 'Register new users',
   })
   @ApiStandardOkResponse(AuthenticatedUserDto)
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
   @HttpCode(HttpStatus.CREATED)
   @Post('register')
   async register(

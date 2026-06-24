@@ -17,6 +17,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { FastifyRequest, FastifyReply } from 'fastify';
+import { Throttle } from '@nestjs/throttler';
 import { CurrentUser } from '../user/decorators/current-user.decorator';
 import { User } from '@prisma/client';
 import { BotpressService } from './botpress.service';
@@ -53,6 +54,7 @@ export class AiAgentsController {
   }
 
   @UseGuards(OptionalAuthGuard)
+  @Throttle({ default: { limit: 20, ttl: 60000 } })
   @Post('message')
   @HttpCode(204)
   async send(
