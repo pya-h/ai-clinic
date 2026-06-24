@@ -8,6 +8,8 @@ import {
   IsOptional,
   IsString,
   IsUUID,
+  Max,
+  MaxLength,
   Min,
 } from 'class-validator';
 
@@ -40,6 +42,7 @@ export class BookAppointmentDto {
   })
   @IsInt()
   @Min(5)
+  @Max(480)
   durationMinutes: number;
 
   @ApiProperty({
@@ -48,6 +51,7 @@ export class BookAppointmentDto {
   })
   @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0)
+  @Max(99999999.99)
   price: number;
 
   @ApiProperty({
@@ -60,5 +64,6 @@ export class BookAppointmentDto {
   @ApiPropertyOptional({ description: 'Patient notes for the appointment.' })
   @IsOptional()
   @IsString()
+  @MaxLength(2000)
   notes?: string;
 }

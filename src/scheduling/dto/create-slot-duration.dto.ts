@@ -5,6 +5,8 @@ import {
   IsNumber,
   IsOptional,
   IsString,
+  Max,
+  MaxLength,
   Min,
 } from 'class-validator';
 
@@ -15,6 +17,7 @@ export class CreateSlotDurationDto {
   })
   @IsInt()
   @Min(5)
+  @Max(480)
   minutes: number;
 
   @ApiProperty({
@@ -23,6 +26,7 @@ export class CreateSlotDurationDto {
   })
   @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0)
+  @Max(99999999.99)
   price: number;
 
   @ApiPropertyOptional({
@@ -30,6 +34,7 @@ export class CreateSlotDurationDto {
   })
   @IsOptional()
   @IsString()
+  @MaxLength(100)
   label?: string;
 
   @ApiPropertyOptional({

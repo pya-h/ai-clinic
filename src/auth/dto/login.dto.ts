@@ -1,6 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
-import { IsEmail, IsNotEmpty, IsString } from 'class-validator';
+import { IsEmail, IsNotEmpty, IsString, MaxLength } from 'class-validator';
 
 export class UserLoginDto {
   @ApiProperty({
@@ -10,6 +10,7 @@ export class UserLoginDto {
   })
   @IsNotEmpty({ message: 'Email field is required!' })
   @IsEmail({}, { message: 'Email field is not a valid email address!' })
+  @MaxLength(255)
   @Transform(({ value }) => value?.toLowerCase())
   email: string;
 
@@ -20,5 +21,6 @@ export class UserLoginDto {
   })
   @IsString()
   @IsNotEmpty({ message: 'Password field is required!' })
+  @MaxLength(128)
   password: string;
 }

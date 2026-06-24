@@ -5,6 +5,7 @@ import {
   IsMilitaryTime,
   IsOptional,
   IsString,
+  MaxLength,
 } from 'class-validator';
 
 export class CreateExceptionDto {
@@ -45,5 +46,6 @@ export class CreateExceptionDto {
   @ApiPropertyOptional({ description: 'Reason for the exception.' })
   @IsOptional()
   @IsString()
+  @MaxLength(500)
   reason?: string;
 }

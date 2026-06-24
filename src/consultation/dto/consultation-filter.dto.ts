@@ -1,6 +1,7 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { ConsultationStatusEnum } from '@prisma/client';
-import { IsEnum, IsNumberString, IsOptional } from 'class-validator';
+import { IsEnum, IsInt, IsOptional, Max, Min } from 'class-validator';
+import { Type } from 'class-transformer';
 
 export class ConsultationFilterDto {
   @ApiPropertyOptional({
@@ -15,13 +16,18 @@ export class ConsultationFilterDto {
     description: 'The index of item to start fetching items from.',
   })
   @IsOptional()
-  @IsNumberString()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
   skip?: number;
 
   @ApiPropertyOptional({
     description: 'Max number of items to be fetched.',
   })
   @IsOptional()
-  @IsNumberString()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(100)
   take?: number;
 }

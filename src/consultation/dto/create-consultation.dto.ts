@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsInt, IsNotEmpty, IsOptional, IsUUID } from 'class-validator';
+import { IsInt, IsNotEmpty, IsOptional, IsUUID, Min } from 'class-validator';
 
 export class CreateConsultationDto {
   @ApiProperty({
@@ -7,6 +7,7 @@ export class CreateConsultationDto {
   })
   @IsNotEmpty()
   @IsInt()
+  @Min(1)
   doctorId: number;
 
   @ApiPropertyOptional({

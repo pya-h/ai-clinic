@@ -6,22 +6,26 @@ import {
   IsEnum,
   IsOptional,
   IsString,
+  MaxLength,
 } from 'class-validator';
 
 export class AdminUpdateUserDto {
   @ApiPropertyOptional({ description: 'First name.' })
   @IsOptional()
   @IsString()
+  @MaxLength(100)
   firstname?: string;
 
   @ApiPropertyOptional({ description: 'Last name.' })
   @IsOptional()
   @IsString()
+  @MaxLength(100)
   lastname?: string;
 
   @ApiPropertyOptional({ description: 'Email address.' })
   @IsOptional()
   @IsEmail()
+  @MaxLength(255)
   email?: string;
 
   @ApiPropertyOptional({ description: 'User role.', enum: UserRolesEnum })

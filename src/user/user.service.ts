@@ -21,10 +21,10 @@ export class UserService {
   ) {}
 
   getById(id: string, select?: Prisma.UserSelect<DefaultArgs>) {
-    return this.prisma.user.findUnique({
-      where: { id },
-      ...(select ? { select } : { select: { password: false } }),
-    });
+    if (select) {
+      return this.prisma.user.findUnique({ where: { id }, select });
+    }
+    return this.prisma.user.findUnique({ where: { id }, omit: { password: true } });
   }
 
   async userExists(userId: string): Promise<boolean> {

@@ -43,6 +43,11 @@ export class PaymentService {
           'You can only create payments for your own consultations.',
         );
       }
+      if (consultation.status !== ConsultationStatusEnum.PENDING_PAYMENT) {
+        throw new ConflictException(
+          'Consultation must be in PENDING_PAYMENT status to create a payment.',
+        );
+      }
     }
 
     return this.prisma.payment.create({
@@ -125,12 +130,16 @@ export class PaymentService {
       },
     });
 
-    // Transition the linked consultation to PAYMENT_CONFIRMED
     if (payment.consultationId) {
-      await this.prisma.consultation.update({
+      const consultation = await this.prisma.consultation.findUnique({
         where: { id: payment.consultationId },
-        data: { status: ConsultationStatusEnum.PAYMENT_CONFIRMED },
       });
+      if (consultation?.status === ConsultationStatusEnum.PENDING_PAYMENT) {
+        await this.prisma.consultation.update({
+          where: { id: payment.consultationId },
+          data: { status: ConsultationStatusEnum.PAYMENT_CONFIRMED },
+        });
+      }
     }
 
     return updated;

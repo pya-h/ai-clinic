@@ -18,17 +18,24 @@ export class OpenAiService {
     });
   }
 
-  private tempHistory: Record<string, TOpenAiMessage[]> = {};
+  private static readonly MAX_HISTORY_ENTRIES = 500;
+  private static readonly MAX_MESSAGES_PER_CHAT = 100;
+  private tempHistory = new Map<string, TOpenAiMessage[]>();
 
   async getChatHistory(chatId: string) {
-    let chat = this.tempHistory?.[chatId];
+    let chat = this.tempHistory.get(chatId);
     if (!chat?.length) {
-      this.tempHistory[chatId] = chat = [
+      chat = [
         {
           role: OpenAiChatRoles.SYSTEM,
           content: this.primaryPrompt,
         },
       ];
+      if (this.tempHistory.size >= OpenAiService.MAX_HISTORY_ENTRIES) {
+        const oldest = this.tempHistory.keys().next().value;
+        if (oldest !== undefined) this.tempHistory.delete(oldest);
+      }
+      this.tempHistory.set(chatId, chat);
     }
     return chat;
   }
@@ -36,6 +43,12 @@ export class OpenAiService {
   async updateChat(chatId: string, newMessages: TOpenAiMessage[]) {
     const chat = await this.getChatHistory(chatId);
     chat.push(...newMessages);
+    if (chat.length > OpenAiService.MAX_MESSAGES_PER_CHAT) {
+      const system = chat[0];
+      const trimmed = chat.slice(chat.length - OpenAiService.MAX_MESSAGES_PER_CHAT + 1);
+      trimmed.unshift(system);
+      this.tempHistory.set(chatId, trimmed);
+    }
   }
 
   async runCompletion(chatId: string, prompt: string) {

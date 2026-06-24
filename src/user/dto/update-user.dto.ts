@@ -3,6 +3,7 @@ import {
   IsBoolean,
   IsEmail,
   IsOptional,
+  IsString,
   IsUrl,
   MaxLength,
   MinLength,
@@ -19,12 +20,16 @@ export class UpdateUserDto {
 
   @ApiProperty({ description: 'The displaying name of the user' })
   @IsOptional()
+  @IsString()
   @MinLength(3, { message: 'First name is too short!' })
+  @MaxLength(100)
   firstname?: string;
 
   @ApiProperty({ description: 'The displaying lastname of the user' })
   @IsOptional()
+  @IsString()
   @MinLength(3, { message: 'Last name is too short!' })
+  @MaxLength(100)
   lastname?: string;
 
   @ApiPropertyOptional({
@@ -43,5 +48,6 @@ export class UpdateUserDto {
   })
   @IsOptional()
   @IsUrl()
+  @MaxLength(2048)
   avatar?: string;
 }

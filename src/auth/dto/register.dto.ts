@@ -6,6 +6,7 @@ import {
   IsOptional,
   Matches,
   IsUrl,
+  MaxLength,
 } from 'class-validator';
 import { Transform } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
@@ -20,6 +21,7 @@ export class RegistrationDto {
   })
   @IsNotEmpty({ message: 'Email field is required!' })
   @IsEmail({}, { message: 'Email field is not a valid email address!' })
+  @MaxLength(255)
   @Transform(({ value }) => value?.toLowerCase())
   email: string;
 
@@ -30,6 +32,7 @@ export class RegistrationDto {
   })
   @IsString()
   @IsNotEmpty({ message: 'First name field is required!' })
+  @MaxLength(100)
   firstname: string;
 
   @ApiProperty({
@@ -39,6 +42,7 @@ export class RegistrationDto {
   })
   @IsString()
   @IsNotEmpty({ message: 'Last name field is required!' })
+  @MaxLength(100)
   lastname: string;
 
   @ApiPropertyOptional({
@@ -57,6 +61,7 @@ export class RegistrationDto {
   })
   @IsOptional()
   @IsUrl()
+  @MaxLength(2048)
   avatar?: string;
 
   @ApiPropertyOptional({
@@ -81,6 +86,7 @@ export class RegistrationDto {
     message:
       'Password must be at least 8 characters long and contain at least one uppercase letter, one lowercase letter and one digit',
   })
+  @MaxLength(128)
   @IsNotEmpty({ message: 'Password field is required!' })
   password: string;
 }

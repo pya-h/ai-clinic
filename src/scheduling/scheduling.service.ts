@@ -438,19 +438,19 @@ export class SchedulingService {
 
     // Check for overlapping appointments (double-booking prevention)
     const bookingEndTime = new Date(bookingDateTime.getTime() + dto.durationMinutes * 60000);
-    const overlapping = await this.prisma.appointment.findFirst({
+    const candidates = await this.prisma.appointment.findMany({
       where: {
         doctorId: dto.doctorId,
         status: { not: AppointmentStatusEnum.CANCELLED },
         dateTime: { lt: bookingEndTime },
-        AND: {
-          dateTime: {
-            gte: new Date(bookingDateTime.getTime() - (dto.durationMinutes * 60000)),
-          },
-        },
       },
+      select: { dateTime: true, durationMinutes: true },
     });
-    if (overlapping) {
+    const hasOverlap = candidates.some((apt) => {
+      const aptEnd = new Date(apt.dateTime.getTime() + apt.durationMinutes * 60000);
+      return aptEnd > bookingDateTime;
+    });
+    if (hasOverlap) {
       throw new ConflictException('This time slot is no longer available.');
     }
 

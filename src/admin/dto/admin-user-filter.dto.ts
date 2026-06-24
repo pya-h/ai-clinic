@@ -3,10 +3,14 @@ import { UserRolesEnum } from '@prisma/client';
 import {
   IsBooleanString,
   IsEnum,
-  IsNumberString,
+  IsInt,
   IsOptional,
   IsString,
+  Max,
+  MaxLength,
+  Min,
 } from 'class-validator';
+import { Type } from 'class-transformer';
 
 export class AdminUserFilterDto {
   @ApiPropertyOptional({ description: 'Filter by user role.', enum: UserRolesEnum })
@@ -27,15 +31,21 @@ export class AdminUserFilterDto {
   @ApiPropertyOptional({ description: 'Search by name or email (case-insensitive).' })
   @IsOptional()
   @IsString()
+  @MaxLength(200)
   search?: string;
 
   @ApiPropertyOptional({ description: 'Skip N items.' })
   @IsOptional()
-  @IsNumberString()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
   skip?: number;
 
   @ApiPropertyOptional({ description: 'Take N items.' })
   @IsOptional()
-  @IsNumberString()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(100)
   take?: number;
 }

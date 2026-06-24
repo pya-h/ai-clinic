@@ -37,6 +37,7 @@ const ALLOWED_TRANSITIONS: Record<MatchStatusEnum, MatchStatusEnum[]> = {
   ],
   MATCHED: [
     MatchStatusEnum.ACCEPTED,
+    MatchStatusEnum.CONSULTATION_CREATED,
     MatchStatusEnum.SEARCHING,
     MatchStatusEnum.TIMEOUT,
     MatchStatusEnum.CANCELLED,
@@ -287,7 +288,7 @@ export class MatchingService {
       );
     }
 
-    this.validateTransition(request.status, MatchStatusEnum.ACCEPTED);
+    this.validateTransition(request.status, MatchStatusEnum.CONSULTATION_CREATED);
 
     const [consultation, updated] = await this.prisma.$transaction(async (tx) => {
       const cons = await tx.consultation.create({

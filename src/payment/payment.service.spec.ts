@@ -39,7 +39,7 @@ describe('PaymentService', () => {
     id: randomUuid(),
     patientId: mockUser.id,
     doctorId: 1,
-    status: 'DOCTOR_DECIDED',
+    status: 'PENDING_PAYMENT',
   };
 
   beforeEach(async () => {

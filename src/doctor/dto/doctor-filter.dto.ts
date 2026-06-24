@@ -1,12 +1,9 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { DoctorSpecialtiesEnum, VisitMethodsEnum } from '@prisma/client';
-import { IsOptional, IsString, IsNumberString } from 'class-validator';
+import { IsInt, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
+import { Type } from 'class-transformer';
 import { IsEnumDetailed } from '../../common/decorators/is-enum-detailed.decorator';
 
-/**
- * Query parameters for filtering the public doctor listing.
- * All fields are optional — omitting everything returns all verified doctors.
- */
 export class DoctorFilterDto {
   @ApiPropertyOptional({
     description: 'Filter by primary specialty.',
@@ -31,6 +28,7 @@ export class DoctorFilterDto {
   })
   @IsOptional()
   @IsString()
+  @MaxLength(500)
   location?: string;
 
   @ApiPropertyOptional({
@@ -38,19 +36,25 @@ export class DoctorFilterDto {
   })
   @IsOptional()
   @IsString()
+  @MaxLength(200)
   search?: string;
 
   @ApiPropertyOptional({
     description: 'Number of records to skip (pagination offset).',
   })
   @IsOptional()
-  @IsNumberString()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
   skip?: number;
 
   @ApiPropertyOptional({
     description: 'Max number of records to return.',
   })
   @IsOptional()
-  @IsNumberString()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(100)
   take?: number;
 }

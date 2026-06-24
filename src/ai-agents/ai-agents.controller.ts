@@ -121,6 +121,7 @@ export class AiAgentsController {
     return messages;
   }
 
+  @Throttle({ default: { limit: 20, ttl: 60000 } })
   @Get('guest/messages/:conversationId')
   async pollGuestMessages(
     @Param('conversationId') conversationId: string,
@@ -191,14 +192,16 @@ export class AiAgentsController {
     @CurrentUser() user: User,
     @Param('conversationId') conversationId: string,
   ) {
-    reply.hijack();
     const actualConversationId = conversationId;
 
+    const conversation = await this.prisma.aiConversation.findFirst({
+      where: { id: conversationId, userId: user.id },
+    });
+    if (!conversation) throw new ForbiddenException('Access denied.');
+
+    reply.hijack();
+
     try {
-      const conversation = await this.prisma.aiConversation.findFirst({
-        where: { id: conversationId, userId: user.id },
-      });
-      if (!conversation) throw new ForbiddenException('Access denied.');
 
       // hijack() bypasses Fastify CORS — emit headers manually
       const requestOrigin = (req.headers['origin'] as string | undefined) ?? '';
@@ -385,7 +388,7 @@ export class AiAgentsController {
         clearInterval(heartbeatInterval);
         if (pendingBotMsg) {
           clearTimeout(pendingBotMsg.timer);
-          pendingBotMsg = null;
+          flushPendingBotMsg();
         }
         try {
           listener.off('message_created', onMessage);

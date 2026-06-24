@@ -562,7 +562,7 @@ describe('SchedulingService', () => {
 
     beforeEach(() => {
       prisma.slotDuration.findFirst.mockResolvedValue({ price: 50 });
-      prisma.appointment.findFirst.mockResolvedValue(null); // no overlap
+      prisma.appointment.findMany.mockResolvedValue([]); // no overlap
     });
 
     it('should book an appointment', async () => {

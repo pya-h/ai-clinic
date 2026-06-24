@@ -96,7 +96,6 @@ describe('MatchingService', () => {
       [MatchStatusEnum.SEARCHING, MatchStatusEnum.CONSULTATION_CREATED],
       [MatchStatusEnum.SEARCHING, MatchStatusEnum.MANUAL_BROWSE],
       [MatchStatusEnum.SEARCHING, MatchStatusEnum.ACCEPTED],
-      [MatchStatusEnum.MATCHED, MatchStatusEnum.CONSULTATION_CREATED],
       [MatchStatusEnum.MATCHED, MatchStatusEnum.MANUAL_BROWSE],
       [MatchStatusEnum.ACCEPTED, MatchStatusEnum.SEARCHING],
       [MatchStatusEnum.ACCEPTED, MatchStatusEnum.MATCHED],

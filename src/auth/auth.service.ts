@@ -49,7 +49,6 @@ export class AuthService {
     if (!user) {
       throw new NotFoundException('User not found');
     }
-    delete user.password;
     session.set('user', user);
     return user;
   }
