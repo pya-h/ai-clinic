@@ -10,6 +10,7 @@ import {
   Patch,
   Post,
   Query,
+  ForbiddenException,
   UseGuards,
 } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
@@ -58,6 +59,16 @@ export class ReviewController {
     @Param('id', ParseIntPipe) id: number,
   ) {
     await this.reviewService.delete(id, user);
+  }
+
+  @ApiOperation({ description: 'List all reviews (admin only, paginated).' })
+  @UseGuards(CookieAuthGuard)
+  @Get('admin/all')
+  async listAll(@CurrentUser() user: User, @Query() pagination: PaginationOptionsDto) {
+    if (!user.isAdmin && !user.isSuperAdmin) {
+      throw new ForbiddenException('Admin access required.');
+    }
+    return this.reviewService.listAll(pagination);
   }
 
   @ApiOperation({ description: 'List reviews for a doctor (public, paginated).' })

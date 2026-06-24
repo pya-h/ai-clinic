@@ -184,6 +184,35 @@ export class ReviewService {
   }
 
   /**
+   * List all reviews (admin only, paginated).
+   */
+  async listAll(
+    pagination: PaginationOptionsDto,
+  ): Promise<{ data: DoctorReview[]; total: number; skip: number; take: number }> {
+    const skip = +(pagination.skip ?? 0);
+    const take = +(pagination.take ?? 20);
+
+    const [data, total] = await Promise.all([
+      this.prisma.doctorReview.findMany({
+        skip,
+        take,
+        orderBy: { createdAt: 'desc' },
+        include: {
+          reviewer: {
+            select: { id: true, firstname: true, lastname: true, avatar: true },
+          },
+          doctor: {
+            select: { id: true, specialty: true, user: { select: { firstname: true, lastname: true } } },
+          },
+        },
+      }),
+      this.prisma.doctorReview.count(),
+    ]);
+
+    return { data, total, skip, take };
+  }
+
+  /**
    * Aggregate rating for a doctor — cached for 10 minutes.
    * Uses Prisma aggregate + groupBy to avoid loading all rows into memory.
    */
