@@ -29,6 +29,7 @@ import { MatchingModule } from './matching/matching.module';
 import { NotificationModule } from './notification/notification.module';
 import { PaymentModule } from './payment/payment.module';
 import { CalendlyModule } from './calendly/calendly.module';
+import { NurseModule } from './nurse/nurse.module';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 
 @Module({
@@ -59,6 +60,7 @@ import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
     NotificationModule,
     PaymentModule,
     CalendlyModule,
+    NurseModule,
   ],
   controllers: [AppController],
   providers: [

@@ -11,6 +11,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import {
   Consultation,
   ConsultationStatusEnum,
+  NursePermissionEnum,
   Prisma,
   User,
   UserRolesEnum,
@@ -20,6 +21,7 @@ import { DoctorDecisionDto } from './dto/doctor-decision.dto';
 import { CompleteConsultationDto } from './dto/complete-consultation.dto';
 import { ConsultationFilterDto } from './dto/consultation-filter.dto';
 import { NotificationService } from '../notification/notification.service';
+import { NurseService } from '../nurse/nurse.service';
 
 /**
  * Allowed state transitions for the consultation state machine.
@@ -69,6 +71,7 @@ export class ConsultationService {
     private readonly prisma: PrismaService,
     @Inject(forwardRef(() => NotificationService))
     private readonly notificationService: NotificationService,
+    private readonly nurseService: NurseService,
   ) {}
 
   // ──────────────── State Machine ────────────────
@@ -326,6 +329,15 @@ export class ConsultationService {
         throw new NotFoundException('Doctor profile not found.');
       }
       where.doctorId = doctorProfile.id;
+    } else if (user.role === UserRolesEnum.NURSE) {
+      const doctorIds = await this.nurseService.getDoctorIdsForNurse(
+        user.id,
+        NursePermissionEnum.VIEW_CONSULTATION_NOTES,
+      );
+      if (doctorIds.length === 0) {
+        return { data: [], total: 0, skip, take };
+      }
+      where.doctorId = { in: doctorIds };
     } else {
       throw new ForbiddenException(
         'You do not have access to consultations.',
@@ -398,6 +410,15 @@ export class ConsultationService {
           'You do not have access to this consultation.',
         );
       }
+      return;
+    }
+
+    if (user.role === UserRolesEnum.NURSE) {
+      await this.nurseService.assertNursePermission(
+        user.id,
+        consultation.doctorId,
+        NursePermissionEnum.VIEW_CONSULTATION_NOTES,
+      );
       return;
     }
 

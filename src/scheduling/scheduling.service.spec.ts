@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { SchedulingService, AvailableSlot } from './scheduling.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { CalendlyService } from '../calendly/calendly.service';
+import { NurseService } from '../nurse/nurse.service';
 import {
   createMockPrismaService,
   MockPrismaService,
@@ -25,6 +26,17 @@ const mockCalendlyService = {
   isConfigured: jest.fn().mockReturnValue(false),
 };
 
+const mockNurseService = {
+  assignNurse: jest.fn(),
+  updatePermissions: jest.fn(),
+  removeAssignment: jest.fn(),
+  getMyAssignments: jest.fn(),
+  getAssignment: jest.fn(),
+  getNursePermissionForDoctor: jest.fn(),
+  assertNursePermission: jest.fn(),
+  getDoctorIdsForNurse: jest.fn(),
+};
+
 describe('SchedulingService', () => {
   let service: SchedulingService;
   let prisma: MockPrismaService;
@@ -37,6 +49,7 @@ describe('SchedulingService', () => {
         SchedulingService,
         { provide: PrismaService, useValue: prisma },
         { provide: CalendlyService, useValue: mockCalendlyService },
+        { provide: NurseService, useValue: mockNurseService },
       ],
     }).compile();
 

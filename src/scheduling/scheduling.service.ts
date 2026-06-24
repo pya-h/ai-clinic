@@ -23,6 +23,8 @@ import { CreateExceptionDto } from './dto/create-exception.dto';
 import { BookAppointmentDto } from './dto/book-appointment.dto';
 import { AppointmentFilterDto } from './dto/appointment-filter.dto';
 import { CalendlyService } from '../calendly/calendly.service';
+import { NurseService } from '../nurse/nurse.service';
+import { NursePermissionEnum } from '@prisma/client';
 
 export interface AvailableSlot {
   date: string; // YYYY-MM-DD
@@ -38,6 +40,7 @@ export class SchedulingService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly calendlyService: CalendlyService,
+    private readonly nurseService: NurseService,
   ) {}
 
   // ──────────────── Doctor ID Lookup ────────────────
@@ -509,6 +512,15 @@ export class SchedulingService {
     } else if (user.role === UserRolesEnum.DOCTOR) {
       const doctorId = await this.getDoctorProfileId(user.id);
       where.doctorId = doctorId;
+    } else if (user.role === UserRolesEnum.NURSE) {
+      const doctorIds = await this.nurseService.getDoctorIdsForNurse(
+        user.id,
+        NursePermissionEnum.MANAGE_APPOINTMENTS,
+      );
+      if (doctorIds.length === 0) {
+        return { data: [], total: 0, skip, take };
+      }
+      where.doctorId = { in: doctorIds };
     } else {
       throw new ForbiddenException('You do not have access to appointments.');
     }
@@ -590,6 +602,15 @@ export class SchedulingService {
       if (appointment.doctorId !== doctorId) {
         throw new ForbiddenException('You do not have access to this appointment.');
       }
+      return;
+    }
+
+    if (user.role === UserRolesEnum.NURSE) {
+      await this.nurseService.assertNursePermission(
+        user.id,
+        appointment.doctorId,
+        NursePermissionEnum.MANAGE_APPOINTMENTS,
+      );
       return;
     }
 

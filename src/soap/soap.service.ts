@@ -7,9 +7,10 @@ import {
   forwardRef,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { PatientSOAP } from '@prisma/client';
+import { NursePermissionEnum, PatientSOAP, UserRolesEnum } from '@prisma/client';
 import { PaginationOptionsDto } from '../common/dtos/pagination-options.dto';
 import { NotificationService } from '../notification/notification.service';
+import { NurseService } from '../nurse/nurse.service';
 
 @Injectable()
 export class SoapService {
@@ -20,6 +21,7 @@ export class SoapService {
     private readonly prisma: PrismaService,
     @Inject(forwardRef(() => NotificationService))
     private readonly notificationService: NotificationService,
+    private readonly nurseService: NurseService,
   ) {}
 
   private static readonly HEADING_RE =
@@ -159,12 +161,14 @@ export class SoapService {
 
   /**
    * Get a single SOAP by ID, with ownership check.
-   * Admins can access any SOAP.
+   * Admins can access any SOAP. Nurses with VIEW_SOAPS permission
+   * can access SOAPs belonging to their assigned doctor's patients.
    */
   async getById(
     id: string,
     requestingUserId: string,
     isAdminOrSuperAdmin = false,
+    requestingUserRole?: UserRolesEnum,
   ): Promise<PatientSOAP> {
     const soap = await this.prisma.patientSOAP.findUnique({
       where: { id },
@@ -174,12 +178,27 @@ export class SoapService {
       throw new NotFoundException('SOAP note not found.');
     }
 
-    if (!isAdminOrSuperAdmin && soap.userId !== requestingUserId) {
-      throw new ForbiddenException(
-        'You do not have permission to view this SOAP note.',
-      );
+    if (isAdminOrSuperAdmin) return soap;
+
+    if (soap.userId === requestingUserId) return soap;
+
+    if (requestingUserRole === UserRolesEnum.NURSE) {
+      const consultation = await this.prisma.consultation.findFirst({
+        where: { soapId: soap.id },
+        select: { doctorId: true },
+      });
+      if (consultation) {
+        const assignment = await this.nurseService.getNursePermissionForDoctor(
+          requestingUserId,
+          consultation.doctorId,
+          NursePermissionEnum.VIEW_SOAPS,
+        );
+        if (assignment) return soap;
+      }
     }
 
-    return soap;
+    throw new ForbiddenException(
+      'You do not have permission to view this SOAP note.',
+    );
   }
 }

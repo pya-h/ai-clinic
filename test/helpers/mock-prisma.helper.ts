@@ -174,6 +174,15 @@ export type MockPrismaService = {
     delete: jest.Mock;
     count: jest.Mock;
   };
+  doctorNurseAssignment: {
+    findFirst: jest.Mock;
+    findUnique: jest.Mock;
+    findMany: jest.Mock;
+    create: jest.Mock;
+    update: jest.Mock;
+    delete: jest.Mock;
+    count: jest.Mock;
+  };
   $transaction: jest.Mock;
   $connect: jest.Mock;
   $disconnect: jest.Mock;
@@ -216,6 +225,7 @@ export function createMockPrismaService(): MockPrismaService {
     pushSubscription: createModelMock(['upsert', 'updateMany']) as any,
     payment: createModelMock(['count']) as any,
     call: createModelMock(['count']) as any,
+    doctorNurseAssignment: createModelMock(['count']) as any,
     $transaction: jest.fn(),
     $connect: jest.fn(),
     $disconnect: jest.fn(),

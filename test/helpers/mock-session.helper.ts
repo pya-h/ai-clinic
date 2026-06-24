@@ -76,3 +76,13 @@ export function createMockSuperAdminUser(overrides: Partial<MockUser> = {}): Moc
     ...overrides,
   });
 }
+
+export function createMockNurseUser(overrides: Partial<MockUser> = {}): MockUser {
+  return createMockUser({
+    email: randomEmail('nurse'),
+    firstname: randomFirstName(),
+    lastname: randomLastName(),
+    role: UserRolesEnum.NURSE,
+    ...overrides,
+  });
+}

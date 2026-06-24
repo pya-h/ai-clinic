@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { SoapService } from './soap.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationService } from '../notification/notification.service';
+import { NurseService } from '../nurse/nurse.service';
 import { NotFoundException, ForbiddenException } from '@nestjs/common';
 import { randomUuid } from '../../test/helpers/test-data.factory';
 
@@ -48,6 +49,12 @@ describe('SoapService', () => {
         {
           provide: NotificationService,
           useValue: { onSoapReady: jest.fn().mockResolvedValue(undefined) },
+        },
+        {
+          provide: NurseService,
+          useValue: {
+            getNursePermissionForDoctor: jest.fn().mockResolvedValue(null),
+          },
         },
       ],
     }).compile();

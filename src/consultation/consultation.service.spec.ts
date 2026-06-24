@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { ConsultationService } from './consultation.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationService } from '../notification/notification.service';
+import { NurseService } from '../nurse/nurse.service';
 import {
   createMockPrismaService,
   MockPrismaService,
@@ -47,6 +48,14 @@ describe('ConsultationService', () => {
             onNewConsultation: jest.fn().mockResolvedValue(undefined),
             onDoctorDecision: jest.fn().mockResolvedValue(undefined),
             onPaymentConfirmed: jest.fn().mockResolvedValue(undefined),
+          },
+        },
+        {
+          provide: NurseService,
+          useValue: {
+            assertNursePermission: jest.fn(),
+            getNursePermissionForDoctor: jest.fn(),
+            getDoctorIdsForNurse: jest.fn().mockResolvedValue([]),
           },
         },
       ],

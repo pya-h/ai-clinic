@@ -40,6 +40,6 @@ export class SoapController {
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: User,
   ) {
-    return this.soapService.getById(id, user.id, user.isAdmin || user.isSuperAdmin);
+    return this.soapService.getById(id, user.id, user.isAdmin || user.isSuperAdmin, user.role);
   }
 }
