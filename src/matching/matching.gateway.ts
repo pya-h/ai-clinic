@@ -14,7 +14,7 @@ import { Server, Socket } from 'socket.io';
 import { ConfigService } from '@nestjs/config';
 import { createHash } from 'crypto';
 import { MatchingService } from './matching.service';
-import { MatchStatusEnum } from '@prisma/client';
+import { DoctorSpecialtiesEnum, MatchStatusEnum } from '@prisma/client';
 import { NotificationService } from '../notification/notification.service';
 
 @WebSocketGateway({
@@ -89,11 +89,15 @@ export class MatchingGateway
     if (!user) throw new WsException('Unauthorized');
 
     try {
+      if (payload.specialty && !Object.values(DoctorSpecialtiesEnum).includes(payload.specialty as DoctorSpecialtiesEnum)) {
+        throw new WsException(`Invalid specialty: ${payload.specialty}`);
+      }
+
       const { matchRequest, doctors } =
         await this.matchingService.createMatchRequest(
           user,
           payload.soapId,
-          payload.specialty as any,
+          payload.specialty as DoctorSpecialtiesEnum | undefined,
         );
 
       client.emit('match:searching', {
