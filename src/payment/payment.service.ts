@@ -122,25 +122,29 @@ export class PaymentService {
       `Stub: confirming payment ${id} without real provider integration.`,
     );
 
-    const updated = await this.prisma.payment.update({
-      where: { id },
-      data: {
-        status: PaymentStatusEnum.COMPLETED,
-        paidAt: new Date(),
-      },
-    });
-
-    if (payment.consultationId) {
-      const consultation = await this.prisma.consultation.findUnique({
-        where: { id: payment.consultationId },
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const paid = await tx.payment.update({
+        where: { id },
+        data: {
+          status: PaymentStatusEnum.COMPLETED,
+          paidAt: new Date(),
+        },
       });
-      if (consultation?.status === ConsultationStatusEnum.PENDING_PAYMENT) {
-        await this.prisma.consultation.update({
+
+      if (payment.consultationId) {
+        const consultation = await tx.consultation.findUnique({
           where: { id: payment.consultationId },
-          data: { status: ConsultationStatusEnum.PAYMENT_CONFIRMED },
         });
+        if (consultation?.status === ConsultationStatusEnum.PENDING_PAYMENT) {
+          await tx.consultation.update({
+            where: { id: payment.consultationId },
+            data: { status: ConsultationStatusEnum.PAYMENT_CONFIRMED },
+          });
+        }
       }
-    }
+
+      return paid;
+    });
 
     return updated;
   }

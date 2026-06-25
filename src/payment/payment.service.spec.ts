@@ -53,7 +53,9 @@ describe('PaymentService', () => {
       },
       consultation: {
         findUnique: jest.fn(),
+        update: jest.fn(),
       },
+      $transaction: jest.fn((cb) => cb(prisma)),
     };
 
     const module: TestingModule = await Test.createTestingModule({
