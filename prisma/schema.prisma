@@ -174,6 +174,8 @@ model User {
   pushSubscriptions      PushSubscription[]
   matchRequests          MatchRequest[]     @relation("PatientMatchRequests")
 
+  @@index([role])
+  @@index([isActive])
   @@map("user")
 }
 
@@ -186,7 +188,7 @@ model Chat {
 
   topic          String?
   consultationId String?       @unique @map("consultation_id")
-  consultation   Consultation? @relation(fields: [consultationId], references: [id])
+  consultation   Consultation? @relation(fields: [consultationId], references: [id], onDelete: SetNull)
   messages       Message[]
   parties        ChatParticipant[]
 
@@ -199,17 +201,17 @@ model Message {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   chatId String @map("chat_id")
-  chat   Chat   @relation(fields: [chatId], references: [id])
+  chat   Chat   @relation(fields: [chatId], references: [id], onDelete: Cascade)
 
   senderId String @map("sender_id")
-  sender   User   @relation(fields: [senderId], references: [id])
+  sender   User   @relation(fields: [senderId], references: [id], onDelete: Cascade)
 
   content  String
   type     MessageTypeEnum @default(TEXT) @map("type")
   fileUrl  String?         @map("file_url")
 
   repliedToId BigInt?  @map("replied_to_id")
-  repliedTo   Message? @relation("MessageReply", fields: [repliedToId], references: [id])
+  repliedTo   Message? @relation("MessageReply", fields: [repliedToId], references: [id], onDelete: SetNull)
   replies     Message[] @relation("MessageReply")
 
   readBy    Json?     @map("read_by")
@@ -217,14 +219,15 @@ model Message {
   deletedAt DateTime? @map("deleted_at")
 
   @@index([chatId, createdAt])
+  @@index([senderId])
   @@map("message")
 }
 
 model ChatParticipant {
   userId String @map("user_id")
-  user   User   @relation(fields: [userId], references: [id])
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
   chatId String @map("chat_id")
-  chat   Chat   @relation(fields: [chatId], references: [id])
+  chat   Chat   @relation(fields: [chatId], references: [id], onDelete: Cascade)
 
   joinedAt   DateTime  @default(now()) @map("joined_at")
   lastSeenAt DateTime? @map("last_seen_at")
@@ -247,7 +250,7 @@ enum AiAgentsEnum {
 model AiConversation {
   id     String @id // Agent's generated Id = convesationId
   userId String @map("user_id")
-  user   User   @relation(fields: [userId], references: [id])
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   topic        String?
   agentType    AiAgentsEnum @default(BOTPRESS)
@@ -255,6 +258,7 @@ model AiConversation {
   soap         PatientSOAP?
 
   @@index([userId])
+  @@index([createdAt])
   @@map("ai_conversation")
 }
 
@@ -264,10 +268,10 @@ model PatientSOAP {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   userId String @map("user_id")
-  user   User   @relation(fields: [userId], references: [id])
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   conversationId String         @unique @map("conversation_id")
-  conversation   AiConversation @relation(fields: [conversationId], references: [id])
+  conversation   AiConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
 
   subjective         String?                @map("subjective")
   objective          String?                @map("objective")
@@ -327,7 +331,7 @@ model DoctorProfile {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   userId String @unique @map("user_id")
-  user   User   @relation(fields: [userId], references: [id])
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   startedAt            DateTime                @map("started_at")
   specialty            DoctorSpecialtiesEnum   @default(GENERAL)
@@ -367,10 +371,10 @@ model DoctorReview {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   reviewerId String @map("reviewer_id")
-  reviewer   User   @relation(fields: [reviewerId], references: [id])
+  reviewer   User   @relation(fields: [reviewerId], references: [id], onDelete: Cascade)
 
   doctorId Int           @map("doctor_id")
-  doctor   DoctorProfile @relation(fields: [doctorId], references: [id])
+  doctor   DoctorProfile @relation(fields: [doctorId], references: [id], onDelete: Cascade)
 
   title    String?
   overview String? @map("overview")
@@ -389,7 +393,7 @@ model PatientProfile {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   userId String @unique @map("user_id")
-  user   User   @relation(fields: [userId], references: [id])
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   location     String?
   visitMethods VisitMethodsEnum[] @map("visit_methods")
@@ -412,13 +416,13 @@ model Consultation {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   patientId String @map("patient_id")
-  patient   User   @relation("PatientConsultations", fields: [patientId], references: [id])
+  patient   User   @relation("PatientConsultations", fields: [patientId], references: [id], onDelete: Cascade)
 
   doctorId Int           @map("doctor_id")
-  doctor   DoctorProfile @relation(fields: [doctorId], references: [id])
+  doctor   DoctorProfile @relation(fields: [doctorId], references: [id], onDelete: Cascade)
 
   soapId String?     @map("soap_id")
-  soap   PatientSOAP? @relation(fields: [soapId], references: [id])
+  soap   PatientSOAP? @relation(fields: [soapId], references: [id], onDelete: SetNull)
 
   status         ConsultationStatusEnum @default(CREATED)
   doctorDecision ConsultationModeEnum?  @map("doctor_decision")
@@ -436,6 +440,7 @@ model Consultation {
 
   @@index([patientId, status])
   @@index([doctorId, status])
+  @@index([status])
   @@map("consultation")
 }
 
@@ -445,13 +450,13 @@ model Appointment {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   patientId String @map("patient_id")
-  patient   User   @relation("PatientAppointments", fields: [patientId], references: [id])
+  patient   User   @relation("PatientAppointments", fields: [patientId], references: [id], onDelete: Cascade)
 
   doctorId Int           @map("doctor_id")
-  doctor   DoctorProfile @relation(fields: [doctorId], references: [id])
+  doctor   DoctorProfile @relation(fields: [doctorId], references: [id], onDelete: Cascade)
 
   consultationId String?       @unique @map("consultation_id")
-  consultation   Consultation? @relation(fields: [consultationId], references: [id])
+  consultation   Consultation? @relation(fields: [consultationId], references: [id], onDelete: SetNull)
 
   dateTime        DateTime             @map("date_time")
   durationMinutes Int                  @map("duration_minutes")
@@ -467,6 +472,7 @@ model Appointment {
 
   @@index([doctorId, dateTime])
   @@index([patientId, dateTime])
+  @@index([status])
   @@map("appointment")
 }
 
@@ -478,7 +484,7 @@ model DoctorAvailability {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   doctorId  Int           @map("doctor_id")
-  doctor    DoctorProfile @relation(fields: [doctorId], references: [id])
+  doctor    DoctorProfile @relation(fields: [doctorId], references: [id], onDelete: Cascade)
 
   dayOfWeek Int      @map("day_of_week")  // 0 (Sun) – 6 (Sat)
   startTime String   @map("start_time")   // "09:00"
@@ -495,7 +501,7 @@ model SlotDuration {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   doctorId Int           @map("doctor_id")
-  doctor   DoctorProfile @relation(fields: [doctorId], references: [id])
+  doctor   DoctorProfile @relation(fields: [doctorId], references: [id], onDelete: Cascade)
 
   minutes  Int
   price    Decimal  @db.Decimal(10, 2)
@@ -511,7 +517,7 @@ model AvailabilityException {
   createdAt DateTime @default(now()) @map("created_at")
 
   doctorId  Int           @map("doctor_id")
-  doctor    DoctorProfile @relation(fields: [doctorId], references: [id])
+  doctor    DoctorProfile @relation(fields: [doctorId], references: [id], onDelete: Cascade)
 
   date      DateTime @map("date")
   isBlocked Boolean  @default(true) @map("is_blocked")
@@ -531,7 +537,7 @@ model DoctorDocument {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   doctorId Int           @map("doctor_id")
-  doctor   DoctorProfile @relation(fields: [doctorId], references: [id])
+  doctor   DoctorProfile @relation(fields: [doctorId], references: [id], onDelete: Cascade)
 
   type         DocumentTypeEnum   @map("type")
   fileUrl      String             @map("file_url")
@@ -551,10 +557,10 @@ model DoctorNurseAssignment {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   doctorId Int           @map("doctor_id")
-  doctor   DoctorProfile @relation(fields: [doctorId], references: [id])
+  doctor   DoctorProfile @relation(fields: [doctorId], references: [id], onDelete: Cascade)
 
   nurseId String @map("nurse_id")
-  nurse   User   @relation("NurseAssignments", fields: [nurseId], references: [id])
+  nurse   User   @relation("NurseAssignments", fields: [nurseId], references: [id], onDelete: Cascade)
 
   permissions NursePermissionEnum[] @map("permissions")
   isActive    Boolean               @default(true) @map("is_active")
@@ -571,17 +577,17 @@ model MatchRequest {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   patientId String @map("patient_id")
-  patient   User   @relation("PatientMatchRequests", fields: [patientId], references: [id])
+  patient   User   @relation("PatientMatchRequests", fields: [patientId], references: [id], onDelete: Cascade)
 
   soapId String?      @map("soap_id")
-  soap   PatientSOAP? @relation(fields: [soapId], references: [id])
+  soap   PatientSOAP? @relation(fields: [soapId], references: [id], onDelete: SetNull)
 
   specialty   DoctorSpecialtiesEnum? @map("specialty")
   triageLevel TriageLevelEnum?       @map("triage_level")
 
   status          MatchStatusEnum @default(SEARCHING)
   matchedDoctorId Int?            @map("matched_doctor_id")
-  matchedDoctor   DoctorProfile?  @relation(fields: [matchedDoctorId], references: [id])
+  matchedDoctor   DoctorProfile?  @relation(fields: [matchedDoctorId], references: [id], onDelete: SetNull)
 
   consultationId String? @unique @map("consultation_id")
 
@@ -590,6 +596,7 @@ model MatchRequest {
   rejections     MatchRejection[]
 
   @@index([patientId, status])
+  @@index([specialty, triageLevel])
   @@map("match_request")
 }
 
@@ -614,12 +621,12 @@ model Call {
 
   chatId         String?       @map("chat_id")
   consultationId String?       @map("consultation_id")
-  consultation   Consultation? @relation(fields: [consultationId], references: [id])
+  consultation   Consultation? @relation(fields: [consultationId], references: [id], onDelete: SetNull)
 
   callerId   String @map("caller_id")
-  caller     User   @relation("CallerCalls", fields: [callerId], references: [id])
+  caller     User   @relation("CallerCalls", fields: [callerId], references: [id], onDelete: Cascade)
   receiverId String @map("receiver_id")
-  receiver   User   @relation("ReceiverCalls", fields: [receiverId], references: [id])
+  receiver   User   @relation("ReceiverCalls", fields: [receiverId], references: [id], onDelete: Cascade)
 
   type         CallTypeEnum
   status       CallStatusEnum @default(RINGING)
@@ -629,6 +636,8 @@ model Call {
   recordingUrl String?        @map("recording_url")
 
   @@index([consultationId])
+  @@index([callerId])
+  @@index([receiverId])
   @@map("call")
 }
 
@@ -640,10 +649,10 @@ model Payment {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   userId String @map("user_id")
-  user   User   @relation(fields: [userId], references: [id])
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   consultationId String?       @unique @map("consultation_id")
-  consultation   Consultation? @relation(fields: [consultationId], references: [id])
+  consultation   Consultation? @relation(fields: [consultationId], references: [id], onDelete: SetNull)
 
   amount          Decimal           @db.Decimal(10, 2)
   currency        String            @default("USD")
@@ -654,6 +663,7 @@ model Payment {
   paidAt          DateTime?         @map("paid_at")
 
   @@index([userId, status])
+  @@index([status])
   @@map("payment")
 }
 
@@ -663,7 +673,7 @@ model Subscription {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   userId String @unique @map("user_id")
-  user   User   @relation(fields: [userId], references: [id])
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   plan      SubscriptionPlanEnum   @default(FREE)
   status    SubscriptionStatusEnum @default(ACTIVE)
@@ -681,7 +691,7 @@ model Notification {
   createdAt DateTime @default(now()) @map("created_at")
 
   userId String @map("user_id")
-  user   User   @relation(fields: [userId], references: [id])
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   type    NotificationTypeEnum
   title   String
@@ -701,7 +711,7 @@ model PushSubscription {
   createdAt DateTime @default(now()) @map("created_at")
 
   userId   String @map("user_id")
-  user     User   @relation(fields: [userId], references: [id])
+  user     User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   endpoint String
   keys     Json
