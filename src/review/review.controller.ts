@@ -10,13 +10,13 @@ import {
   Patch,
   Post,
   Query,
-  ForbiddenException,
   UseGuards,
 } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { ReviewService } from './review.service';
 import { CookieAuthGuard } from '../auth/guards/cookie-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
+import { AdminGuard } from '../auth/guards/admin.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 import { CurrentUser } from '../user/decorators/current-user.decorator';
 import { User, UserRolesEnum } from '@prisma/client';
@@ -51,7 +51,8 @@ export class ReviewController {
   }
 
   @ApiOperation({ description: 'Delete own review (or admin can delete any).' })
-  @UseGuards(CookieAuthGuard)
+  @UseGuards(CookieAuthGuard, RolesGuard)
+  @Roles(UserRolesEnum.PATIENT)
   @HttpCode(HttpStatus.NO_CONTENT)
   @Delete(':id')
   async delete(
@@ -62,12 +63,9 @@ export class ReviewController {
   }
 
   @ApiOperation({ description: 'List all reviews (admin only, paginated).' })
-  @UseGuards(CookieAuthGuard)
+  @UseGuards(CookieAuthGuard, AdminGuard)
   @Get('admin/all')
-  async listAll(@CurrentUser() user: User, @Query() pagination: PaginationOptionsDto) {
-    if (!user.isAdmin && !user.isSuperAdmin) {
-      throw new ForbiddenException('Admin access required.');
-    }
+  async listAll(@Query() pagination: PaginationOptionsDto) {
     return this.reviewService.listAll(pagination);
   }
 

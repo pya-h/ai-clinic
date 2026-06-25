@@ -385,12 +385,12 @@ export class AiAgentsController {
       const cleanup = async () => {
         if (cleaned) return;
         cleaned = true;
-        clearInterval(heartbeatInterval);
-        if (pendingBotMsg) {
-          clearTimeout(pendingBotMsg.timer);
-          flushPendingBotMsg();
-        }
         try {
+          clearInterval(heartbeatInterval);
+          if (pendingBotMsg) {
+            clearTimeout(pendingBotMsg.timer);
+            flushPendingBotMsg();
+          }
           listener.off('message_created', onMessage);
           listener.off('error', onError);
           listener.off('unknown', onUnknown);
@@ -413,7 +413,9 @@ export class AiAgentsController {
 
       reply.raw.on('error', (error) => {
         this.logger.error('SSE stream error:', error);
-        cleanup();
+        cleanup().catch((err) => {
+          this.logger.warn('Error during SSE error cleanup:', err);
+        });
       });
     } catch (error) {
       this.logger.error('Error setting up SSE stream:', error);
