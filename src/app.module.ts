@@ -13,6 +13,7 @@ import aiConfigs from './configs/ai';
 import notificationConfigs from './configs/notification';
 import storageConfigs from './configs/storage';
 import calendlyConfigs from './configs/calendly';
+import { validateEnv } from './configs/env.validation';
 import { AuthModule } from './auth/auth.module';
 import { UserModule } from './user/user.module';
 import { CacheModule } from './cache/cache.module';
@@ -39,6 +40,7 @@ import { FastifyThrottlerGuard } from './common/guards/fastify-throttler.guard';
     ConfigModule.forRoot({
       isGlobal: true,
       load: [appGeneralConfigs, authConfigs, aiConfigs, notificationConfigs, storageConfigs, calendlyConfigs],
+      validate: validateEnv,
     }),
     CacheModule,
     UtilsModule,

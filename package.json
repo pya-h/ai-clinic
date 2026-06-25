@@ -25,6 +25,7 @@
   "dependencies": {
     "@botpress/chat": "^0.5.5",
     "@fastify/cookie": "^11.0.2",
+    "@fastify/helmet": "^13.0.2",
     "@fastify/multipart": "^9.0.0",
     "@fastify/secure-session": "^8.2.0",
     "@fastify/static": "^8.2.0",
@@ -103,6 +104,8 @@
     ],
     "coverageDirectory": "../coverage",
     "testEnvironment": "node",
-    "setupFiles": ["<rootDir>/../test/jest-setup.ts"]
+    "setupFiles": [
+      "<rootDir>/../test/jest-setup.ts"
+    ]
   }
 }

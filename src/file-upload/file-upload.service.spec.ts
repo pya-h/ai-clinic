@@ -37,16 +37,27 @@ describe('FileUploadService', () => {
 
   afterEach(() => jest.clearAllMocks());
 
+  const VALID_MAGIC: Record<string, Buffer> = {
+    'image/jpeg': Buffer.from([0xff, 0xd8, 0xff, 0xe0, ...Array(20).fill(0)]),
+    'image/png': Buffer.from([0x89, 0x50, 0x4e, 0x47, ...Array(20).fill(0)]),
+    'image/webp': Buffer.from([
+      0x52, 0x49, 0x46, 0x46, 0x00, 0x00, 0x00, 0x00,
+      0x57, 0x45, 0x42, 0x50, ...Array(12).fill(0),
+    ]),
+    'application/pdf': Buffer.from([0x25, 0x50, 0x44, 0x46, ...Array(20).fill(0)]),
+  };
+
   /* ── helper to create a mock MultipartFile ── */
   function createMockFile(overrides: Partial<{
     filename: string;
     mimetype: string;
     buffer: Buffer;
   }> = {}) {
-    const buf = overrides.buffer ?? Buffer.from('fake-image-data');
+    const mime = overrides.mimetype ?? 'image/jpeg';
+    const buf = overrides.buffer ?? VALID_MAGIC[mime] ?? Buffer.from('fake-data');
     return {
       filename: overrides.filename ?? 'test-image.jpg',
-      mimetype: overrides.mimetype ?? 'image/jpeg',
+      mimetype: mime,
       encoding: '7bit',
       file: { bytesRead: buf.length },
       toBuffer: jest.fn().mockResolvedValue(buf),
@@ -138,7 +149,17 @@ describe('FileUploadService', () => {
 
     it('should reject a file that exceeds 10MB', async () => {
       const bigBuffer = Buffer.alloc(11 * 1024 * 1024); // 11MB
+      bigBuffer[0] = 0xff; bigBuffer[1] = 0xd8; bigBuffer[2] = 0xff;
       const file = createMockFile({ buffer: bigBuffer });
+
+      await expect(service.uploadFile(file, 'avatars')).rejects.toThrow(
+        BadRequestException,
+      );
+    });
+
+    it('should reject a file with spoofed MIME type', async () => {
+      const pngBytes = VALID_MAGIC['image/png'];
+      const file = createMockFile({ mimetype: 'image/jpeg', buffer: pngBytes });
 
       await expect(service.uploadFile(file, 'avatars')).rejects.toThrow(
         BadRequestException,

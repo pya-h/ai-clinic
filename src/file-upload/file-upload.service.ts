@@ -19,6 +19,16 @@ const ALLOWED_MIME_TYPES = [
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
 
+const MAGIC_BYTES: Record<string, { offset: number; bytes: number[] }[]> = {
+  'image/jpeg': [{ offset: 0, bytes: [0xff, 0xd8, 0xff] }],
+  'image/png': [{ offset: 0, bytes: [0x89, 0x50, 0x4e, 0x47] }],
+  'image/webp': [
+    { offset: 0, bytes: [0x52, 0x49, 0x46, 0x46] },
+    { offset: 8, bytes: [0x57, 0x45, 0x42, 0x50] },
+  ],
+  'application/pdf': [{ offset: 0, bytes: [0x25, 0x50, 0x44, 0x46] }],
+};
+
 @Injectable()
 export class FileUploadService {
   private readonly provider: IStorageProvider;
@@ -57,6 +67,8 @@ export class FileUploadService {
         `File too large. Maximum size is ${MAX_FILE_SIZE / (1024 * 1024)}MB.`,
       );
     }
+
+    this.verifyMagicBytes(buffer, file.mimetype);
 
     const safeOriginalName = file.filename.replace(/[^a-zA-Z0-9._-]/g, '_');
     const ext = safeOriginalName.includes('.')
@@ -105,6 +117,26 @@ export class FileUploadService {
       throw new BadRequestException(
         `Invalid file type '${file.mimetype}'. Allowed types: ${ALLOWED_MIME_TYPES.join(', ')}.`,
       );
+    }
+  }
+
+  private verifyMagicBytes(buffer: Buffer, claimedMimeType: string): void {
+    const signatures = MAGIC_BYTES[claimedMimeType];
+    if (!signatures) return;
+
+    for (const sig of signatures) {
+      if (buffer.length < sig.offset + sig.bytes.length) {
+        throw new BadRequestException(
+          'File content does not match the declared file type.',
+        );
+      }
+      for (let i = 0; i < sig.bytes.length; i++) {
+        if (buffer[sig.offset + i] !== sig.bytes[i]) {
+          throw new BadRequestException(
+            'File content does not match the declared file type.',
+          );
+        }
+      }
     }
   }
 }

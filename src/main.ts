@@ -7,6 +7,7 @@ import { ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { setupSwagger } from './configs';
 import fastifyCookie from '@fastify/cookie';
+import fastifyHelmet from '@fastify/helmet';
 import fastifySecureSession from '@fastify/secure-session';
 import fastifyMultipart from '@fastify/multipart';
 import { IoAdapter } from '@nestjs/platform-socket.io';
@@ -26,6 +27,11 @@ async function bootstrap() {
 
   app.useGlobalFilters(new ExceptionTemplateFilter());
   app.useGlobalInterceptors(new ResponseTemplateInterceptor());
+
+  await app.register(fastifyHelmet, {
+    contentSecurityPolicy: false,
+    crossOriginEmbedderPolicy: false,
+  });
 
   const configService = app.get(ConfigService);
   const rawPort = configService.get<number>('general.appPort');
