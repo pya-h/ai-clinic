@@ -1,4 +1,9 @@
-import { BadRequestException, Injectable, Logger } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  InternalServerErrorException,
+  Logger,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { randomUUID } from 'crypto';
 import { IStorageProvider } from './interfaces/storage-provider.interface';
@@ -59,14 +64,19 @@ export class FileUploadService {
       : '';
     const fileName = `${randomUUID()}${ext}`;
 
-    const { url, key } = await this.provider.upload(
-      buffer,
-      fileName,
-      file.mimetype,
-      folder,
-    );
+    try {
+      const { url, key } = await this.provider.upload(
+        buffer,
+        fileName,
+        file.mimetype,
+        folder,
+      );
 
-    return { url, fileName: file.filename, mimeType: file.mimetype, key };
+      return { url, fileName: file.filename, mimeType: file.mimetype, key };
+    } catch (error) {
+      this.logger.error(`File upload failed: ${error}`);
+      throw new InternalServerErrorException('File upload failed.');
+    }
   }
 
   /**

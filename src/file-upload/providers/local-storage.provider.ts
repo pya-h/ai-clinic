@@ -1,5 +1,6 @@
 import * as fs from 'fs/promises';
 import * as path from 'path';
+import { BadRequestException } from '@nestjs/common';
 import { IStorageProvider } from '../interfaces/storage-provider.interface';
 
 export class LocalStorageProvider implements IStorageProvider {
@@ -30,7 +31,7 @@ export class LocalStorageProvider implements IStorageProvider {
   async delete(key: string): Promise<void> {
     const filePath = path.resolve(this.basePath, key);
     if (!filePath.startsWith(path.resolve(this.basePath))) {
-      throw new Error('Invalid file key.');
+      throw new BadRequestException('Invalid file key.');
     }
     try {
       await fs.unlink(filePath);
@@ -42,7 +43,7 @@ export class LocalStorageProvider implements IStorageProvider {
   async getSignedUrl(key: string, _expiresIn?: number): Promise<string> {
     const filePath = path.resolve(this.basePath, key);
     if (!filePath.startsWith(path.resolve(this.basePath))) {
-      throw new Error('Invalid file key.');
+      throw new BadRequestException('Invalid file key.');
     }
     return `/uploads/${key}`;
   }

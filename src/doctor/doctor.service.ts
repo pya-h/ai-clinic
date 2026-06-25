@@ -39,9 +39,16 @@ export class DoctorService {
     if (await this.hasProfile(user.id, false)) {
       throw new ConflictException(`Doctor already has a profile.`);
     }
-    return this.prisma.doctorProfile.create({
-      data: { ...data, userId: user.id },
-    });
+    try {
+      return await this.prisma.doctorProfile.create({
+        data: { ...data, userId: user.id },
+      });
+    } catch (error: any) {
+      if (error.code === 'P2002') {
+        throw new ConflictException('Doctor already has a profile.');
+      }
+      throw error;
+    }
   }
 
   /**

@@ -81,6 +81,9 @@ export class SchedulingService {
           'Availability already exists for this day and start time.',
         );
       }
+      if (error.code === 'P2025') {
+        throw new NotFoundException('Doctor profile not found.');
+      }
       throw error;
     }
   }
@@ -164,6 +167,9 @@ export class SchedulingService {
           'A slot duration with this length already exists.',
         );
       }
+      if (error.code === 'P2025') {
+        throw new NotFoundException('Doctor profile not found.');
+      }
       throw error;
     }
   }
@@ -197,6 +203,9 @@ export class SchedulingService {
         throw new ConflictException(
           'An exception already exists for this date.',
         );
+      }
+      if (error.code === 'P2025') {
+        throw new NotFoundException('Doctor profile not found.');
       }
       throw error;
     }
