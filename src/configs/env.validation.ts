@@ -57,6 +57,15 @@ export function validateEnv(
     );
   }
 
+  if (
+    config.NODE_ENV === 'production' &&
+    (!config.SUPERUSER_EMAIL || !config.SUPERUSER_PASSWORD)
+  ) {
+    warnings.push(
+      'SUPERUSER_EMAIL / SUPERUSER_PASSWORD not set — seed will use hardcoded defaults',
+    );
+  }
+
   if (!config.OPENAI_API_KEY) {
     warnings.push('OPENAI_API_KEY not set — AI features will not work');
   }
