@@ -332,7 +332,7 @@ describe('Doctor (e2e)', () => {
         specialty: DoctorSpecialtiesEnum.GENERAL,
         verified: true,
         bio: 'GP',
-        user: { id: 'doc-1', firstname: 'John', lastname: 'Doe', avatar: null },
+        user: { id: 'doc-1', firstname: 'John', lastname: 'Doe', avatar: null as null },
         _count: { reviewsAbout: 3 },
       },
     ];
@@ -402,7 +402,7 @@ describe('Doctor (e2e)', () => {
       specialty: DoctorSpecialtiesEnum.CARDIOLOGY,
       verified: true,
       bio: 'Heart doctor',
-      user: { id: 'doc-1', firstname: 'Jane', lastname: 'Doe', avatar: null },
+      user: { id: 'doc-1', firstname: 'Jane', lastname: 'Doe', avatar: null as null },
     };
 
     it('should return a verified doctor profile with ratings', async () => {

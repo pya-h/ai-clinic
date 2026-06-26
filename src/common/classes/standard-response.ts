@@ -35,8 +35,8 @@ export class StandardResponse<T> {
     fields?: object,
   ) {
     this.status = status;
-    this.contents = data ?? null;
-    this.message = message ?? null;
-    this.fields = fields ?? null;
+    this.contents = data ?? undefined;
+    this.message = message ?? undefined;
+    this.fields = fields ?? undefined;
   }
 }

@@ -13,9 +13,9 @@ export enum CommonHttpMethods {
 @Injectable()
 export class ApiService {
   private api: AxiosInstance;
-  private jwtToken: string = null;
-  private baseURL: string = null;
-  private timeout: number = null;
+  private jwtToken: string | null = null;
+  private baseURL: string | null = null;
+  private timeout: number | null = null;
 
   constructor(private readonly configService: ConfigService) {
     this.api = axios.create({});
@@ -60,8 +60,8 @@ export class ApiService {
       body = null,
       headers = {},
     }: {
-      queries?: Record<string, unknown>;
-      body?: Record<string, unknown>;
+      queries?: Record<string, unknown> | null;
+      body?: Record<string, unknown> | null;
       headers?: Record<string, string>;
     } = {},
   ) {
@@ -95,7 +95,7 @@ export class ApiService {
       queries = null,
       headers = {},
     }: {
-      queries?: Record<string, unknown>;
+      queries?: Record<string, unknown> | null;
       headers?: Record<string, string>;
     } = {},
   ) {
@@ -112,7 +112,7 @@ export class ApiService {
       queries = null,
       headers = {},
     }: {
-      queries?: Record<string, unknown>;
+      queries?: Record<string, unknown> | null;
       headers?: Record<string, string>;
     } = {},
   ) {
@@ -129,7 +129,7 @@ export class ApiService {
       queries = null,
       headers = {},
     }: {
-      queries?: Record<string, unknown>;
+      queries?: Record<string, unknown> | null;
       headers?: Record<string, string>;
     } = {},
   ) {
@@ -150,7 +150,7 @@ export class ApiService {
     });
   }
 
-  getHeader(jwtToken = null) {
+  getHeader(jwtToken: string | null = null) {
     return {
       'Content-Type': 'application/json',
       ...(jwtToken ? { Authorization: `Bearer ${jwtToken}` } : {}),

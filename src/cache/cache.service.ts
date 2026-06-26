@@ -33,7 +33,7 @@ export class CacheService {
       const mapKey = `${group}:${key}`;
       const kwdi = this.keysWithDelEvent.get(mapKey);
       if (kwdi) {
-        kwdi.deadline = new Date(Date.now() + (+kwdi.ttl || 0));
+        kwdi.deadline = new Date(Date.now() + (kwdi.ttl ?? 0));
       }
     }
 
@@ -60,22 +60,23 @@ export class CacheService {
     ttl?: number,
   ): Promise<{ key: string; value: T }[]> {
     if (this.delEvents[group]) {
-      const deadline = new Date(Date.now() + (+ttl || 0));
+      const effectiveTtl = ttl ?? 0;
+      const deadline = new Date(Date.now() + effectiveTtl);
       items.forEach((item) => {
         const mapKey = `${group}:${item.k}`;
         this.keysWithDelEvent.set(mapKey, {
           group,
           key: item.k,
           deadline,
-          ttl,
+          ttl: effectiveTtl,
         });
       });
       return this.cacheManager.mset(
-        items.map((i) => ({ key: `${group}:${i.k}`, value: i.v, ttl })),
+        items.map((i) => ({ key: `${group}:${i.k}`, value: i.v, ttl: effectiveTtl })),
       );
     }
     return this.cacheManager.mset(
-      items.map((i) => ({ key: `${group}:${i.k}`, value: i.v, ttl })),
+      items.map((i) => ({ key: `${group}:${i.k}`, value: i.v, ttl: ttl ?? 0 })),
     );
   }
 
@@ -96,8 +97,8 @@ export class CacheService {
             this.keysWithDelEvent.set(mapKey, {
               group: i.g,
               key: i.k,
-              deadline: new Date(Date.now() + (+i.ttl || 0)),
-              ttl: i.ttl,
+              deadline: new Date(Date.now() + (i.ttl ?? 0)),
+              ttl: i.ttl ?? 0,
             });
             return { key: `${i.g}:${i.k}`, value: i.v, ttl: i.ttl };
           }),

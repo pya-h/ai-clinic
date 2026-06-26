@@ -57,11 +57,11 @@ describe('NotificationService', () => {
       type: NotificationTypeEnum.SYSTEM,
       title: 'Test title',
       body: 'Test body',
-      data: null,
+      data: null as null,
       channel: NotificationChannelEnum.PUSH,
       isRead: false,
-      sentAt: null,
-      readAt: null,
+      sentAt: null as null,
+      readAt: null as null,
       ...overrides,
     };
   };

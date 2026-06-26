@@ -207,7 +207,7 @@ describe('SchedulingService', () => {
   describe('setSlotDuration', () => {
     it('should create a slot duration', async () => {
       const dto = { minutes: 30, price: 50 };
-      const created = { id: 1, doctorId: 42, ...dto, label: null, isActive: true };
+      const created = { id: 1, doctorId: 42, ...dto, label: null as null, isActive: true };
       prisma.slotDuration.create.mockResolvedValue(created);
 
       const result = await service.setSlotDuration(42, dto);
@@ -249,8 +249,8 @@ describe('SchedulingService', () => {
         doctorId: 42,
         date: new Date('2026-03-15'),
         isBlocked: true,
-        startTime: null,
-        endTime: null,
+        startTime: null as null,
+        endTime: null as null,
         reason: 'Vacation',
       };
       prisma.availabilityException.create.mockResolvedValue(created);

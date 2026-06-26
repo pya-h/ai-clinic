@@ -41,7 +41,7 @@ export class BotpressService {
     private readonly prismaService: PrismaService,
     private readonly cacheService: CacheService,
   ) {
-    this.webhookId = configService.get<string>('botpress.webhookId');
+    this.webhookId = configService.get<string>('botpress.webhookId') ?? '';
     if (!this.webhookId) {
       throw new ServiceUnavailableException('Bot Agent Key is missing');
     }

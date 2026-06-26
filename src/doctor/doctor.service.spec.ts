@@ -186,7 +186,7 @@ describe('DoctorService', () => {
       {
         ...mockProfile,
         verified: true,
-        user: { id: mockDoctorUser.id, firstname: mockDoctorUser.firstname, lastname: mockDoctorUser.lastname, avatar: null },
+        user: { id: mockDoctorUser.id, firstname: mockDoctorUser.firstname, lastname: mockDoctorUser.lastname, avatar: null as null },
         _count: { reviewsAbout: 5 },
       },
     ];
@@ -277,7 +277,7 @@ describe('DoctorService', () => {
       const profileData = {
         ...mockProfile,
         verified: true,
-        user: { id: mockDoctorUser.id, firstname: mockDoctorUser.firstname, lastname: mockDoctorUser.lastname, avatar: null },
+        user: { id: mockDoctorUser.id, firstname: mockDoctorUser.firstname, lastname: mockDoctorUser.lastname, avatar: null as null },
       };
       prisma.doctorProfile.findUnique.mockResolvedValue(profileData);
       prisma.doctorReview.aggregate.mockResolvedValue({
@@ -295,7 +295,7 @@ describe('DoctorService', () => {
       const profileNoReviews = {
         ...mockProfile,
         verified: true,
-        user: { id: mockDoctorUser.id, firstname: mockDoctorUser.firstname, lastname: mockDoctorUser.lastname, avatar: null },
+        user: { id: mockDoctorUser.id, firstname: mockDoctorUser.firstname, lastname: mockDoctorUser.lastname, avatar: null as null },
       };
       prisma.doctorProfile.findUnique.mockResolvedValue(profileNoReviews);
       prisma.doctorReview.aggregate.mockResolvedValue({
@@ -323,7 +323,7 @@ describe('DoctorService', () => {
       const unverified = {
         ...mockProfile,
         verified: false,
-        user: { id: mockDoctorUser.id, firstname: mockDoctorUser.firstname, lastname: mockDoctorUser.lastname, avatar: null },
+        user: { id: mockDoctorUser.id, firstname: mockDoctorUser.firstname, lastname: mockDoctorUser.lastname, avatar: null as null },
       };
       prisma.doctorProfile.findUnique.mockResolvedValue(unverified);
       prisma.doctorReview.aggregate.mockResolvedValue({

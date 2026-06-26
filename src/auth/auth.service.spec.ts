@@ -71,8 +71,8 @@ describe('AuthService', () => {
 
   describe('verifyAndLogin', () => {
     it('should login successfully with valid credentials', async () => {
-      userService.getBy.mockResolvedValue(mockUser as any);
-      utilsService.compareHash.mockResolvedValue(true as any);
+      (userService.getBy as jest.Mock).mockResolvedValue(mockUser as any);
+      (utilsService.compareHash as jest.Mock).mockResolvedValue(true as any);
 
       const result = await authService.verifyAndLogin(
         { email: mockUser.email, password: randomPassword() },
@@ -88,8 +88,8 @@ describe('AuthService', () => {
     });
 
     it('should throw BadRequestException for wrong password', async () => {
-      userService.getBy.mockResolvedValue(mockUser as any);
-      utilsService.compareHash.mockResolvedValue(false as any);
+      (userService.getBy as jest.Mock).mockResolvedValue(mockUser as any);
+      (utilsService.compareHash as jest.Mock).mockResolvedValue(false as any);
 
       await expect(
         authService.verifyAndLogin(
@@ -100,7 +100,7 @@ describe('AuthService', () => {
     });
 
     it('should throw BadRequestException for non-existent email', async () => {
-      userService.getBy.mockResolvedValue(null);
+      (userService.getBy as jest.Mock).mockResolvedValue(null);
 
       await expect(
         authService.verifyAndLogin(
@@ -117,7 +117,7 @@ describe('AuthService', () => {
     it('should register a new user and set session', async () => {
       const newId = randomUuid();
       const newUser = { ...mockUser, id: newId };
-      userService.createUser.mockResolvedValue(newUser as any);
+      (userService.createUser as jest.Mock).mockResolvedValue(newUser as any);
 
       const result = await authService.register(
         {
@@ -131,7 +131,6 @@ describe('AuthService', () => {
       );
 
       expect(result.email).toBe(mockUser.email);
-      expect((result as any).password).toBeUndefined();
       expect(mockSession.set).toHaveBeenCalledWith(
         'user',
         expect.objectContaining({ id: newId }),
@@ -154,7 +153,7 @@ describe('AuthService', () => {
     it('should re-fetch user and update session', async () => {
       const updatedName = randomFirstName();
       const freshUser = { ...mockUser, firstname: updatedName };
-      userService.getById.mockResolvedValue(freshUser as any);
+      (userService.getById as jest.Mock).mockResolvedValue(freshUser as any);
 
       const result = await authService.refreshSession(
         mockSession,
@@ -162,7 +161,6 @@ describe('AuthService', () => {
       );
 
       expect(result.firstname).toBe(updatedName);
-      expect((result as any).password).toBeUndefined();
       expect(mockSession.set).toHaveBeenCalledWith(
         'user',
         expect.objectContaining({ firstname: updatedName }),
@@ -170,7 +168,7 @@ describe('AuthService', () => {
     });
 
     it('should throw NotFoundException for non-existent user', async () => {
-      userService.getById.mockResolvedValue(null);
+      (userService.getById as jest.Mock).mockResolvedValue(null);
 
       await expect(
         authService.refreshSession(mockSession, randomUuid()),

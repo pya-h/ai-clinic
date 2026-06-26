@@ -13,7 +13,8 @@ import fastifySecureSession from '@fastify/secure-session';
 import fastifyMultipart from '@fastify/multipart';
 import fastifyCompress from '@fastify/compress';
 import { IoAdapter } from '@nestjs/platform-socket.io';
-import { createHash } from 'crypto';
+import { createHash, randomBytes } from 'crypto';
+import { CsrfGuard } from './common/guards/csrf.guard';
 
 async function bootstrap() {
   const logger = new Logger('Bootstrap');
@@ -47,7 +48,7 @@ async function bootstrap() {
 
   const configService = app.get(ConfigService);
   const rawPort = configService.get<number>('general.appPort');
-  const appPort = Number.isFinite(rawPort) ? rawPort : 8080;
+  const appPort = Number.isFinite(rawPort) ? rawPort! : 8080;
   const appIsInDebugMode = configService.get<boolean>('general.debug');
   // Register cookie & secure session plugins (Fastify)
   await app.register(fastifyCookie);
@@ -65,6 +66,23 @@ async function bootstrap() {
       maxAge: 7 * 24 * 60 * 60,
     },
   });
+
+  // CSRF double-submit cookie: set a JS-readable token on every response
+  const fastifyInstance = app.getHttpAdapter().getInstance();
+  fastifyInstance.addHook('onRequest', (req, reply, done) => {
+    if (!req.cookies?.['csrf-token']) {
+      const token = randomBytes(32).toString('hex');
+      reply.setCookie('csrf-token', token, {
+        path: '/',
+        httpOnly: false,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        maxAge: 7 * 24 * 60 * 60,
+      });
+    }
+    done();
+  });
+  app.useGlobalGuards(new CsrfGuard());
 
   // Register multipart file upload support
   await app.register(fastifyMultipart, {

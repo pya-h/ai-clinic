@@ -164,7 +164,7 @@ describe('MatchingService', () => {
           id: profile.userId,
           firstname: 'Dr',
           lastname: 'Test',
-          avatar: null,
+          avatar: null as string | null,
           isActive: true,
         },
         _count: { consultations: overrides.consultationCount ?? 50 },
@@ -405,9 +405,9 @@ describe('MatchingService', () => {
       const created = {
         id: matchRequestId,
         patientId: patient.id,
-        soapId: null,
-        specialty: null,
-        triageLevel: null,
+        soapId: null as null,
+        specialty: null as null,
+        triageLevel: null as null,
         status: MatchStatusEnum.SEARCHING,
         createdAt: new Date(),
       };
@@ -783,7 +783,7 @@ describe('MatchingService', () => {
       const updated = {
         id: requestId,
         status: MatchStatusEnum.SEARCHING,
-        matchedDoctorId: null,
+        matchedDoctorId: null as null,
       };
       prisma.matchRequest.update.mockResolvedValue(updated);
       prisma.doctorProfile.findMany.mockResolvedValue([]);
@@ -1170,8 +1170,8 @@ describe('MatchingService', () => {
         id: requestId,
         patientId: patient.id,
         status: MatchStatusEnum.SEARCHING,
-        matchedDoctor: null,
-        soap: null,
+        matchedDoctor: null as null,
+        soap: null as null,
       };
       prisma.matchRequest.findUnique.mockResolvedValue(request);
 
@@ -1186,8 +1186,8 @@ describe('MatchingService', () => {
         id: requestId,
         patientId: randomUUID(),
         status: MatchStatusEnum.MATCHED,
-        matchedDoctor: null,
-        soap: null,
+        matchedDoctor: null as null,
+        soap: null as null,
       };
       prisma.matchRequest.findUnique.mockResolvedValue(request);
 
@@ -1202,8 +1202,8 @@ describe('MatchingService', () => {
         id: requestId,
         patientId: randomUUID(),
         status: MatchStatusEnum.SEARCHING,
-        matchedDoctor: null,
-        soap: null,
+        matchedDoctor: null as null,
+        soap: null as null,
       };
       prisma.matchRequest.findUnique.mockResolvedValue(request);
 
@@ -1220,8 +1220,8 @@ describe('MatchingService', () => {
         patientId: randomUUID(),
         matchedDoctorId: doctorProfileId,
         status: MatchStatusEnum.MATCHED,
-        matchedDoctor: null,
-        soap: null,
+        matchedDoctor: null as null,
+        soap: null as null,
       };
       prisma.matchRequest.findUnique.mockResolvedValue(request);
       // Doctor profile lookup for access check

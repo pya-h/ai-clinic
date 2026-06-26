@@ -58,7 +58,7 @@ export function ApiStandardOkResponse<TModel>(
                           }
                         : { $ref: getSchemaPath(actualModel as Type<unknown>) },
                   }
-                : { contents: null }),
+                : { contents: { nullable: true } }),
             },
           },
         ],

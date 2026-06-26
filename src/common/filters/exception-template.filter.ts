@@ -32,7 +32,9 @@ export class ExceptionTemplateFilter implements ExceptionFilter {
       if (typeof responseBody === 'string') {
         message = responseBody;
       } else {
-        const rawMessage = responseBody['message'] || 'Unknown Error';
+        const rawMessage =
+          (responseBody as Record<string, unknown>)['message'] ||
+          'Unknown Error';
         // class-validator returns message as string[], join for display
         message = Array.isArray(rawMessage)
           ? rawMessage.join('; ')

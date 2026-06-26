@@ -24,9 +24,9 @@ describe('SoapService', () => {
     plan: 'Rest, hydration, paracetamol PRN',
     rawNote:
       '**Subjective:** Patient reports headache for 3 days\n**Objective:** Temperature 38°C, BP 120/80\n**Assessment:** Likely viral infection\n**Plan:** Rest, hydration, paracetamol PRN',
-    suggestedSpecialty: null,
-    triageLevel: null,
-    confidenceScores: null,
+    suggestedSpecialty: null as null,
+    triageLevel: null as null,
+    confidenceScores: null as null,
     createdAt: new Date(),
     updatedAt: new Date(),
   };

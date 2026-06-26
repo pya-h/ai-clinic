@@ -1,0 +1,8 @@
+node_modules
+dist
+uploads
+.env
+*.spec.ts
+test
+coverage
+.vscode

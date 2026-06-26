@@ -119,7 +119,7 @@ describe('CalendlyService', () => {
       const module = await Test.createTestingModule({
         providers: [
           CalendlyService,
-          { provide: ConfigService, useValue: { get: () => undefined } },
+          { provide: ConfigService, useValue: { get: (): any => undefined } },
           { provide: PrismaService, useValue: prisma },
           { provide: CacheService, useValue: mockCache },
         ],
@@ -146,7 +146,7 @@ describe('CalendlyService', () => {
         status: 200,
         json: async () => ({
           collection: sampleEventTypes,
-          pagination: { count: 5, next_page: null, previous_page: null, next_page_token: null },
+          pagination: { count: 5, next_page: null as null, previous_page: null as null, next_page_token: null as null },
         }),
       });
 
@@ -221,7 +221,7 @@ describe('CalendlyService', () => {
       id: 1,
       method: VisitMethodsEnum.VIDEO_CALL,
       durationMinutes: 30,
-      calendlyEventUri: null,
+      calendlyEventUri: null as null,
       patient: { id: 'p1', email: 'patient@test.com', firstname: 'John', lastname: 'Doe' },
       doctor: { user: { email: 'doc@test.com', firstname: 'Dr', lastname: 'Smith' } },
     };
@@ -230,7 +230,7 @@ describe('CalendlyService', () => {
       const module = await Test.createTestingModule({
         providers: [
           CalendlyService,
-          { provide: ConfigService, useValue: { get: () => undefined } },
+          { provide: ConfigService, useValue: { get: (): any => undefined } },
           { provide: PrismaService, useValue: prisma },
           { provide: CacheService, useValue: mockCache },
         ],
@@ -526,7 +526,7 @@ describe('CalendlyService', () => {
       const module = await Test.createTestingModule({
         providers: [
           CalendlyService,
-          { provide: ConfigService, useValue: { get: () => undefined } },
+          { provide: ConfigService, useValue: { get: (): any => undefined } },
           { provide: PrismaService, useValue: prisma },
           { provide: CacheService, useValue: mockCache },
         ],
@@ -540,7 +540,7 @@ describe('CalendlyService', () => {
     it('should skip when appointment has no Calendly event', async () => {
       prisma.appointment.findUnique.mockResolvedValue({
         id: 1,
-        calendlyEventUri: null,
+        calendlyEventUri: null as null,
       });
 
       await service.cancelCalendlyEvent(1);
@@ -621,7 +621,7 @@ describe('CalendlyService', () => {
       const module = await Test.createTestingModule({
         providers: [
           CalendlyService,
-          { provide: ConfigService, useValue: { get: () => undefined } },
+          { provide: ConfigService, useValue: { get: (): any => undefined } },
           { provide: PrismaService, useValue: prisma },
           { provide: CacheService, useValue: mockCache },
         ],
@@ -634,7 +634,7 @@ describe('CalendlyService', () => {
     it('should return null when appointment has no Calendly event', async () => {
       prisma.appointment.findUnique.mockResolvedValue({
         id: 1,
-        calendlyEventUri: null,
+        calendlyEventUri: null as null,
       });
 
       expect(await service.getCalendlyEventDetails(1)).toBeNull();

@@ -105,7 +105,7 @@ describe('AI Agents (e2e)', () => {
         };
       } else {
         request.session = {
-          get: () => undefined,
+          get: (): any => undefined,
           set: jest.fn(),
           delete: jest.fn(),
         };

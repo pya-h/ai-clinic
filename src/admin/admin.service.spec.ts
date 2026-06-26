@@ -32,9 +32,9 @@ describe('AdminService', () => {
     id: Math.floor(Math.random() * 1000) + 1,
     userId: randomUuid(),
     verified: false,
-    verifiedAt: null,
-    verifiedBy: null,
-    rejectionReason: null,
+    verifiedAt: null as null,
+    verifiedBy: null as null,
+    rejectionReason: null as null,
     createdAt: new Date(),
     updatedAt: new Date(),
   };

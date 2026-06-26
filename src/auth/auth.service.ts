@@ -25,9 +25,9 @@ export class AuthService {
       throw new BadRequestException('Invalid email or password!');
     }
 
-    delete user.password;
-    (reply as any).request.session.set('user', user);
-    return user;
+    const { password: _, ...safeUser } = user;
+    (reply as any).request.session.set('user', safeUser);
+    return safeUser;
   }
 
   async register(data: RegistrationDto, reply: FastifyReply) {

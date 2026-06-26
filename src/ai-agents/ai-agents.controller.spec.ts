@@ -273,7 +273,7 @@ describe('AiAgentsController', () => {
   describe('listConversations', () => {
     it('should list conversations with default pagination', async () => {
       const user = buildUser();
-      const expected = { data: [], total: 0, skip: 0, take: 20 };
+      const expected = { data: [] as any[], total: 0, skip: 0, take: 20 };
       botpressService.listConversations.mockResolvedValue(expected);
 
       const result = await controller.listConversations(user as any, 0, 20);
@@ -288,7 +288,7 @@ describe('AiAgentsController', () => {
 
     it('should pass custom pagination params', async () => {
       const user = buildUser();
-      const expected = { data: [], total: 50, skip: 10, take: 5 };
+      const expected = { data: [] as any[], total: 50, skip: 10, take: 5 };
       botpressService.listConversations.mockResolvedValue(expected);
 
       const result = await controller.listConversations(user as any, 10, 5);

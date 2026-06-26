@@ -53,6 +53,9 @@ export class ChatService {
       this.prisma.user.findUnique({ where: { id: participantId } }),
     ]);
 
+    if (!initiator) {
+      throw new NotFoundException('Initiator not found');
+    }
     if (!participant) {
       throw new NotFoundException('Participant not found');
     }
@@ -328,7 +331,7 @@ export class ChatService {
 
     this.assertParticipant(chat, userId);
 
-    const where = {
+    const where: { chatId: string; deletedAt: null } = {
       chatId,
       deletedAt: null,
     };
@@ -490,7 +493,7 @@ export class ChatService {
     if (!this.onlineUsers.has(userId)) {
       this.onlineUsers.set(userId, new Set());
     }
-    this.onlineUsers.get(userId).add(socketId);
+    this.onlineUsers.get(userId)!.add(socketId);
   }
 
   setOffline(userId: string, socketId: string): void {
@@ -504,7 +507,7 @@ export class ChatService {
   }
 
   isOnline(userId: string): boolean {
-    return this.onlineUsers.has(userId) && this.onlineUsers.get(userId).size > 0;
+    return this.onlineUsers.has(userId) && this.onlineUsers.get(userId)!.size > 0;
   }
 
   getSocketIds(userId: string): string[] {
