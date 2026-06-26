@@ -679,6 +679,132 @@ export class SchedulingService {
     };
   }
 
+  async countAvailableSlotsForDoctors(
+    doctorIds: number[],
+    startDate: Date,
+    endDate: Date,
+  ): Promise<Map<number, number>> {
+    const result = new Map<number, number>();
+    if (doctorIds.length === 0) return result;
+
+    for (const id of doctorIds) result.set(id, 0);
+
+    const [allAvailability, allDurations, allExceptions, allAppointments] =
+      await Promise.all([
+        this.prisma.doctorAvailability.findMany({
+          where: { doctorId: { in: doctorIds }, isActive: true },
+        }),
+        this.prisma.slotDuration.findMany({
+          where: { doctorId: { in: doctorIds }, isActive: true },
+        }),
+        this.prisma.availabilityException.findMany({
+          where: {
+            doctorId: { in: doctorIds },
+            date: { gte: startDate, lte: endDate },
+          },
+        }),
+        this.prisma.appointment.findMany({
+          where: {
+            doctorId: { in: doctorIds },
+            dateTime: { gte: startDate, lte: endDate },
+            status: { notIn: [AppointmentStatusEnum.CANCELLED] },
+          },
+        }),
+      ]);
+
+    for (const doctorId of doctorIds) {
+      const availability = allAvailability.filter(
+        (a) => a.doctorId === doctorId,
+      );
+      const durations = allDurations.filter((d) => d.doctorId === doctorId);
+      if (availability.length === 0 || durations.length === 0) continue;
+
+      const weeklySchedule = new Map<
+        number,
+        { startTime: string; endTime: string }[]
+      >();
+      for (const slot of availability) {
+        const existing = weeklySchedule.get(slot.dayOfWeek) ?? [];
+        existing.push({ startTime: slot.startTime, endTime: slot.endTime });
+        weeklySchedule.set(slot.dayOfWeek, existing);
+      }
+
+      const exceptionMap = new Map<string, AvailabilityException>();
+      for (const ex of allExceptions.filter((e) => e.doctorId === doctorId)) {
+        exceptionMap.set(this.dateToString(ex.date), ex);
+      }
+
+      const appointmentMap = new Map<
+        string,
+        { startMin: number; endMin: number }[]
+      >();
+      for (const apt of allAppointments.filter(
+        (a) => a.doctorId === doctorId,
+      )) {
+        const dateStr = this.dateToString(apt.dateTime);
+        const startMin =
+          apt.dateTime.getUTCHours() * 60 + apt.dateTime.getUTCMinutes();
+        const endMin = startMin + apt.durationMinutes;
+        const existing = appointmentMap.get(dateStr) ?? [];
+        existing.push({ startMin, endMin });
+        appointmentMap.set(dateStr, existing);
+      }
+
+      let count = 0;
+      const current = new Date(startDate);
+      const end = new Date(endDate);
+
+      while (current <= end) {
+        const dateStr = this.dateToString(current);
+        const dayOfWeek = current.getUTCDay();
+        const exception = exceptionMap.get(dateStr);
+
+        if (exception?.isBlocked) {
+          current.setDate(current.getDate() + 1);
+          continue;
+        }
+
+        let timeWindows: { startTime: string; endTime: string }[];
+        if (
+          exception &&
+          !exception.isBlocked &&
+          exception.startTime &&
+          exception.endTime
+        ) {
+          timeWindows = [
+            { startTime: exception.startTime, endTime: exception.endTime },
+          ];
+        } else {
+          timeWindows = weeklySchedule.get(dayOfWeek) ?? [];
+        }
+
+        const dayAppointments = appointmentMap.get(dateStr) ?? [];
+
+        for (const window of timeWindows) {
+          const windowStart = this.timeToMinutes(window.startTime);
+          const windowEnd = this.timeToMinutes(window.endTime);
+          for (const duration of durations) {
+            let slotStart = windowStart;
+            while (slotStart + duration.minutes <= windowEnd) {
+              const slotEnd = slotStart + duration.minutes;
+              const overlaps = dayAppointments.some(
+                (apt) => slotStart < apt.endMin && slotEnd > apt.startMin,
+              );
+              if (!overlaps) count++;
+              slotStart += duration.minutes;
+            }
+          }
+        }
+
+        current.setDate(current.getDate() + 1);
+      }
+
+      result.set(doctorId, count);
+    }
+
+    return result;
+  }
+
   /** Convert a Date to "YYYY-MM-DD" string using UTC. */
   private dateToString(d: Date): string {
     return d.toISOString().slice(0, 10);

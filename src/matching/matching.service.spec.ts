@@ -32,8 +32,8 @@ import { randomUUID } from 'crypto';
 describe('MatchingService', () => {
   let service: MatchingService;
   let prisma: MockPrismaService;
-  let reviewService: { getAggregateRating: jest.Mock };
-  let schedulingService: { getAvailableSlots: jest.Mock };
+  let reviewService: { getAggregateRatingsForDoctors: jest.Mock };
+  let schedulingService: { countAvailableSlotsForDoctors: jest.Mock };
   let patient: MockUser;
   let doctor: MockUser;
   let admin: MockUser;
@@ -41,8 +41,8 @@ describe('MatchingService', () => {
 
   beforeEach(async () => {
     prisma = createMockPrismaService();
-    reviewService = { getAggregateRating: jest.fn() };
-    schedulingService = { getAvailableSlots: jest.fn() };
+    reviewService = { getAggregateRatingsForDoctors: jest.fn() };
+    schedulingService = { countAvailableSlotsForDoctors: jest.fn() };
     patient = createMockUser();
     doctor = createMockDoctorUser();
     admin = createMockAdminUser();
@@ -176,13 +176,12 @@ describe('MatchingService', () => {
         buildMockDoctor({ id: i + 1, consultationCount: (i + 1) * 10 }),
       );
       prisma.doctorProfile.findMany.mockResolvedValue(doctors);
-      reviewService.getAggregateRating.mockResolvedValue({
-        averageRating: 4.0,
-        totalReviews: 10,
-        distribution: { 1: 0, 2: 0, 3: 2, 4: 5, 5: 3 },
-      });
-      schedulingService.getAvailableSlots.mockResolvedValue(
-        Array(10).fill({ start: new Date(), end: new Date() }),
+      const ratingData = { averageRating: 4.0, totalReviews: 10, distribution: { 1: 0, 2: 0, 3: 2, 4: 5, 5: 3 } };
+      reviewService.getAggregateRatingsForDoctors.mockResolvedValue(
+        new Map(doctors.map((d) => [d.id, ratingData])),
+      );
+      schedulingService.countAvailableSlotsForDoctors.mockResolvedValue(
+        new Map(doctors.map((d) => [d.id, 10])),
       );
 
       const result = await service.scoreDoctors({});
@@ -206,12 +205,10 @@ describe('MatchingService', () => {
         specialty: DoctorSpecialtiesEnum.CARDIOLOGY,
       });
       prisma.doctorProfile.findMany.mockResolvedValue([doc]);
-      reviewService.getAggregateRating.mockResolvedValue({
-        averageRating: null,
-        totalReviews: 0,
-        distribution: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 },
-      });
-      schedulingService.getAvailableSlots.mockResolvedValue([]);
+      reviewService.getAggregateRatingsForDoctors.mockResolvedValue(
+        new Map([[1, { averageRating: null, totalReviews: 0, distribution: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 } }]]),
+      );
+      schedulingService.countAvailableSlotsForDoctors.mockResolvedValue(new Map([[1, 0]]));
 
       const result = await service.scoreDoctors({
         specialty: DoctorSpecialtiesEnum.CARDIOLOGY,
@@ -232,12 +229,10 @@ describe('MatchingService', () => {
         consultationCount: 0,
       });
       prisma.doctorProfile.findMany.mockResolvedValue([doc]);
-      reviewService.getAggregateRating.mockResolvedValue({
-        averageRating: null,
-        totalReviews: 0,
-        distribution: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 },
-      });
-      schedulingService.getAvailableSlots.mockResolvedValue([]);
+      reviewService.getAggregateRatingsForDoctors.mockResolvedValue(
+        new Map([[1, { averageRating: null, totalReviews: 0, distribution: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 } }]]),
+      );
+      schedulingService.countAvailableSlotsForDoctors.mockResolvedValue(new Map([[1, 0]]));
 
       const result = await service.scoreDoctors({
         specialty: DoctorSpecialtiesEnum.DERMATOLOGY,
@@ -255,12 +250,10 @@ describe('MatchingService', () => {
         consultationCount: 0,
       });
       prisma.doctorProfile.findMany.mockResolvedValue([doc]);
-      reviewService.getAggregateRating.mockResolvedValue({
-        averageRating: null,
-        totalReviews: 0,
-        distribution: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 },
-      });
-      schedulingService.getAvailableSlots.mockResolvedValue([]);
+      reviewService.getAggregateRatingsForDoctors.mockResolvedValue(
+        new Map([[1, { averageRating: null, totalReviews: 0, distribution: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 } }]]),
+      );
+      schedulingService.countAvailableSlotsForDoctors.mockResolvedValue(new Map([[1, 0]]));
 
       const result = await service.scoreDoctors({
         specialty: DoctorSpecialtiesEnum.CARDIOLOGY,
@@ -277,12 +270,10 @@ describe('MatchingService', () => {
         consultationCount: 0,
       });
       prisma.doctorProfile.findMany.mockResolvedValue([doc]);
-      reviewService.getAggregateRating.mockResolvedValue({
-        averageRating: null,
-        totalReviews: 0,
-        distribution: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 },
-      });
-      schedulingService.getAvailableSlots.mockResolvedValue([]);
+      reviewService.getAggregateRatingsForDoctors.mockResolvedValue(
+        new Map([[1, { averageRating: null, totalReviews: 0, distribution: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 } }]]),
+      );
+      schedulingService.countAvailableSlotsForDoctors.mockResolvedValue(new Map([[1, 0]]));
 
       const result = await service.scoreDoctors({});
 
@@ -293,8 +284,8 @@ describe('MatchingService', () => {
     it('should handle review service errors gracefully', async () => {
       const doc = buildMockDoctor({ id: 1, consultationCount: 0 });
       prisma.doctorProfile.findMany.mockResolvedValue([doc]);
-      reviewService.getAggregateRating.mockRejectedValue(new Error('DB error'));
-      schedulingService.getAvailableSlots.mockResolvedValue([]);
+      reviewService.getAggregateRatingsForDoctors.mockRejectedValue(new Error('DB error'));
+      schedulingService.countAvailableSlotsForDoctors.mockResolvedValue(new Map([[1, 0]]));
 
       const result = await service.scoreDoctors({});
 
@@ -306,12 +297,10 @@ describe('MatchingService', () => {
     it('should handle scheduling service errors gracefully', async () => {
       const doc = buildMockDoctor({ id: 1, consultationCount: 0 });
       prisma.doctorProfile.findMany.mockResolvedValue([doc]);
-      reviewService.getAggregateRating.mockResolvedValue({
-        averageRating: 5.0,
-        totalReviews: 20,
-        distribution: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 20 },
-      });
-      schedulingService.getAvailableSlots.mockRejectedValue(
+      reviewService.getAggregateRatingsForDoctors.mockResolvedValue(
+        new Map([[1, { averageRating: 5.0, totalReviews: 20, distribution: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 20 } }]]),
+      );
+      schedulingService.countAvailableSlotsForDoctors.mockRejectedValue(
         new Error('Service down'),
       );
 
@@ -325,12 +314,10 @@ describe('MatchingService', () => {
       const doc1 = buildMockDoctor({ id: 1 });
       const doc2 = buildMockDoctor({ id: 2 });
       prisma.doctorProfile.findMany.mockResolvedValue([doc2]);
-      reviewService.getAggregateRating.mockResolvedValue({
-        averageRating: 4.0,
-        totalReviews: 5,
-        distribution: { 1: 0, 2: 0, 3: 0, 4: 3, 5: 2 },
-      });
-      schedulingService.getAvailableSlots.mockResolvedValue([]);
+      reviewService.getAggregateRatingsForDoctors.mockResolvedValue(
+        new Map([[2, { averageRating: 4.0, totalReviews: 5, distribution: { 1: 0, 2: 0, 3: 0, 4: 3, 5: 2 } }]]),
+      );
+      schedulingService.countAvailableSlotsForDoctors.mockResolvedValue(new Map([[2, 0]]));
 
       await service.scoreDoctors({ excludeDoctorIds: [doc1.id] });
 
@@ -346,15 +333,11 @@ describe('MatchingService', () => {
     it('should cap availability score at 1.0', async () => {
       const doc = buildMockDoctor({ id: 1, consultationCount: 0 });
       prisma.doctorProfile.findMany.mockResolvedValue([doc]);
-      reviewService.getAggregateRating.mockResolvedValue({
-        averageRating: null,
-        totalReviews: 0,
-        distribution: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 },
-      });
-      // 100 slots > maxSlots (50), should cap at 1.0
-      schedulingService.getAvailableSlots.mockResolvedValue(
-        Array(100).fill({ start: new Date(), end: new Date() }),
+      reviewService.getAggregateRatingsForDoctors.mockResolvedValue(
+        new Map([[1, { averageRating: null, totalReviews: 0, distribution: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 } }]]),
       );
+      // 100 slots > maxSlots (50), should cap at 1.0
+      schedulingService.countAvailableSlotsForDoctors.mockResolvedValue(new Map([[1, 100]]));
 
       const result = await service.scoreDoctors({});
 
@@ -365,12 +348,10 @@ describe('MatchingService', () => {
     it('should cap experience score at 1.0', async () => {
       const doc = buildMockDoctor({ id: 1, consultationCount: 500 });
       prisma.doctorProfile.findMany.mockResolvedValue([doc]);
-      reviewService.getAggregateRating.mockResolvedValue({
-        averageRating: null,
-        totalReviews: 0,
-        distribution: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 },
-      });
-      schedulingService.getAvailableSlots.mockResolvedValue([]);
+      reviewService.getAggregateRatingsForDoctors.mockResolvedValue(
+        new Map([[1, { averageRating: null, totalReviews: 0, distribution: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 } }]]),
+      );
+      schedulingService.countAvailableSlotsForDoctors.mockResolvedValue(new Map([[1, 0]]));
 
       const result = await service.scoreDoctors({});
 
@@ -389,12 +370,10 @@ describe('MatchingService', () => {
       doc.user.lastname = 'Smith';
       doc.user.avatar = 'avatar-url.jpg';
       prisma.doctorProfile.findMany.mockResolvedValue([doc]);
-      reviewService.getAggregateRating.mockResolvedValue({
-        averageRating: 3.5,
-        totalReviews: 8,
-        distribution: { 1: 0, 2: 1, 3: 2, 4: 3, 5: 2 },
-      });
-      schedulingService.getAvailableSlots.mockResolvedValue([]);
+      reviewService.getAggregateRatingsForDoctors.mockResolvedValue(
+        new Map([[7, { averageRating: 3.5, totalReviews: 8, distribution: { 1: 0, 2: 1, 3: 2, 4: 3, 5: 2 } }]]),
+      );
+      schedulingService.countAvailableSlotsForDoctors.mockResolvedValue(new Map([[7, 0]]));
 
       const result = await service.scoreDoctors({});
 

@@ -264,6 +264,70 @@ export class ReviewService {
     return result;
   }
 
+  async getAggregateRatingsForDoctors(
+    doctorIds: number[],
+  ): Promise<Map<number, AggregateRating>> {
+    const result = new Map<number, AggregateRating>();
+    if (doctorIds.length === 0) return result;
+
+    const uncachedIds: number[] = [];
+    for (const id of doctorIds) {
+      const cached = await this.cacheService.get<AggregateRating>(
+        this.CACHE_GROUP,
+        String(id),
+      );
+      if (cached) {
+        result.set(id, cached);
+      } else {
+        uncachedIds.push(id);
+      }
+    }
+
+    if (uncachedIds.length === 0) return result;
+
+    const [aggs, groups] = await Promise.all([
+      this.prisma.doctorReview.groupBy({
+        by: ['doctorId'],
+        where: { doctorId: { in: uncachedIds } },
+        _avg: { rating: true },
+        _count: { rating: true },
+      }),
+      this.prisma.doctorReview.groupBy({
+        by: ['doctorId', 'rating'],
+        where: { doctorId: { in: uncachedIds } },
+        _count: { rating: true },
+      }),
+    ]);
+
+    for (const id of uncachedIds) {
+      const agg = aggs.find((a) => a.doctorId === id);
+      const docGroups = groups.filter((g) => g.doctorId === id);
+
+      const distribution: Record<1 | 2 | 3 | 4 | 5, number> = {
+        1: 0, 2: 0, 3: 0, 4: 0, 5: 0,
+      };
+      for (const g of docGroups) {
+        if (g.rating >= 1 && g.rating <= 5) {
+          distribution[g.rating as 1 | 2 | 3 | 4 | 5] = g._count.rating;
+        }
+      }
+
+      const totalReviews = agg?._count.rating ?? 0;
+      const averageRating =
+        totalReviews > 0
+          ? Math.round((agg?._avg.rating ?? 0) * 10) / 10
+          : null;
+
+      const data: AggregateRating = { averageRating, totalReviews, distribution };
+      result.set(id, data);
+      this.cacheService
+        .set(this.CACHE_GROUP, String(id), data, this.CACHE_TTL)
+        .catch(() => {});
+    }
+
+    return result;
+  }
+
   /**
    * Invalidate cached rating for a doctor.
    */

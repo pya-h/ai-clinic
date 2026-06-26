@@ -5,6 +5,7 @@ import {
   NotFoundException,
   ServiceUnavailableException,
 } from '@nestjs/common';
+import { Cron, CronExpression } from '@nestjs/schedule';
 import { ConfigService } from '@nestjs/config';
 import * as chat from '@botpress/chat';
 import { User, AiConversation } from '@prisma/client';
@@ -620,6 +621,7 @@ export class BotpressService {
     return choices.length > 0 ? choices : undefined;
   }
 
+  @Cron(CronExpression.EVERY_5_MINUTES)
   private pruneGuestContexts(): void {
     const now = Date.now();
     for (const [conversationId, context] of this.guestContexts.entries()) {

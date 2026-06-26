@@ -393,20 +393,21 @@ export class ChatService {
 
     const now = new Date().toISOString();
 
-    // Batch update each message's readBy
-    for (const msg of messages) {
-      const readBy: Array<{ userId: string; readAt: string }> =
-        (msg.readBy as any[]) || [];
-
-      // Skip if already marked as read by this user
-      if (readBy.some((r) => r.userId === userId)) continue;
-
-      readBy.push({ userId, readAt: now });
-
-      await this.prisma.message.update({
-        where: { id: msg.id },
-        data: { readBy },
+    const updates = messages
+      .filter((msg) => {
+        const readBy = (msg.readBy as any[]) || [];
+        return !readBy.some((r) => r.userId === userId);
+      })
+      .map((msg) => {
+        const readBy = [...((msg.readBy as any[]) || []), { userId, readAt: now }];
+        return this.prisma.message.update({
+          where: { id: msg.id },
+          data: { readBy },
+        });
       });
+
+    if (updates.length > 0) {
+      await this.prisma.$transaction(updates);
     }
 
     // Update participant's lastSeenAt

@@ -117,71 +117,70 @@ export class MatchingService {
 
     const now = new Date();
     const weekFromNow = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+    const doctorIds = doctors.map((d) => d.id);
 
-    const scored = await Promise.all(
-      doctors.map(async (doctor) => {
-        let specialtyScore = 0;
-        if (criteria.specialty) {
-          if (doctor.specialty === criteria.specialty) {
-            specialtyScore = 1.0;
-          } else if (doctor.secondarySpecialties.includes(criteria.specialty)) {
-            specialtyScore = 0.6;
-          } else if (doctor.specialty === DoctorSpecialtiesEnum.GENERAL) {
-            specialtyScore = 0.3;
-          }
-        } else {
-          specialtyScore = 0.5;
+    const [ratingsMap, slotsMap] = await Promise.all([
+      this.reviewService
+        .getAggregateRatingsForDoctors(doctorIds)
+        .catch(() => new Map<number, AggregateRating>()),
+      this.schedulingService
+        .countAvailableSlotsForDoctors(doctorIds, now, weekFromNow)
+        .catch(() => new Map<number, number>()),
+    ]);
+
+    const defaultRating: AggregateRating = {
+      averageRating: null,
+      totalReviews: 0,
+      distribution: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 },
+    };
+
+    const scored = doctors.map((doctor) => {
+      let specialtyScore = 0;
+      if (criteria.specialty) {
+        if (doctor.specialty === criteria.specialty) {
+          specialtyScore = 1.0;
+        } else if (doctor.secondarySpecialties.includes(criteria.specialty)) {
+          specialtyScore = 0.6;
+        } else if (doctor.specialty === DoctorSpecialtiesEnum.GENERAL) {
+          specialtyScore = 0.3;
         }
+      } else {
+        specialtyScore = 0.5;
+      }
 
-        let ratingData: AggregateRating;
-        try {
-          ratingData = await this.reviewService.getAggregateRating(doctor.id);
-        } catch {
-          ratingData = { averageRating: null, totalReviews: 0, distribution: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 } };
-        }
-        const ratingScore = ratingData.averageRating
-          ? ratingData.averageRating / 5
-          : 0.5;
+      const ratingData = ratingsMap.get(doctor.id) ?? defaultRating;
+      const ratingScore = ratingData.averageRating
+        ? ratingData.averageRating / 5
+        : 0.5;
 
-        let availableSlotCount = 0;
-        try {
-          const slots = await this.schedulingService.getAvailableSlots(
-            doctor.id,
-            now,
-            weekFromNow,
-          );
-          availableSlotCount = slots.length;
-        } catch {
-          availableSlotCount = 0;
-        }
-        const maxSlots = 50;
-        const availabilityScore = Math.min(availableSlotCount / maxSlots, 1.0);
+      const availableSlotCount = slotsMap.get(doctor.id) ?? 0;
+      const maxSlots = 50;
+      const availabilityScore = Math.min(availableSlotCount / maxSlots, 1.0);
 
-        const consultationCount = doctor._count.consultations;
-        const maxExperience = 200;
-        const experienceScore = Math.min(consultationCount / maxExperience, 1.0);
+      const consultationCount = doctor._count.consultations;
+      const maxExperience = 200;
+      const experienceScore = Math.min(consultationCount / maxExperience, 1.0);
 
-        const totalScore =
-          WEIGHTS.specialtyMatch * specialtyScore +
-          WEIGHTS.rating * ratingScore +
-          WEIGHTS.availability * availabilityScore +
-          WEIGHTS.experience * experienceScore;
+      const totalScore =
+        WEIGHTS.specialtyMatch * specialtyScore +
+        WEIGHTS.rating * ratingScore +
+        WEIGHTS.availability * availabilityScore +
+        WEIGHTS.experience * experienceScore;
 
-        return {
-          doctorId: doctor.id,
-          userId: doctor.user.id,
-          firstname: doctor.user.firstname,
-          lastname: doctor.user.lastname,
-          avatar: doctor.user.avatar,
-          specialty: doctor.specialty,
-          secondarySpecialties: doctor.secondarySpecialties,
-          rating: ratingData.averageRating,
-          totalReviews: ratingData.totalReviews,
-          availableSlots: availableSlotCount,
-          score: Math.round(totalScore * 100) / 100,
-        };
-      }),
-    );
+      return {
+        doctorId: doctor.id,
+        userId: doctor.user.id,
+        firstname: doctor.user.firstname,
+        lastname: doctor.user.lastname,
+        avatar: doctor.user.avatar,
+        specialty: doctor.specialty,
+        secondarySpecialties: doctor.secondarySpecialties,
+        rating: ratingData.averageRating,
+        totalReviews: ratingData.totalReviews,
+        availableSlots: availableSlotCount,
+        score: Math.round(totalScore * 100) / 100,
+      };
+    });
 
     return scored
       .sort((a, b) => b.score - a.score)

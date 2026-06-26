@@ -32,6 +32,16 @@ export function validateEnv(
     errors.push('SMTP_PORT must be a valid number');
   }
 
+  if (
+    config.NODE_ENV === 'production' &&
+    config.DATABASE_URL &&
+    !(config.DATABASE_URL as string).includes('connection_limit')
+  ) {
+    warnings.push(
+      'DATABASE_URL has no connection_limit parameter — Prisma uses default pool size; set ?connection_limit=N for production',
+    );
+  }
+
   if (!config.CORS_ORIGIN) {
     warnings.push(
       'CORS_ORIGIN not set — defaulting to http://localhost:5173 (set explicitly for production)',
