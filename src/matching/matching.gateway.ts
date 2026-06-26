@@ -16,6 +16,7 @@ import { createHash } from 'crypto';
 import { MatchingService } from './matching.service';
 import { DoctorSpecialtiesEnum, MatchStatusEnum } from '@prisma/client';
 import { NotificationService } from '../notification/notification.service';
+import { WsRateLimiter } from '../common/tools/ws-rate-limiter';
 
 @WebSocketGateway({
   namespace: '/matching',
@@ -32,6 +33,7 @@ export class MatchingGateway
 
   private readonly logger = new Logger(MatchingGateway.name);
   private readonly patientTimers = new Map<string, NodeJS.Timeout>();
+  private readonly rateLimit = new WsRateLimiter(5, 10_000);
 
   constructor(
     private readonly matchingService: MatchingService,
@@ -45,6 +47,7 @@ export class MatchingGateway
       clearTimeout(timer);
     }
     this.patientTimers.clear();
+    this.rateLimit.destroy();
   }
 
   afterInit(server: Server): void {
@@ -87,6 +90,7 @@ export class MatchingGateway
   ): Promise<void> {
     const user = client.data.user;
     if (!user) throw new WsException('Unauthorized');
+    this.rateLimit.check(user.id, 'match:request');
 
     try {
       if (payload.specialty && !Object.values(DoctorSpecialtiesEnum).includes(payload.specialty as DoctorSpecialtiesEnum)) {
@@ -125,6 +129,7 @@ export class MatchingGateway
   ): Promise<void> {
     const user = client.data.user;
     if (!user) throw new WsException('Unauthorized');
+    this.rateLimit.check(user.id, 'match:accept');
     if (!payload.matchRequestId) throw new WsException('matchRequestId is required');
 
     try {
@@ -170,6 +175,7 @@ export class MatchingGateway
   ): Promise<void> {
     const user = client.data.user;
     if (!user) throw new WsException('Unauthorized');
+    this.rateLimit.check(user.id, 'match:reject');
     if (!payload.matchRequestId) throw new WsException('matchRequestId is required');
 
     try {
@@ -204,6 +210,7 @@ export class MatchingGateway
   ): Promise<void> {
     const user = client.data.user;
     if (!user) throw new WsException('Unauthorized');
+    this.rateLimit.check(user.id, 'match:cancel');
     if (!payload.matchRequestId) throw new WsException('matchRequestId is required');
 
     try {

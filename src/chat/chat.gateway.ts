@@ -9,13 +9,14 @@ import {
   WebSocketServer,
   WsException,
 } from '@nestjs/websockets';
-import { Inject, Logger, forwardRef } from '@nestjs/common';
+import { Inject, Logger, OnModuleDestroy, forwardRef } from '@nestjs/common';
 import { Server, Socket } from 'socket.io';
 import { ChatService } from './chat.service';
 import { MessageTypeEnum } from '@prisma/client';
 import { ConfigService } from '@nestjs/config';
 import { createHash } from 'crypto';
 import { NotificationService } from '../notification/notification.service';
+import { WsRateLimiter } from '../common/tools/ws-rate-limiter';
 
 /**
  * Chat WebSocket Gateway
@@ -34,12 +35,14 @@ import { NotificationService } from '../notification/notification.service';
   },
 })
 export class ChatGateway
-  implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect
+  implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect, OnModuleDestroy
 {
   @WebSocketServer()
   server: Server;
 
   private readonly logger = new Logger(ChatGateway.name);
+  private readonly msgRateLimit = new WsRateLimiter(20, 10_000);
+  private readonly typingRateLimit = new WsRateLimiter(30, 10_000);
 
   constructor(
     private readonly chatService: ChatService,
@@ -47,6 +50,11 @@ export class ChatGateway
     @Inject(forwardRef(() => NotificationService))
     private readonly notificationService: NotificationService,
   ) {}
+
+  onModuleDestroy(): void {
+    this.msgRateLimit.destroy();
+    this.typingRateLimit.destroy();
+  }
 
   /**
    * After Socket.IO server initializes, attach authentication middleware.
@@ -152,6 +160,7 @@ export class ChatGateway
   ): Promise<void> {
     const user = client.data.user;
     if (!user) throw new WsException('Unauthorized');
+    this.msgRateLimit.check(user.id, 'chat:message');
 
     if (!payload.chatId || !payload.content) {
       throw new WsException('chatId and content are required');
@@ -203,6 +212,7 @@ export class ChatGateway
   ): Promise<void> {
     const user = client.data.user;
     if (!user) throw new WsException('Unauthorized');
+    this.typingRateLimit.check(user.id, 'chat:typing');
 
     if (!payload.chatId) {
       throw new WsException('chatId is required');
@@ -229,6 +239,7 @@ export class ChatGateway
   ): Promise<void> {
     const user = client.data.user;
     if (!user) throw new WsException('Unauthorized');
+    this.msgRateLimit.check(user.id, 'chat:read');
 
     if (!payload.chatId || !payload.messageId) {
       throw new WsException('chatId and messageId are required');
@@ -266,6 +277,7 @@ export class ChatGateway
   ): Promise<void> {
     const user = client.data.user;
     if (!user) throw new WsException('Unauthorized');
+    this.msgRateLimit.check(user.id, 'chat:edit');
 
     if (!payload.messageId || !payload.content) {
       throw new WsException('messageId and content are required');
@@ -303,6 +315,7 @@ export class ChatGateway
   ): Promise<void> {
     const user = client.data.user;
     if (!user) throw new WsException('Unauthorized');
+    this.msgRateLimit.check(user.id, 'chat:delete');
 
     if (!payload.messageId) {
       throw new WsException('messageId is required');
@@ -338,6 +351,7 @@ export class ChatGateway
   ): Promise<void> {
     const user = client.data.user;
     if (!user) throw new WsException('Unauthorized');
+    this.msgRateLimit.check(user.id, 'chat:join');
 
     if (!payload.chatId) {
       throw new WsException('chatId is required');
@@ -358,6 +372,7 @@ export class ChatGateway
   ): void {
     const user = client.data.user;
     if (!user) throw new WsException('Unauthorized');
+    this.msgRateLimit.check(user.id, 'chat:leave');
 
     if (!payload.chatId) {
       throw new WsException('chatId is required');

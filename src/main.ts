@@ -3,31 +3,43 @@ import { AppModule } from './app.module';
 import { FastifyAdapter, NestFastifyApplication } from '@nestjs/platform-fastify';
 import { ExceptionTemplateFilter } from './common/filters/exception-template.filter';
 import { ResponseTemplateInterceptor } from './common/interceptors/response-template.interceptor';
-import { ValidationPipe } from '@nestjs/common';
+import { RequestLoggingInterceptor } from './common/interceptors/request-logging.interceptor';
+import { Logger, ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { setupSwagger } from './configs';
 import fastifyCookie from '@fastify/cookie';
 import fastifyHelmet from '@fastify/helmet';
 import fastifySecureSession from '@fastify/secure-session';
 import fastifyMultipart from '@fastify/multipart';
+import fastifyCompress from '@fastify/compress';
 import { IoAdapter } from '@nestjs/platform-socket.io';
 import { createHash } from 'crypto';
 
 async function bootstrap() {
+  const logger = new Logger('Bootstrap');
+
   const app = await NestFactory.create<NestFastifyApplication>(
     AppModule,
     new FastifyAdapter(),
     { rawBody: true },
   );
+
   const corsOrigin = process.env.CORS_ORIGIN || 'http://localhost:5173';
+  if (!process.env.CORS_ORIGIN) {
+    logger.warn('CORS_ORIGIN not set — defaulting to http://localhost:5173');
+  }
   app.enableCors({
     origin: corsOrigin.split(',').map((o) => o.trim()),
     credentials: true,
   });
 
   app.useGlobalFilters(new ExceptionTemplateFilter());
-  app.useGlobalInterceptors(new ResponseTemplateInterceptor());
+  app.useGlobalInterceptors(
+    new RequestLoggingInterceptor(),
+    new ResponseTemplateInterceptor(),
+  );
 
+  await app.register(fastifyCompress);
   await app.register(fastifyHelmet, {
     contentSecurityPolicy: false,
     crossOriginEmbedderPolicy: false,

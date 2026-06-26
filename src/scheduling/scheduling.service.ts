@@ -188,10 +188,13 @@ export class SchedulingService {
     dto: CreateExceptionDto,
   ): Promise<AvailabilityException> {
     try {
+      const normalizedDate = new Date(dto.date);
+      normalizedDate.setUTCHours(0, 0, 0, 0);
+
       return await this.prisma.availabilityException.create({
         data: {
           doctorId,
-          date: new Date(dto.date),
+          date: normalizedDate,
           isBlocked: dto.isBlocked ?? true,
           startTime: dto.startTime ?? null,
           endTime: dto.endTime ?? null,

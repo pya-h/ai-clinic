@@ -32,6 +32,21 @@ export function validateEnv(
     errors.push('SMTP_PORT must be a valid number');
   }
 
+  if (!config.CORS_ORIGIN) {
+    warnings.push(
+      'CORS_ORIGIN not set — defaulting to http://localhost:5173 (set explicitly for production)',
+    );
+  }
+
+  if (
+    (config.DEBUG as string)?.toLowerCase() === 'true' &&
+    config.NODE_ENV === 'production'
+  ) {
+    warnings.push(
+      'DEBUG=true in production — validation errors will expose schema details',
+    );
+  }
+
   if (!config.OPENAI_API_KEY) {
     warnings.push('OPENAI_API_KEY not set — AI features will not work');
   }
