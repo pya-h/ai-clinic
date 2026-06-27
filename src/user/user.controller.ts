@@ -14,6 +14,7 @@ import {
 import { UserService } from './user.service';
 import { ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { UpdateUserDto } from './dto/update-user.dto';
+import { ChangePasswordDto } from './dto/change-password.dto';
 import { CookieAuthGuard } from '../auth/guards/cookie-auth.guard';
 import { CurrentUser } from './decorators/current-user.decorator';
 import { AdminGuard } from '../auth/guards/admin.guard';
@@ -53,6 +54,18 @@ export class UserController {
     @Body() updateUserData: UpdateUserDto,
   ) {
     return this.userService.updateUser(user, updateUserData);
+  }
+
+  @ApiOperation({
+    description: 'Change user password. Requires current password verification.',
+  })
+  @UseGuards(CookieAuthGuard)
+  @Patch('change-password')
+  async changePassword(
+    @CurrentUser() user: User,
+    @Body() dto: ChangePasswordDto,
+  ) {
+    return this.userService.changePassword(user, dto);
   }
 
   @ApiOperation({

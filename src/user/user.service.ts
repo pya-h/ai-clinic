@@ -6,6 +6,7 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { Prisma, User, UserRolesEnum } from '@prisma/client';
 import { UpdateUserDto } from './dto/update-user.dto';
+import { ChangePasswordDto } from './dto/change-password.dto';
 import { RegistrationDto } from '../auth/dto/register.dto';
 import { UtilsService } from '../utils/utils.service';
 import { DefaultArgs } from '@prisma/client/runtime/library';
@@ -108,6 +109,42 @@ export class UserService {
       },
       select: this.safeUserSelect(),
     });
+  }
+
+  async changePassword(user: User, dto: ChangePasswordDto) {
+    const fullUser = await this.prisma.user.findUnique({
+      where: { id: user.id },
+      select: { password: true },
+    });
+    if (!fullUser) {
+      throw new BadRequestException('User not found.');
+    }
+
+    const isCurrentValid = await this.utilsService.compareHash(
+      dto.currentPassword,
+      fullUser.password,
+    );
+    if (!isCurrentValid) {
+      throw new BadRequestException('Current password is incorrect.');
+    }
+
+    const isSamePassword = await this.utilsService.compareHash(
+      dto.newPassword,
+      fullUser.password,
+    );
+    if (isSamePassword) {
+      throw new BadRequestException(
+        'New password must be different from the current password.',
+      );
+    }
+
+    const hashedPassword = await this.utilsService.getHash(dto.newPassword);
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: { password: hashedPassword },
+    });
+
+    return { message: 'Password changed successfully.' };
   }
 
   getUsers() {
