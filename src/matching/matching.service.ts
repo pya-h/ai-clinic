@@ -471,6 +471,33 @@ export class MatchingService {
       }
     }
 
+    // Auto-timeout expired requests that are still in a searching/matched state
+    if (
+      (request.status === MatchStatusEnum.SEARCHING ||
+        request.status === MatchStatusEnum.MATCHED) &&
+      this.isExpired(request)
+    ) {
+      return this.prisma.matchRequest.update({
+        where: { id: matchRequestId },
+        data: {
+          status: MatchStatusEnum.TIMEOUT,
+          resolvedAt: new Date(),
+        },
+        include: {
+          matchedDoctor: {
+            include: {
+              user: {
+                select: { id: true, firstname: true, lastname: true, avatar: true },
+              },
+            },
+          },
+          soap: {
+            select: { id: true, suggestedSpecialty: true, triageLevel: true },
+          },
+        },
+      });
+    }
+
     return request;
   }
 
@@ -528,7 +555,10 @@ export class MatchingService {
   }
 
   isExpired(request: MatchRequest): boolean {
-    return Date.now() - request.createdAt.getTime() > this.MATCH_TIMEOUT_MS;
+    const created = request.createdAt instanceof Date
+      ? request.createdAt.getTime()
+      : new Date(request.createdAt).getTime();
+    return Date.now() - created > this.MATCH_TIMEOUT_MS;
   }
 
   // ────────────── Internal Helpers ──────────────
