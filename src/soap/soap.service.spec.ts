@@ -40,6 +40,10 @@ describe('SoapService', () => {
         upsert: jest.fn(),
         count: jest.fn(),
       },
+      aiConversation: {
+        findUnique: jest.fn(),
+        update: jest.fn(),
+      },
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -224,6 +228,7 @@ Follow up in 2 weeks`;
     it('should detect, parse, and upsert a SOAP note', async () => {
       const messageText = `Here is your summary:\n***SOAP***\nSubjective: headache\nObjective: normal vitals\nAssessment: tension headache\nPlan: rest\n***SOAP***`;
       prisma.patientSOAP.upsert.mockResolvedValue(mockSoap);
+      prisma.aiConversation.findUnique.mockResolvedValue({ topic: 'existing' });
 
       const result = await service.detectAndUpsert(
         mockUserId,
@@ -271,6 +276,7 @@ Follow up in 2 weeks`;
       const messageText =
         '***SOAP***\nSubjective: headache only\n***SOAP***';
       prisma.patientSOAP.upsert.mockResolvedValue(mockSoap);
+      prisma.aiConversation.findUnique.mockResolvedValue({ topic: null });
 
       await service.detectAndUpsert(
         mockUserId,
@@ -283,6 +289,92 @@ Follow up in 2 weeks`;
       expect(upsertCall.create.objective).toBeNull();
       expect(upsertCall.create.assessment).toBeNull();
       expect(upsertCall.create.plan).toBeNull();
+    });
+
+    it('should auto-title conversation when it has no topic', async () => {
+      const messageText =
+        '***SOAP***\nSubjective: headache\nObjective: normal\nAssessment: Tension headache likely caused by stress.\nPlan: rest\n***SOAP***';
+      prisma.patientSOAP.upsert.mockResolvedValue(mockSoap);
+      prisma.aiConversation.findUnique.mockResolvedValue({ topic: null });
+      prisma.aiConversation.update.mockResolvedValue({});
+
+      await service.detectAndUpsert(mockUserId, mockConversationId, messageText);
+
+      expect(prisma.aiConversation.findUnique).toHaveBeenCalledWith({
+        where: { id: mockConversationId },
+        select: { topic: true },
+      });
+      expect(prisma.aiConversation.update).toHaveBeenCalledWith({
+        where: { id: mockConversationId },
+        data: { topic: 'Tension headache likely caused by stress.' },
+      });
+    });
+
+    it('should not update title when conversation already has a topic', async () => {
+      const messageText =
+        '***SOAP***\nSubjective: headache\nAssessment: Migraine\nPlan: rest\n***SOAP***';
+      prisma.patientSOAP.upsert.mockResolvedValue(mockSoap);
+      prisma.aiConversation.findUnique.mockResolvedValue({ topic: 'My existing title' });
+
+      await service.detectAndUpsert(mockUserId, mockConversationId, messageText);
+
+      expect(prisma.aiConversation.update).not.toHaveBeenCalled();
+    });
+
+    it('should derive title from subjective when assessment is empty', async () => {
+      const messageText =
+        '***SOAP***\nSubjective: Patient reports persistent lower back pain for two weeks.\nObjective: normal\nPlan: rest\n***SOAP***';
+      prisma.patientSOAP.upsert.mockResolvedValue(mockSoap);
+      prisma.aiConversation.findUnique.mockResolvedValue({ topic: null });
+      prisma.aiConversation.update.mockResolvedValue({});
+
+      await service.detectAndUpsert(mockUserId, mockConversationId, messageText);
+
+      expect(prisma.aiConversation.update).toHaveBeenCalledWith({
+        where: { id: mockConversationId },
+        data: { topic: 'Patient reports persistent lower back pain for two weeks.' },
+      });
+    });
+
+    it('should truncate long titles to 80 characters', async () => {
+      const longAssessment =
+        'This is a very long assessment text that goes well beyond eighty characters and should be truncated properly to avoid extremely long conversation titles';
+      const messageText = `***SOAP***\nSubjective: pain\nAssessment: ${longAssessment}\nPlan: rest\n***SOAP***`;
+      prisma.patientSOAP.upsert.mockResolvedValue(mockSoap);
+      prisma.aiConversation.findUnique.mockResolvedValue({ topic: null });
+      prisma.aiConversation.update.mockResolvedValue({});
+
+      await service.detectAndUpsert(mockUserId, mockConversationId, messageText);
+
+      const updateCall = prisma.aiConversation.update.mock.calls[0][0];
+      expect(updateCall.data.topic.length).toBeLessThanOrEqual(80);
+      expect(updateCall.data.topic).toMatch(/\.\.\.$/);
+    });
+
+    it('should strip markdown from derived title', async () => {
+      const messageText =
+        '***SOAP***\nSubjective: pain\nAssessment: **Likely viral** infection with *moderate* symptoms.\nPlan: rest\n***SOAP***';
+      prisma.patientSOAP.upsert.mockResolvedValue(mockSoap);
+      prisma.aiConversation.findUnique.mockResolvedValue({ topic: null });
+      prisma.aiConversation.update.mockResolvedValue({});
+
+      await service.detectAndUpsert(mockUserId, mockConversationId, messageText);
+
+      const updateCall = prisma.aiConversation.update.mock.calls[0][0];
+      expect(updateCall.data.topic).not.toContain('**');
+      expect(updateCall.data.topic).not.toContain('*');
+      expect(updateCall.data.topic).toBe('Likely viral infection with moderate symptoms.');
+    });
+
+    it('should not set title when both assessment and subjective are empty', async () => {
+      const messageText =
+        '***SOAP***\nObjective: BP 120/80\nPlan: Follow up in 2 weeks\n***SOAP***';
+      prisma.patientSOAP.upsert.mockResolvedValue(mockSoap);
+      prisma.aiConversation.findUnique.mockResolvedValue({ topic: null });
+
+      await service.detectAndUpsert(mockUserId, mockConversationId, messageText);
+
+      expect(prisma.aiConversation.update).not.toHaveBeenCalled();
     });
   });
 

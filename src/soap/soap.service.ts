@@ -27,6 +27,31 @@ export class SoapService {
   private static readonly HEADING_RE =
     /^[ \t]*\*{0,2}[ \t]*(Subjective|Objective|Assessment|Plan)[ \t]*:?[ \t]*\*{0,2}[ \t]*/gim;
 
+  private deriveTitleFromSoap(parsed: {
+    subjective: string;
+    assessment: string;
+  }): string | null {
+    const source = parsed.assessment || parsed.subjective;
+    if (!source) return null;
+
+    let clean = source
+      .replace(/\*{1,2}([^*]+)\*{1,2}/g, '$1')
+      .replace(/\*+/g, '')
+      .replace(/#+\s*/g, '')
+      .replace(/(^|\n)[-]\s+/g, '$1')
+      .replace(/\n+/g, ' ')
+      .trim();
+
+    const sentenceEnd = clean.search(/[.!?]/);
+    if (sentenceEnd > 0 && sentenceEnd <= 80) {
+      clean = clean.slice(0, sentenceEnd + 1);
+    } else if (clean.length > 80) {
+      clean = clean.slice(0, 77) + '...';
+    }
+
+    return clean || null;
+  }
+
   containsSoapTag(text: string): boolean {
     if (text.includes(this.SOAP_TAG)) return true;
     const headings = ['Subjective', 'Objective', 'Assessment', 'Plan'];
@@ -117,6 +142,21 @@ export class SoapService {
         rawNote: parsed.rawNote,
       },
     });
+
+    // Auto-title conversation if it doesn't have one yet
+    const conversation = await this.prisma.aiConversation.findUnique({
+      where: { id: conversationId },
+      select: { topic: true },
+    });
+    if (conversation && !conversation.topic) {
+      const title = this.deriveTitleFromSoap(parsed);
+      if (title) {
+        await this.prisma.aiConversation.update({
+          where: { id: conversationId },
+          data: { topic: title },
+        });
+      }
+    }
 
     this.notificationService
       .onSoapReady(userId, conversationId)
