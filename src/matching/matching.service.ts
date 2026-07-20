@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Injectable,
   Logger,
@@ -13,6 +14,7 @@ import {
   DoctorSpecialtiesEnum,
   MatchRequest,
   MatchStatusEnum,
+  Prisma,
   TriageLevelEnum,
   User,
   UserRolesEnum,
@@ -198,18 +200,6 @@ export class MatchingService {
       throw new ForbiddenException('Only patients can request a match.');
     }
 
-    const activeRequest = await this.prisma.matchRequest.findFirst({
-      where: {
-        patientId: user.id,
-        status: { in: [MatchStatusEnum.SEARCHING, MatchStatusEnum.MATCHED] },
-      },
-    });
-    if (activeRequest) {
-      throw new BadRequestException(
-        'You already have an active match request. Cancel it first or wait for it to resolve.',
-      );
-    }
-
     let specialty: DoctorSpecialtiesEnum | undefined = manualSpecialty;
     let triageLevel: TriageLevelEnum | undefined;
 
@@ -225,15 +215,40 @@ export class MatchingService {
       triageLevel = soap.triageLevel ?? undefined;
     }
 
-    const matchRequest = await this.prisma.matchRequest.create({
-      data: {
-        patientId: user.id,
-        soapId: soapId ?? null,
-        specialty: specialty ?? null,
-        triageLevel: triageLevel ?? null,
-        status: MatchStatusEnum.SEARCHING,
-      },
-    });
+    // Atomic check-then-create to prevent duplicate active match requests
+    let matchRequest: MatchRequest;
+    try {
+      matchRequest = await this.prisma.$transaction(async (tx) => {
+        const activeRequest = await tx.matchRequest.findFirst({
+          where: {
+            patientId: user.id,
+            status: { in: [MatchStatusEnum.SEARCHING, MatchStatusEnum.MATCHED] },
+          },
+        });
+        if (activeRequest) {
+          throw new BadRequestException(
+            'You already have an active match request. Cancel it first or wait for it to resolve.',
+          );
+        }
+
+        return tx.matchRequest.create({
+          data: {
+            patientId: user.id,
+            soapId: soapId ?? null,
+            specialty: specialty ?? null,
+            triageLevel: triageLevel ?? null,
+            status: MatchStatusEnum.SEARCHING,
+          },
+        });
+      }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2034') {
+        throw new ConflictException(
+          'A match request was just created. Please wait for it to resolve.',
+        );
+      }
+      throw error;
+    }
 
     const doctors = await this.scoreDoctors({ specialty, triageLevel });
 

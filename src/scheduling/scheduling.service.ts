@@ -12,6 +12,7 @@ import {
   AppointmentStatusEnum,
   DoctorAvailability,
   AvailabilityException,
+  Prisma,
   SlotDuration,
   User,
   UserRolesEnum,
@@ -448,58 +449,68 @@ export class SchedulingService {
       throw new BadRequestException('Cannot book an appointment in the past.');
     }
 
-    // Check for overlapping appointments (double-booking prevention)
+    // Overlap check + create in a serializable transaction to prevent double-booking
     const bookingEndTime = new Date(bookingDateTime.getTime() + dto.durationMinutes * 60000);
-    const candidates = await this.prisma.appointment.findMany({
-      where: {
-        doctorId: dto.doctorId,
-        status: { not: AppointmentStatusEnum.CANCELLED },
-        dateTime: { lt: bookingEndTime },
-      },
-      select: { dateTime: true, durationMinutes: true },
-    });
-    const hasOverlap = candidates.some((apt) => {
-      const aptEnd = new Date(apt.dateTime.getTime() + apt.durationMinutes * 60000);
-      return aptEnd > bookingDateTime;
-    });
-    if (hasOverlap) {
-      throw new ConflictException('This time slot is no longer available.');
-    }
+    let appointment: Appointment;
 
-    // If consultationId provided, validate ownership and status
-    if (dto.consultationId) {
-      const consultation = await this.prisma.consultation.findUnique({
-        where: { id: dto.consultationId },
-      });
-      if (!consultation) {
-        throw new NotFoundException('Consultation not found.');
-      }
-      if (consultation.patientId !== user.id) {
-        throw new ForbiddenException(
-          'This consultation does not belong to you.',
-        );
-      }
-      if (consultation.doctorId !== dto.doctorId) {
-        throw new BadRequestException(
-          'Consultation doctor does not match the provided doctorId.',
-        );
-      }
-    }
+    try {
+      appointment = await this.prisma.$transaction(async (tx) => {
+        const candidates = await tx.appointment.findMany({
+          where: {
+            doctorId: dto.doctorId,
+            status: { not: AppointmentStatusEnum.CANCELLED },
+            dateTime: { lt: bookingEndTime },
+          },
+          select: { dateTime: true, durationMinutes: true },
+        });
+        const hasOverlap = candidates.some((apt) => {
+          const aptEnd = new Date(apt.dateTime.getTime() + apt.durationMinutes * 60000);
+          return aptEnd > bookingDateTime;
+        });
+        if (hasOverlap) {
+          throw new ConflictException('This time slot is no longer available.');
+        }
 
-    const appointment = await this.prisma.appointment.create({
-      data: {
-        patientId: user.id,
-        doctorId: dto.doctorId,
-        consultationId: dto.consultationId ?? null,
-        dateTime: new Date(dto.dateTime),
-        durationMinutes: dto.durationMinutes,
-        price: slotDuration.price,
-        method: dto.method,
-        notes: dto.notes ?? null,
-        status: AppointmentStatusEnum.PENDING,
-      },
-      include: this.appointmentInclude(),
-    });
+        if (dto.consultationId) {
+          const consultation = await tx.consultation.findUnique({
+            where: { id: dto.consultationId },
+          });
+          if (!consultation) {
+            throw new NotFoundException('Consultation not found.');
+          }
+          if (consultation.patientId !== user.id) {
+            throw new ForbiddenException(
+              'This consultation does not belong to you.',
+            );
+          }
+          if (consultation.doctorId !== dto.doctorId) {
+            throw new BadRequestException(
+              'Consultation doctor does not match the provided doctorId.',
+            );
+          }
+        }
+
+        return tx.appointment.create({
+          data: {
+            patientId: user.id,
+            doctorId: dto.doctorId,
+            consultationId: dto.consultationId ?? null,
+            dateTime: new Date(dto.dateTime),
+            durationMinutes: dto.durationMinutes,
+            price: slotDuration.price,
+            method: dto.method,
+            notes: dto.notes ?? null,
+            status: AppointmentStatusEnum.PENDING,
+          },
+          include: this.appointmentInclude(),
+        });
+      }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2034') {
+        throw new ConflictException('This time slot was just booked. Please try another.');
+      }
+      throw error;
+    }
 
     this.logger.log(
       `Appointment ${appointment.id} booked by patient ${user.id} with doctor ${dto.doctorId}`,

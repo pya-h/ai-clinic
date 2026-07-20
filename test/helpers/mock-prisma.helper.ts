@@ -205,7 +205,7 @@ export function createMockPrismaService(): MockPrismaService {
     return base;
   };
 
-  return {
+  const mock: MockPrismaService = {
     user: createModelMock(['count']) as any,
     doctorProfile: createModelMock(['count']) as any,
     patientProfile: createModelMock() as any,
@@ -231,4 +231,13 @@ export function createMockPrismaService(): MockPrismaService {
     $connect: jest.fn(),
     $disconnect: jest.fn(),
   };
+
+  // Interactive transactions receive a callback; call it with the mock as the tx client.
+  // Batch transactions (array input) are handled by per-test mockResolvedValue overrides.
+  mock.$transaction.mockImplementation((input: unknown) => {
+    if (typeof input === 'function') return (input as any)(mock);
+    return Promise.all(input as any[]);
+  });
+
+  return mock;
 }
