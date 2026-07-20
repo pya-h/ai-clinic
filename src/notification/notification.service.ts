@@ -71,17 +71,18 @@ export class NotificationService {
     skip = 0,
     take = 20,
   ): Promise<{ data: Notification[]; total: number; skip: number; take: number }> {
+    const cappedTake = Math.min(take, 100);
     const [data, total] = await this.prisma.$transaction([
       this.prisma.notification.findMany({
         where: { userId },
         orderBy: { createdAt: 'desc' },
         skip,
-        take,
+        take: cappedTake,
       }),
       this.prisma.notification.count({ where: { userId } }),
     ]);
 
-    return { data, total, skip, take };
+    return { data, total, skip, take: cappedTake };
   }
 
   async markAsRead(notificationId: number, userId: string): Promise<Notification> {

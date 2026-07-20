@@ -238,6 +238,7 @@ export class BotpressService {
     skip = 0,
     take = 20,
   ): Promise<{ data: AiConversation[]; total: number; skip: number; take: number }> {
+    const cappedTake = Math.min(take, 100);
     const [data, total] = await Promise.all([
       this.prismaService.aiConversation.findMany({
         where: { userId },
@@ -253,12 +254,12 @@ export class BotpressService {
           },
         },
         skip,
-        take,
+        take: cappedTake,
       }),
       this.prismaService.aiConversation.count({ where: { userId } }),
     ]);
 
-    return { data, total, skip, take };
+    return { data, total, skip, take: cappedTake };
   }
 
   async renameConversation(

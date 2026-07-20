@@ -21,5 +21,5 @@ export class AvailableSlotsQueryDto {
   })
   @IsOptional()
   @IsNumberString()
-  duration?: number;
+  duration?: string;
 }
