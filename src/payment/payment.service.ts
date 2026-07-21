@@ -50,16 +50,25 @@ export class PaymentService {
       }
     }
 
-    return this.prisma.payment.create({
-      data: {
-        userId: user.id,
-        amount: dto.amount,
-        currency: dto.currency ?? 'USD',
-        consultationId: dto.consultationId ?? null,
-        method: dto.method ?? null,
-        status: PaymentStatusEnum.PENDING,
-      },
-    });
+    try {
+      return await this.prisma.payment.create({
+        data: {
+          userId: user.id,
+          amount: dto.amount,
+          currency: dto.currency ?? 'USD',
+          consultationId: dto.consultationId ?? null,
+          method: dto.method ?? null,
+          status: PaymentStatusEnum.PENDING,
+        },
+      });
+    } catch (error: any) {
+      if (error.code === 'P2002') {
+        throw new ConflictException(
+          'A payment already exists for this consultation.',
+        );
+      }
+      throw error;
+    }
   }
 
   async getById(id: number, user: User): Promise<Payment> {

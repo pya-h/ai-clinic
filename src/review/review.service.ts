@@ -85,15 +85,25 @@ export class ReviewService {
       );
     }
 
-    const review = await this.prisma.doctorReview.create({
-      data: {
-        reviewerId: user.id,
-        doctorId: dto.doctorId,
-        rating: dto.rating,
-        title: dto.title,
-        overview: dto.overview,
-      },
-    });
+    let review: DoctorReview;
+    try {
+      review = await this.prisma.doctorReview.create({
+        data: {
+          reviewerId: user.id,
+          doctorId: dto.doctorId,
+          rating: dto.rating,
+          title: dto.title,
+          overview: dto.overview,
+        },
+      });
+    } catch (error: any) {
+      if (error.code === 'P2002') {
+        throw new ConflictException(
+          'You have already reviewed this doctor. You may update your existing review.',
+        );
+      }
+      throw error;
+    }
 
     // Invalidate cached rating for this doctor
     await this.invalidateRatingCache(dto.doctorId);

@@ -28,18 +28,25 @@ export class PatientService {
       throw new ConflictException('Patient already has a profile.');
     }
 
-    return this.prisma.patientProfile.create({
-      data: {
-        userId: user.id,
-        location: data.location,
-        bio: data.bio,
-        medicalHistory: data.medicalHistory ?? [],
-        allergies: data.allergies ?? [],
-        medications: data.medications ?? [],
-        surgeries: data.surgeries ?? [],
-        familyHistory: data.familyHistory ?? [],
-      },
-    });
+    try {
+      return await this.prisma.patientProfile.create({
+        data: {
+          userId: user.id,
+          location: data.location,
+          bio: data.bio,
+          medicalHistory: data.medicalHistory ?? [],
+          allergies: data.allergies ?? [],
+          medications: data.medications ?? [],
+          surgeries: data.surgeries ?? [],
+          familyHistory: data.familyHistory ?? [],
+        },
+      });
+    } catch (error: any) {
+      if (error.code === 'P2002') {
+        throw new ConflictException('Patient already has a profile.');
+      }
+      throw error;
+    }
   }
 
   /**

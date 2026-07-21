@@ -48,9 +48,6 @@ describe('MatchingService', () => {
     admin = createMockAdminUser();
     superAdmin = createMockSuperAdminUser();
 
-    // Make $transaction execute the callback with the mock prisma as the tx client
-    prisma.$transaction.mockImplementation((fn) => fn(prisma));
-
     // Add matchRejection model mock (used by rejectMatch and getRejectedDoctorIds)
     (prisma as any).matchRejection = {
       create: jest.fn().mockResolvedValue({}),

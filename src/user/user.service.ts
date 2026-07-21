@@ -71,20 +71,27 @@ export class UserService {
 
     const hashedPassword = await this.utilsService.getHash(userData.password);
 
-    const { password: _, ...user } = await this.prisma.user.create({
-      data: {
-        firstname: userData.firstname,
-        lastname: userData.lastname,
-        email: userData.email,
-        role: userData.role || UserRolesEnum.PATIENT,
-        isAdmin: false,
-        password: hashedPassword,
-        isPrivate: userData.isPrivate || false,
-        avatar: userData.avatar || null,
-      },
-    });
+    try {
+      const { password: _, ...user } = await this.prisma.user.create({
+        data: {
+          firstname: userData.firstname,
+          lastname: userData.lastname,
+          email: userData.email,
+          role: userData.role || UserRolesEnum.PATIENT,
+          isAdmin: false,
+          password: hashedPassword,
+          isPrivate: userData.isPrivate || false,
+          avatar: userData.avatar || null,
+        },
+      });
 
-    return user;
+      return user;
+    } catch (error: any) {
+      if (error.code === 'P2002') {
+        throw new ConflictException('Email is unavailable!');
+      }
+      throw error;
+    }
   }
 
   async updateUser(user: User, updateUserData: UpdateUserDto) {
