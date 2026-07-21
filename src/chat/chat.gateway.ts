@@ -70,6 +70,9 @@ export class ChatGateway
         if (user.isActive === false) {
           return next(new Error('Unauthorized: Account deactivated'));
         }
+        if (user.isBanned === true) {
+          return next(new Error('Unauthorized: Account banned'));
+        }
         socket.data.user = user;
         next();
       } catch (err) {

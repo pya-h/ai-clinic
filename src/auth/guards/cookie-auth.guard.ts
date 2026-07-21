@@ -16,6 +16,13 @@ export class CookieAuthGuard implements CanActivate {
       throw new ForbiddenException('Account is deactivated');
     }
 
+    if (user.isBanned === true) {
+      session.delete();
+      throw new ForbiddenException(
+        `Your account has been banned.${user.banReason ? ` Reason: ${user.banReason}` : ''}`,
+      );
+    }
+
     (request as any).user = user;
     return true;
   }

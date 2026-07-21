@@ -59,6 +59,12 @@ describe('AdminService', () => {
       consultation: {
         count: jest.fn(),
       },
+      appointment: {
+        count: jest.fn(),
+      },
+      payment: {
+        aggregate: jest.fn(),
+      },
       doctorDocument: {
         findMany: jest.fn(),
       },
@@ -494,12 +500,19 @@ describe('AdminService', () => {
 
   describe('getPlatformStats', () => {
     it('should return aggregated platform statistics', async () => {
-      prisma.user.count.mockResolvedValue(100);
+      prisma.user.count
+        .mockResolvedValueOnce(100)   // totalUsers
+        .mockResolvedValueOnce(3)     // bannedUsers
+        .mockResolvedValueOnce(8);    // newUsersThisMonth
       prisma.doctorProfile.count
-        .mockResolvedValueOnce(25) // verified doctors
-        .mockResolvedValueOnce(5); // pending verifications
+        .mockResolvedValueOnce(25)    // verified doctors
+        .mockResolvedValueOnce(5);    // pending verifications
       prisma.patientProfile.count.mockResolvedValue(60);
-      prisma.consultation.count.mockResolvedValue(200);
+      prisma.consultation.count
+        .mockResolvedValueOnce(200)   // totalConsultations
+        .mockResolvedValueOnce(10);   // activeConsultations
+      prisma.appointment.count.mockResolvedValue(50);
+      prisma.payment.aggregate.mockResolvedValue({ _sum: { amount: 1500 } });
 
       const result = await service.getPlatformStats();
 
@@ -509,7 +522,101 @@ describe('AdminService', () => {
         totalPatients: 60,
         totalConsultations: 200,
         pendingVerifications: 5,
+        activeConsultations: 10,
+        bannedUsers: 3,
+        totalAppointments: 50,
+        newUsersThisMonth: 8,
+        totalRevenue: 1500,
       });
+    });
+  });
+
+  /* ── banUser ────────────────────────────────────────────── */
+
+  describe('banUser', () => {
+    it('should ban a user', async () => {
+      prisma.user.findUnique.mockResolvedValue({ ...mockRegularUser, isBanned: false });
+      prisma.user.update.mockResolvedValue({ ...mockRegularUser, isBanned: true, banReason: 'spam' });
+
+      const result = await service.banUser(
+        mockRegularUser.id,
+        { reason: 'spam' },
+        mockAdminUser as any,
+      );
+
+      expect(result.isBanned).toBe(true);
+      expect(prisma.user.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: mockRegularUser.id },
+          data: expect.objectContaining({ isBanned: true, banReason: 'spam' }),
+        }),
+      );
+    });
+
+    it('should throw BadRequestException when user is already banned', async () => {
+      prisma.user.findUnique.mockResolvedValue({ ...mockRegularUser, isBanned: true });
+
+      await expect(
+        service.banUser(mockRegularUser.id, { reason: 'spam' }, mockAdminUser as any),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('should throw NotFoundException when user does not exist', async () => {
+      prisma.user.findUnique.mockResolvedValue(null);
+
+      await expect(
+        service.banUser('nonexistent', { reason: 'spam' }, mockAdminUser as any),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('should throw ForbiddenException when banning a superadmin', async () => {
+      prisma.user.findUnique.mockResolvedValue({ ...mockSuperAdmin, isBanned: false });
+
+      await expect(
+        service.banUser(mockSuperAdmin.id, { reason: 'test' }, mockAdminUser as any),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('should throw ForbiddenException when banning yourself', async () => {
+      prisma.user.findUnique.mockResolvedValue({ ...mockAdminUser, isBanned: false });
+
+      await expect(
+        service.banUser(mockAdminUser.id, { reason: 'test' }, mockAdminUser as any),
+      ).rejects.toThrow(ForbiddenException);
+    });
+  });
+
+  /* ── unbanUser ─────────────────────────────────────────── */
+
+  describe('unbanUser', () => {
+    it('should unban a user', async () => {
+      prisma.user.findUnique.mockResolvedValue({ ...mockRegularUser, isBanned: true });
+      prisma.user.update.mockResolvedValue({ ...mockRegularUser, isBanned: false, banReason: null });
+
+      const result = await service.unbanUser(mockRegularUser.id, mockAdminUser as any);
+
+      expect(result.isBanned).toBe(false);
+      expect(prisma.user.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ isBanned: false, banReason: null }),
+        }),
+      );
+    });
+
+    it('should throw BadRequestException when user is not banned', async () => {
+      prisma.user.findUnique.mockResolvedValue({ ...mockRegularUser, isBanned: false });
+
+      await expect(
+        service.unbanUser(mockRegularUser.id, mockAdminUser as any),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('should throw NotFoundException when user does not exist', async () => {
+      prisma.user.findUnique.mockResolvedValue(null);
+
+      await expect(
+        service.unbanUser('nonexistent', mockAdminUser as any),
+      ).rejects.toThrow(NotFoundException);
     });
   });
 

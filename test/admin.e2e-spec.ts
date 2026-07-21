@@ -730,12 +730,19 @@ describe('Admin (e2e)', () => {
     it('should return platform statistics (admin)', async () => {
       sessionUser = adminUser;
 
-      prisma.user.count.mockResolvedValue(100);
+      prisma.user.count
+        .mockResolvedValueOnce(100)  // totalUsers
+        .mockResolvedValueOnce(2)    // bannedUsers
+        .mockResolvedValueOnce(5);   // newUsersThisMonth
       prisma.doctorProfile.count
         .mockResolvedValueOnce(20)
         .mockResolvedValueOnce(3);
       (prisma.patientProfile as any).count = jest.fn().mockResolvedValue(75);
-      prisma.consultation.count.mockResolvedValue(200);
+      prisma.consultation.count
+        .mockResolvedValueOnce(200)  // totalConsultations
+        .mockResolvedValueOnce(8);   // activeConsultations
+      (prisma.appointment as any).count = jest.fn().mockResolvedValue(40);
+      (prisma.payment as any).aggregate = jest.fn().mockResolvedValue({ _sum: { amount: 500 } });
 
       const res = await app.inject({
         method: 'GET',
@@ -750,6 +757,11 @@ describe('Admin (e2e)', () => {
       expect(body.contents).toHaveProperty('totalPatients');
       expect(body.contents).toHaveProperty('totalConsultations');
       expect(body.contents).toHaveProperty('pendingVerifications');
+      expect(body.contents).toHaveProperty('activeConsultations');
+      expect(body.contents).toHaveProperty('bannedUsers');
+      expect(body.contents).toHaveProperty('totalAppointments');
+      expect(body.contents).toHaveProperty('newUsersThisMonth');
+      expect(body.contents).toHaveProperty('totalRevenue');
     });
 
     it('should return 401 when not authenticated', async () => {
@@ -769,6 +781,134 @@ describe('Admin (e2e)', () => {
       const res = await app.inject({
         method: 'GET',
         url: '/admin/stats',
+      });
+
+      expect(res.statusCode).toBe(HttpStatus.FORBIDDEN);
+    });
+  });
+
+  // ─── PATCH /admin/users/:id/ban ─────────────────────────────────
+
+  describe('PATCH /admin/users/:id/ban', () => {
+    it('should ban a user (admin)', async () => {
+      sessionUser = adminUser;
+
+      prisma.user.findUnique.mockResolvedValue({ ...targetUser, isBanned: false });
+      prisma.user.update.mockResolvedValue({
+        ...safeUserSelect,
+        isBanned: true,
+        banReason: 'Spamming',
+        bannedAt: new Date(),
+        bannedBy: adminUser.id,
+      });
+
+      const res = await app.inject({
+        method: 'PATCH',
+        url: `/admin/users/${targetUserId}/ban`,
+        payload: { reason: 'Spamming' },
+      });
+
+      expect(res.statusCode).toBe(HttpStatus.OK);
+      const body = JSON.parse(res.body);
+      expect(body.contents.isBanned).toBe(true);
+      expect(body.contents.banReason).toBe('Spamming');
+    });
+
+    it('should return 400 when reason is missing', async () => {
+      sessionUser = adminUser;
+
+      const res = await app.inject({
+        method: 'PATCH',
+        url: `/admin/users/${targetUserId}/ban`,
+        payload: {},
+      });
+
+      expect(res.statusCode).toBe(HttpStatus.BAD_REQUEST);
+    });
+
+    it('should return 400 when user is already banned', async () => {
+      sessionUser = adminUser;
+
+      prisma.user.findUnique.mockResolvedValue({ ...targetUser, isBanned: true });
+
+      const res = await app.inject({
+        method: 'PATCH',
+        url: `/admin/users/${targetUserId}/ban`,
+        payload: { reason: 'test' },
+      });
+
+      expect(res.statusCode).toBe(HttpStatus.BAD_REQUEST);
+    });
+
+    it('should return 401 when not authenticated', async () => {
+      sessionUser = null;
+
+      const res = await app.inject({
+        method: 'PATCH',
+        url: `/admin/users/${targetUserId}/ban`,
+        payload: { reason: 'test' },
+      });
+
+      expect(res.statusCode).toBe(HttpStatus.UNAUTHORIZED);
+    });
+
+    it('should return 403 when patient tries to ban', async () => {
+      sessionUser = patientUser;
+
+      const res = await app.inject({
+        method: 'PATCH',
+        url: `/admin/users/${targetUserId}/ban`,
+        payload: { reason: 'test' },
+      });
+
+      expect(res.statusCode).toBe(HttpStatus.FORBIDDEN);
+    });
+  });
+
+  // ─── PATCH /admin/users/:id/unban ───────────────────────────────
+
+  describe('PATCH /admin/users/:id/unban', () => {
+    it('should unban a user (admin)', async () => {
+      sessionUser = adminUser;
+
+      prisma.user.findUnique.mockResolvedValue({ ...targetUser, isBanned: true });
+      prisma.user.update.mockResolvedValue({
+        ...safeUserSelect,
+        isBanned: false,
+        banReason: null,
+        bannedAt: null,
+        bannedBy: null,
+      });
+
+      const res = await app.inject({
+        method: 'PATCH',
+        url: `/admin/users/${targetUserId}/unban`,
+      });
+
+      expect(res.statusCode).toBe(HttpStatus.OK);
+      const body = JSON.parse(res.body);
+      expect(body.contents.isBanned).toBe(false);
+    });
+
+    it('should return 400 when user is not banned', async () => {
+      sessionUser = adminUser;
+
+      prisma.user.findUnique.mockResolvedValue({ ...targetUser, isBanned: false });
+
+      const res = await app.inject({
+        method: 'PATCH',
+        url: `/admin/users/${targetUserId}/unban`,
+      });
+
+      expect(res.statusCode).toBe(HttpStatus.BAD_REQUEST);
+    });
+
+    it('should return 403 when patient tries to unban', async () => {
+      sessionUser = patientUser;
+
+      const res = await app.inject({
+        method: 'PATCH',
+        url: `/admin/users/${targetUserId}/unban`,
       });
 
       expect(res.statusCode).toBe(HttpStatus.FORBIDDEN);

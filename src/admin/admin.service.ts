@@ -13,7 +13,9 @@ import { User } from '@prisma/client';
 import { AdminUserFilterDto } from './dto/admin-user-filter.dto';
 import { AdminUpdateUserDto } from './dto/admin-update-user.dto';
 import { VerifyDoctorDto } from './dto/verify-doctor.dto';
+import { BanUserDto } from './dto/ban-user.dto';
 import { NotificationService } from '../notification/notification.service';
+import { ConsultationStatusEnum, AppointmentStatusEnum, PaymentStatusEnum } from '@prisma/client';
 
 @Injectable()
 export class AdminService {
@@ -43,6 +45,9 @@ export class AdminService {
     if (filters.isAdmin !== undefined) {
       where.isAdmin = filters.isAdmin === 'true';
     }
+    if (filters.isBanned !== undefined) {
+      where.isBanned = filters.isBanned === 'true';
+    }
     if (filters.search) {
       where.OR = [
         { firstname: { contains: filters.search, mode: 'insensitive' } },
@@ -67,6 +72,10 @@ export class AdminService {
           isAdmin: true,
           isSuperAdmin: true,
           isPrivate: true,
+          isBanned: true,
+          banReason: true,
+          bannedAt: true,
+          bannedBy: true,
           createdAt: true,
         },
       }),
@@ -117,6 +126,63 @@ export class AdminService {
     return this.prisma.user.update({
       where: { id: userId },
       data: { isActive: false },
+      select: this.safeAdminUserSelect(),
+    });
+  }
+
+  /* ── A-02  Ban / Unban ──────────────────────────────────── */
+
+  async banUser(userId: string, dto: BanUserDto, admin: User) {
+    const target = await this.prisma.user.findUnique({
+      where: { id: userId },
+    });
+    if (!target) {
+      throw new NotFoundException('User not found.');
+    }
+    if (target.isBanned) {
+      throw new BadRequestException('User is already banned.');
+    }
+    if (target.isSuperAdmin) {
+      throw new ForbiddenException('Cannot ban a superadmin.');
+    }
+    if (!admin.isSuperAdmin && (target.isAdmin || target.isSuperAdmin)) {
+      throw new ForbiddenException('Only superadmins can ban admin accounts.');
+    }
+    if (userId === admin.id) {
+      throw new ForbiddenException('You cannot ban yourself.');
+    }
+
+    return this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        isBanned: true,
+        banReason: dto.reason,
+        bannedAt: new Date(),
+        bannedBy: admin.id,
+      },
+      select: this.safeAdminUserSelect(),
+    });
+  }
+
+  async unbanUser(userId: string, admin: User) {
+    const target = await this.prisma.user.findUnique({
+      where: { id: userId },
+    });
+    if (!target) {
+      throw new NotFoundException('User not found.');
+    }
+    if (!target.isBanned) {
+      throw new BadRequestException('User is not banned.');
+    }
+
+    return this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        isBanned: false,
+        banReason: null,
+        bannedAt: null,
+        bannedBy: null,
+      },
       select: this.safeAdminUserSelect(),
     });
   }
@@ -235,18 +301,38 @@ export class AdminService {
   /* ── B-58  Platform stats ──────────────────────────────── */
 
   async getPlatformStats() {
+    const now = new Date();
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+
     const [
       totalUsers,
       totalDoctors,
       totalPatients,
       totalConsultations,
       pendingVerifications,
+      activeConsultations,
+      bannedUsers,
+      totalAppointments,
+      newUsersThisMonth,
+      revenueResult,
     ] = await Promise.all([
       this.prisma.user.count(),
       this.prisma.doctorProfile.count({ where: { verified: true } }),
       this.prisma.patientProfile.count(),
       this.prisma.consultation.count(),
       this.prisma.doctorProfile.count({ where: { verified: false } }),
+      this.prisma.consultation.count({
+        where: { status: ConsultationStatusEnum.IN_PROGRESS },
+      }),
+      this.prisma.user.count({ where: { isBanned: true } }),
+      this.prisma.appointment.count(),
+      this.prisma.user.count({
+        where: { createdAt: { gte: monthStart } },
+      }),
+      this.prisma.payment.aggregate({
+        where: { status: PaymentStatusEnum.COMPLETED },
+        _sum: { amount: true },
+      }),
     ]);
 
     return {
@@ -255,6 +341,11 @@ export class AdminService {
       totalPatients,
       totalConsultations,
       pendingVerifications,
+      activeConsultations,
+      bannedUsers,
+      totalAppointments,
+      newUsersThisMonth,
+      totalRevenue: revenueResult._sum.amount ?? 0,
     };
   }
 
@@ -275,6 +366,10 @@ export class AdminService {
       isAdmin: true,
       isSuperAdmin: true,
       isPrivate: true,
+      isBanned: true,
+      banReason: true,
+      bannedAt: true,
+      bannedBy: true,
       avatar: true,
       createdAt: true,
       updatedAt: true,

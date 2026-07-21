@@ -153,6 +153,10 @@ model User {
   isSuperAdmin        Boolean           @default(false) @map("is_super_admin")
   isPrivate           Boolean           @default(false) @map("is_private")
   isActive            Boolean           @default(true) @map("is_active")
+  isBanned            Boolean           @default(false) @map("is_banned")
+  banReason           String?           @map("ban_reason")
+  bannedAt            DateTime?         @map("banned_at")
+  bannedBy            String?           @map("banned_by")
   avatar              String?           @map("avatar")
   password            String
   botpressUserKey     String?           @map("botpress_user_key")
@@ -176,6 +180,7 @@ model User {
 
   @@index([role])
   @@index([isActive])
+  @@index([isBanned])
   @@map("user")
 }
 

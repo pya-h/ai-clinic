@@ -28,6 +28,11 @@ export class AdminUserFilterDto {
   @IsBooleanString()
   isAdmin?: string;
 
+  @ApiPropertyOptional({ description: 'Filter by banned status.' })
+  @IsOptional()
+  @IsBooleanString()
+  isBanned?: string;
+
   @ApiPropertyOptional({ description: 'Search by name or email (case-insensitive).' })
   @IsOptional()
   @IsString()

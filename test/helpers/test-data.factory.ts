@@ -117,6 +117,10 @@ export interface TestUser {
   isSuperAdmin: boolean;
   isPrivate: boolean;
   isActive: boolean;
+  isBanned: boolean;
+  banReason: string | null;
+  bannedAt: Date | null;
+  bannedBy: string | null;
   avatar: string | null;
   password: string;
   botpressUserKey: string | null;
@@ -136,6 +140,10 @@ export function buildUser(overrides: Partial<TestUser> = {}): TestUser {
     isSuperAdmin: false,
     isPrivate: false,
     isActive: true,
+    isBanned: false,
+    banReason: null,
+    bannedAt: null,
+    bannedBy: null,
     avatar: null,
     password: 'hashed_' + slug(),
     botpressUserKey: null,

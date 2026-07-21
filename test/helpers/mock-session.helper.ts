@@ -24,6 +24,10 @@ export interface MockUser {
   isSuperAdmin: boolean;
   isPrivate: boolean;
   isActive: boolean;
+  isBanned: boolean;
+  banReason: string | null;
+  bannedAt: Date | null;
+  bannedBy: string | null;
   avatar: string | null;
   createdAt: Date;
   updatedAt: Date;
@@ -41,6 +45,10 @@ export function createMockUser(overrides: Partial<MockUser> = {}): MockUser {
     isSuperAdmin: false,
     isPrivate: false,
     isActive: true,
+    isBanned: false,
+    banReason: null,
+    bannedAt: null,
+    bannedBy: null,
     avatar: null,
     createdAt: now,
     updatedAt: now,

@@ -20,6 +20,7 @@ import { AdminService } from './admin.service';
 import { AdminUserFilterDto } from './dto/admin-user-filter.dto';
 import { AdminUpdateUserDto } from './dto/admin-update-user.dto';
 import { VerifyDoctorDto } from './dto/verify-doctor.dto';
+import { BanUserDto } from './dto/ban-user.dto';
 
 @ApiTags('Admin')
 @Controller('admin')
@@ -52,6 +53,27 @@ export class AdminController {
     @CurrentUser() currentUser: User,
   ) {
     return this.adminService.deactivateUser(id, currentUser);
+  }
+
+  /* ── A-02  Ban / Unban ──────────────────────────────────── */
+
+  @ApiOperation({ description: 'Ban a user account.' })
+  @Patch('users/:id/ban')
+  async banUser(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: BanUserDto,
+    @CurrentUser() currentUser: User,
+  ) {
+    return this.adminService.banUser(id, dto, currentUser);
+  }
+
+  @ApiOperation({ description: 'Unban a user account.' })
+  @Patch('users/:id/unban')
+  async unbanUser(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() currentUser: User,
+  ) {
+    return this.adminService.unbanUser(id, currentUser);
   }
 
   /* ── B-56  Doctor verification ─────────────────────────── */
