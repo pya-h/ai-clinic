@@ -5,7 +5,14 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { Prisma, User, UserRolesEnum, DocumentTypeEnum } from '@prisma/client';
+import {
+  AppointmentStatusEnum,
+  ConsultationStatusEnum,
+  Prisma,
+  User,
+  UserRolesEnum,
+  DocumentTypeEnum,
+} from '@prisma/client';
 import { toCapitalCase } from '../common/tools';
 import { UpdateDoctorProfileDto } from './dto/update-doctor-profile.dto';
 import { DoctorFilterDto } from './dto/doctor-filter.dto';
@@ -186,6 +193,70 @@ export class DoctorService {
         mimeType: uploaded.mimeType,
       },
     });
+  }
+
+  async getMyProfile(user: User) {
+    const profile = await this.prisma.doctorProfile.findUnique({
+      where: { userId: user.id },
+      include: {
+        user: { select: { id: true, firstname: true, lastname: true, avatar: true, email: true } },
+      },
+    });
+    if (!profile) {
+      throw new NotFoundException('Doctor profile not found.');
+    }
+    return profile;
+  }
+
+  async getStats(user: User) {
+    const profile = await this.prisma.doctorProfile.findUnique({
+      where: { userId: user.id },
+    });
+    if (!profile) {
+      throw new NotFoundException('Doctor profile not found.');
+    }
+
+    const [
+      upcomingAppointments,
+      activeConsultations,
+      pendingMatchRequests,
+      totalPatientsSeen,
+      completedConsultations,
+      totalAppointments,
+    ] = await Promise.all([
+      this.prisma.appointment.count({
+        where: {
+          doctorId: profile.id,
+          dateTime: { gte: new Date() },
+          status: { in: [AppointmentStatusEnum.PENDING, AppointmentStatusEnum.CONFIRMED] },
+        },
+      }),
+      this.prisma.consultation.count({
+        where: { doctorId: profile.id, status: ConsultationStatusEnum.IN_PROGRESS },
+      }),
+      this.prisma.matchRequest.count({
+        where: { matchedDoctorId: profile.id, status: 'MATCHED' },
+      }),
+      this.prisma.consultation.groupBy({
+        by: ['patientId'],
+        where: { doctorId: profile.id, status: ConsultationStatusEnum.COMPLETED },
+      }).then((groups) => groups.length),
+      this.prisma.consultation.count({
+        where: { doctorId: profile.id, status: ConsultationStatusEnum.COMPLETED },
+      }),
+      this.prisma.appointment.count({
+        where: { doctorId: profile.id },
+      }),
+    ]);
+
+    return {
+      upcomingAppointments,
+      activeConsultations,
+      pendingMatchRequests,
+      totalPatientsSeen,
+      completedConsultations,
+      totalAppointments,
+    };
   }
 
   /**

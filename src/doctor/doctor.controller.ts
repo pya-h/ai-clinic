@@ -103,6 +103,26 @@ export class DoctorController {
   }
 
   @ApiOperation({
+    description: 'Get the current doctor\'s own profile (including unverified).',
+  })
+  @UseGuards(CookieAuthGuard, RolesGuard)
+  @Roles(UserRolesEnum.DOCTOR)
+  @Get('me')
+  async getMyProfile(@CurrentUser() user: User) {
+    return this.doctorService.getMyProfile(user);
+  }
+
+  @ApiOperation({
+    description: 'Get dashboard stats for the authenticated doctor.',
+  })
+  @UseGuards(CookieAuthGuard, RolesGuard)
+  @Roles(UserRolesEnum.DOCTOR)
+  @Get('stats')
+  async getStats(@CurrentUser() user: User) {
+    return this.doctorService.getStats(user);
+  }
+
+  @ApiOperation({
     description: 'Get a single verified doctor profile by ID. Public endpoint.',
   })
   @Get(':id')

@@ -341,6 +341,9 @@ model DoctorProfile {
   location       String?
   clinicLocation String? @map("clinic_location")
   bio            String?
+  phoneNumber    String? @map("phone_number")
+  languages      String[] @default([])
+  licenseNumber  String? @map("license_number")
 
   visitMethods VisitMethodsEnum[] @map("visit_methods")
   visitTypes   VisitTypesEnum[]   @map("visit_types")

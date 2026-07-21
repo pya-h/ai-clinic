@@ -111,12 +111,39 @@ describe('NurseService', () => {
       ).rejects.toThrow(NotFoundException);
     });
 
-    it('should throw BadRequestException when user is not a nurse', async () => {
+    it('should auto-upgrade PATIENT user to NURSE and create assignment', async () => {
+      const patientUser = createMockUser();
       prisma.doctorProfile.findUnique.mockResolvedValue(doctorProfile);
-      prisma.user.findUnique.mockResolvedValue(createMockUser());
+      prisma.user.findUnique.mockResolvedValue(patientUser);
+      prisma.user.update.mockResolvedValue({ ...patientUser, role: UserRolesEnum.NURSE });
+      const mockAssignment = { id: 1, doctorId: doctorProfile.id, nurseId: patientUser.id };
+      prisma.doctorNurseAssignment.create.mockResolvedValue(mockAssignment);
+
+      const result = await service.assignNurse(doctorUser as any, { nurseId: patientUser.id });
+      expect(prisma.user.update).toHaveBeenCalledWith({
+        where: { id: patientUser.id },
+        data: { role: UserRolesEnum.NURSE },
+      });
+      expect(result).toEqual(mockAssignment);
+    });
+
+    it('should throw BadRequestException when user is a doctor', async () => {
+      const doctorTarget = createMockDoctorUser();
+      prisma.doctorProfile.findUnique.mockResolvedValue(doctorProfile);
+      prisma.user.findUnique.mockResolvedValue(doctorTarget);
 
       await expect(
-        service.assignNurse(doctorUser as any, { nurseId: 'patient-id' }),
+        service.assignNurse(doctorUser as any, { nurseId: doctorTarget.id }),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('should throw BadRequestException when user is admin', async () => {
+      const adminUser = createMockAdminUser();
+      prisma.doctorProfile.findUnique.mockResolvedValue(doctorProfile);
+      prisma.user.findUnique.mockResolvedValue(adminUser);
+
+      await expect(
+        service.assignNurse(doctorUser as any, { nurseId: adminUser.id }),
       ).rejects.toThrow(BadRequestException);
     });
 

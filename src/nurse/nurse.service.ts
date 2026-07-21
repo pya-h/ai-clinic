@@ -30,14 +30,28 @@ export class NurseService {
   ): Promise<DoctorNurseAssignment> {
     const doctorProfile = await this.getDoctorProfile(doctorUser.id);
 
-    const nurse = await this.prisma.user.findUnique({
+    const targetUser = await this.prisma.user.findUnique({
       where: { id: dto.nurseId },
     });
-    if (!nurse) {
-      throw new NotFoundException('Nurse user not found.');
+    if (!targetUser) {
+      throw new NotFoundException('User not found.');
     }
-    if (nurse.role !== UserRolesEnum.NURSE) {
-      throw new BadRequestException('User is not a nurse.');
+
+    if (targetUser.role === UserRolesEnum.DOCTOR) {
+      throw new BadRequestException('Cannot assign a doctor as a nurse.');
+    }
+    if (targetUser.isAdmin || targetUser.isSuperAdmin) {
+      throw new BadRequestException('Cannot assign an admin as a nurse.');
+    }
+
+    if (targetUser.role !== UserRolesEnum.NURSE) {
+      await this.prisma.user.update({
+        where: { id: targetUser.id },
+        data: { role: UserRolesEnum.NURSE },
+      });
+      this.logger.log(
+        `Upgraded user ${targetUser.id} role from ${targetUser.role} to NURSE`,
+      );
     }
 
     try {

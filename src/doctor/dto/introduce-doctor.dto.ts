@@ -88,4 +88,25 @@ export class IntroduceDoctorDto {
   @IsArray()
   @IsEnumDetailed(VisitTypesEnum, 'Visit Type', true)
   visitTypes?: VisitTypesEnum[];
+
+  @ApiPropertyOptional({ description: 'Phone number for the doctor.' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(30)
+  phoneNumber?: string;
+
+  @ApiPropertyOptional({
+    description: 'Languages spoken by the doctor.',
+    type: [String],
+  })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  languages?: string[];
+
+  @ApiPropertyOptional({ description: 'Medical license number.' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  licenseNumber?: string;
 }
