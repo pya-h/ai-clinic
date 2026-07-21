@@ -913,5 +913,22 @@ describe('Admin (e2e)', () => {
 
       expect(res.statusCode).toBe(HttpStatus.FORBIDDEN);
     });
+
+    it('should return 403 when non-superadmin tries to unban an admin', async () => {
+      sessionUser = adminUser;
+
+      prisma.user.findUnique.mockResolvedValue({
+        ...targetUser,
+        isAdmin: true,
+        isBanned: true,
+      });
+
+      const res = await app.inject({
+        method: 'PATCH',
+        url: `/admin/users/${targetUserId}/unban`,
+      });
+
+      expect(res.statusCode).toBe(HttpStatus.FORBIDDEN);
+    });
   });
 });

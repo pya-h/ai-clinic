@@ -618,6 +618,24 @@ describe('AdminService', () => {
         service.unbanUser('nonexistent', mockAdminUser as any),
       ).rejects.toThrow(NotFoundException);
     });
+
+    it('should throw ForbiddenException when non-superadmin tries to unban an admin', async () => {
+      const bannedAdmin = { ...buildAdminUser(), isBanned: true };
+      prisma.user.findUnique.mockResolvedValue(bannedAdmin);
+
+      await expect(
+        service.unbanUser(bannedAdmin.id, mockAdminUser as any),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('should allow superadmin to unban an admin', async () => {
+      const bannedAdmin = { ...buildAdminUser(), isBanned: true };
+      prisma.user.findUnique.mockResolvedValue(bannedAdmin);
+      prisma.user.update.mockResolvedValue({ ...bannedAdmin, isBanned: false, banReason: null });
+
+      const result = await service.unbanUser(bannedAdmin.id, mockSuperAdmin as any);
+      expect(result.isBanned).toBe(false);
+    });
   });
 
   /* ── removeReview ──────────────────────────────────────── */

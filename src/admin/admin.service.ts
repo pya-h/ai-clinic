@@ -174,6 +174,11 @@ export class AdminService {
     if (!target.isBanned) {
       throw new BadRequestException('User is not banned.');
     }
+    if (!admin.isSuperAdmin && (target.isAdmin || target.isSuperAdmin)) {
+      throw new ForbiddenException(
+        'Only superadmins can unban admin accounts.',
+      );
+    }
 
     return this.prisma.user.update({
       where: { id: userId },
