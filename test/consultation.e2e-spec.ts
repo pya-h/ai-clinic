@@ -417,12 +417,13 @@ describe('Consultation (e2e)', () => {
       prisma.consultation.findUnique.mockResolvedValueOnce(consultation);
       // assertDoctorOwnership — doctorProfile lookup
       prisma.doctorProfile.findUnique.mockResolvedValue(doctorProfile);
-      // update
+      // atomic CAS update
       const updated = buildConsultation({
         status: ConsultationStatusEnum.DOCTOR_DECIDED,
         doctorDecision: ConsultationModeEnum.ONLINE,
       });
-      prisma.consultation.update.mockResolvedValue(updated);
+      prisma.consultation.updateMany.mockResolvedValue({ count: 1 });
+      prisma.consultation.findUniqueOrThrow.mockResolvedValue(updated);
 
       const res = await app.inject({
         method: 'PATCH',
@@ -497,7 +498,8 @@ describe('Consultation (e2e)', () => {
         summary: 'Flu treatment',
         completedAt,
       });
-      prisma.consultation.update.mockResolvedValue(updated);
+      prisma.consultation.updateMany.mockResolvedValue({ count: 1 });
+      prisma.consultation.findUniqueOrThrow.mockResolvedValue(updated);
 
       const res = await app.inject({
         method: 'PATCH',
@@ -546,7 +548,8 @@ describe('Consultation (e2e)', () => {
       const updated = buildConsultation({
         status: ConsultationStatusEnum.CANCELLED,
       });
-      prisma.consultation.update.mockResolvedValue(updated);
+      prisma.consultation.updateMany.mockResolvedValue({ count: 1 });
+      prisma.consultation.findUniqueOrThrow.mockResolvedValue(updated);
 
       const res = await app.inject({
         method: 'PATCH',
@@ -586,7 +589,8 @@ describe('Consultation (e2e)', () => {
       const updated = buildConsultation({
         status: ConsultationStatusEnum.CANCELLED,
       });
-      prisma.consultation.update.mockResolvedValue(updated);
+      prisma.consultation.updateMany.mockResolvedValue({ count: 1 });
+      prisma.consultation.findUniqueOrThrow.mockResolvedValue(updated);
 
       const res = await app.inject({
         method: 'PATCH',

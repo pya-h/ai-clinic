@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Inject,
   Injectable,
@@ -183,13 +184,21 @@ export class ConsultationService {
       ConsultationStatusEnum.DOCTOR_DECIDED,
     );
 
-    const updated = await this.prisma.consultation.update({
-      where: { id: consultationId },
+    const result = await this.prisma.consultation.updateMany({
+      where: { id: consultationId, status: consultation.status },
       data: {
         status: ConsultationStatusEnum.DOCTOR_DECIDED,
         doctorDecision: dto.doctorDecision,
         visitMethod: dto.visitMethod ?? null,
       },
+    });
+    if (result.count === 0) {
+      throw new ConflictException(
+        'Consultation status changed concurrently. Please retry.',
+      );
+    }
+    const updated = await this.prisma.consultation.findUniqueOrThrow({
+      where: { id: consultationId },
       include: this.defaultInclude(),
     });
 
@@ -222,9 +231,17 @@ export class ConsultationService {
       ConsultationStatusEnum.PENDING_PAYMENT,
     );
 
-    const updated = await this.prisma.consultation.update({
-      where: { id: consultationId },
+    const result = await this.prisma.consultation.updateMany({
+      where: { id: consultationId, status: consultation.status },
       data: { status: ConsultationStatusEnum.PENDING_PAYMENT },
+    });
+    if (result.count === 0) {
+      throw new ConflictException(
+        'Consultation status changed concurrently. Please retry.',
+      );
+    }
+    const updated = await this.prisma.consultation.findUniqueOrThrow({
+      where: { id: consultationId },
       include: this.defaultInclude(),
     });
 
@@ -252,9 +269,17 @@ export class ConsultationService {
       ConsultationStatusEnum.PAYMENT_CONFIRMED,
     );
 
-    const updated = await this.prisma.consultation.update({
-      where: { id: consultationId },
+    const result = await this.prisma.consultation.updateMany({
+      where: { id: consultationId, status: consultation.status },
       data: { status: ConsultationStatusEnum.PAYMENT_CONFIRMED },
+    });
+    if (result.count === 0) {
+      throw new ConflictException(
+        'Consultation status changed concurrently. Please retry.',
+      );
+    }
+    const updated = await this.prisma.consultation.findUniqueOrThrow({
+      where: { id: consultationId },
       include: this.defaultInclude(),
     });
 
@@ -281,9 +306,17 @@ export class ConsultationService {
       ConsultationStatusEnum.IN_PROGRESS,
     );
 
-    const updated = await this.prisma.consultation.update({
-      where: { id: consultationId },
+    const result = await this.prisma.consultation.updateMany({
+      where: { id: consultationId, status: consultation.status },
       data: { status: ConsultationStatusEnum.IN_PROGRESS },
+    });
+    if (result.count === 0) {
+      throw new ConflictException(
+        'Consultation status changed concurrently. Please retry.',
+      );
+    }
+    const updated = await this.prisma.consultation.findUniqueOrThrow({
+      where: { id: consultationId },
       include: this.defaultInclude(),
     });
 
@@ -313,8 +346,8 @@ export class ConsultationService {
       ConsultationStatusEnum.COMPLETED,
     );
 
-    const updated = await this.prisma.consultation.update({
-      where: { id: consultationId },
+    const result = await this.prisma.consultation.updateMany({
+      where: { id: consultationId, status: consultation.status },
       data: {
         status: ConsultationStatusEnum.COMPLETED,
         notes: dto.notes ?? consultation.notes,
@@ -322,6 +355,14 @@ export class ConsultationService {
         followUpNeeded: dto.followUpNeeded ?? consultation.followUpNeeded,
         completedAt: new Date(),
       },
+    });
+    if (result.count === 0) {
+      throw new ConflictException(
+        'Consultation status changed concurrently. Please retry.',
+      );
+    }
+    const updated = await this.prisma.consultation.findUniqueOrThrow({
+      where: { id: consultationId },
       include: this.defaultInclude(),
     });
 
@@ -348,9 +389,17 @@ export class ConsultationService {
       ConsultationStatusEnum.CANCELLED,
     );
 
-    const updated = await this.prisma.consultation.update({
-      where: { id: consultationId },
+    const result = await this.prisma.consultation.updateMany({
+      where: { id: consultationId, status: consultation.status },
       data: { status: ConsultationStatusEnum.CANCELLED },
+    });
+    if (result.count === 0) {
+      throw new ConflictException(
+        'Consultation status changed concurrently. Please retry.',
+      );
+    }
+    const updated = await this.prisma.consultation.findUniqueOrThrow({
+      where: { id: consultationId },
       include: this.defaultInclude(),
     });
 

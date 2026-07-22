@@ -21,6 +21,7 @@ import {
 } from '@prisma/client';
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   NotFoundException,
 } from '@nestjs/common';
@@ -254,7 +255,8 @@ describe('ConsultationService', () => {
         status: ConsultationStatusEnum.DOCTOR_DECIDED,
         doctorDecision: ConsultationModeEnum.ONLINE,
       };
-      prisma.consultation.update.mockResolvedValue(updated);
+      prisma.consultation.updateMany.mockResolvedValue({ count: 1 });
+      prisma.consultation.findUniqueOrThrow.mockResolvedValue(updated);
 
       const result = await service.doctorDecide(
         consultationId,
@@ -263,8 +265,9 @@ describe('ConsultationService', () => {
       );
 
       expect(result).toEqual(updated);
-      expect(prisma.consultation.update).toHaveBeenCalledWith(
+      expect(prisma.consultation.updateMany).toHaveBeenCalledWith(
         expect.objectContaining({
+          where: { id: consultationId, status: ConsultationStatusEnum.PENDING_DOCTOR_REVIEW },
           data: expect.objectContaining({
             status: ConsultationStatusEnum.DOCTOR_DECIDED,
             doctorDecision: ConsultationModeEnum.ONLINE,
@@ -342,7 +345,8 @@ describe('ConsultationService', () => {
         id: 1,
         userId: doctor.id,
       });
-      prisma.consultation.update.mockResolvedValue({
+      prisma.consultation.updateMany.mockResolvedValue({ count: 1 });
+      prisma.consultation.findUniqueOrThrow.mockResolvedValue({
         id: consultationId,
         status: ConsultationStatusEnum.COMPLETED,
       });
@@ -354,8 +358,9 @@ describe('ConsultationService', () => {
       );
 
       expect(result.status).toBe(ConsultationStatusEnum.COMPLETED);
-      expect(prisma.consultation.update).toHaveBeenCalledWith(
+      expect(prisma.consultation.updateMany).toHaveBeenCalledWith(
         expect.objectContaining({
+          where: { id: consultationId, status: ConsultationStatusEnum.IN_PROGRESS },
           data: expect.objectContaining({
             status: ConsultationStatusEnum.COMPLETED,
             notes: completeDto.notes,
@@ -396,7 +401,8 @@ describe('ConsultationService', () => {
         doctorId: 1,
         status: ConsultationStatusEnum.PENDING_DOCTOR_REVIEW,
       });
-      prisma.consultation.update.mockResolvedValue({
+      prisma.consultation.updateMany.mockResolvedValue({ count: 1 });
+      prisma.consultation.findUniqueOrThrow.mockResolvedValue({
         id: consultationId,
         status: ConsultationStatusEnum.CANCELLED,
       });
@@ -416,7 +422,8 @@ describe('ConsultationService', () => {
         id: 1,
         userId: doctor.id,
       });
-      prisma.consultation.update.mockResolvedValue({
+      prisma.consultation.updateMany.mockResolvedValue({ count: 1 });
+      prisma.consultation.findUniqueOrThrow.mockResolvedValue({
         id: consultationId,
         status: ConsultationStatusEnum.CANCELLED,
       });
@@ -432,7 +439,8 @@ describe('ConsultationService', () => {
         doctorId: 99,
         status: ConsultationStatusEnum.DOCTOR_DECIDED,
       });
-      prisma.consultation.update.mockResolvedValue({
+      prisma.consultation.updateMany.mockResolvedValue({ count: 1 });
+      prisma.consultation.findUniqueOrThrow.mockResolvedValue({
         id: consultationId,
         status: ConsultationStatusEnum.CANCELLED,
       });
@@ -476,6 +484,89 @@ describe('ConsultationService', () => {
       await expect(
         service.cancel(consultationId, patient as any),
       ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('should throw ConflictException on concurrent status change', async () => {
+      prisma.consultation.findUnique.mockResolvedValue({
+        id: consultationId,
+        patientId: patient.id,
+        doctorId: 1,
+        status: ConsultationStatusEnum.PENDING_DOCTOR_REVIEW,
+      });
+      prisma.consultation.updateMany.mockResolvedValue({ count: 0 });
+
+      await expect(
+        service.cancel(consultationId, patient as any),
+      ).rejects.toThrow(ConflictException);
+    });
+  });
+
+  // ──────────────── Atomic CAS (TOCTOU prevention) ────────────────
+
+  describe('atomic CAS transitions', () => {
+    const consultationId = 'consult-uuid';
+
+    it('should throw ConflictException on concurrent doctorDecide', async () => {
+      prisma.consultation.findUnique.mockResolvedValue({
+        id: consultationId,
+        doctorId: 1,
+        status: ConsultationStatusEnum.PENDING_DOCTOR_REVIEW,
+      });
+      prisma.doctorProfile.findUnique.mockResolvedValue({
+        id: 1,
+        userId: doctor.id,
+      });
+      prisma.consultation.updateMany.mockResolvedValue({ count: 0 });
+
+      await expect(
+        service.doctorDecide(consultationId, doctor as any, {
+          doctorDecision: ConsultationModeEnum.ONLINE,
+          visitMethod: VisitMethodsEnum.VIDEO_CALL,
+        }),
+      ).rejects.toThrow(ConflictException);
+    });
+
+    it('should throw ConflictException on concurrent complete', async () => {
+      prisma.consultation.findUnique.mockResolvedValue({
+        id: consultationId,
+        doctorId: 1,
+        status: ConsultationStatusEnum.IN_PROGRESS,
+        notes: null,
+        summary: null,
+        followUpNeeded: false,
+      });
+      prisma.doctorProfile.findUnique.mockResolvedValue({
+        id: 1,
+        userId: doctor.id,
+      });
+      prisma.consultation.updateMany.mockResolvedValue({ count: 0 });
+
+      await expect(
+        service.complete(consultationId, doctor as any, {
+          notes: 'test',
+        }),
+      ).rejects.toThrow(ConflictException);
+    });
+
+    it('should use status from read as CAS condition', async () => {
+      prisma.consultation.findUnique.mockResolvedValue({
+        id: consultationId,
+        patientId: patient.id,
+        doctorId: 1,
+        status: ConsultationStatusEnum.DOCTOR_DECIDED,
+      });
+      prisma.consultation.updateMany.mockResolvedValue({ count: 1 });
+      prisma.consultation.findUniqueOrThrow.mockResolvedValue({
+        id: consultationId,
+        status: ConsultationStatusEnum.CANCELLED,
+      });
+
+      await service.cancel(consultationId, patient as any);
+
+      expect(prisma.consultation.updateMany).toHaveBeenCalledWith({
+        where: { id: consultationId, status: ConsultationStatusEnum.DOCTOR_DECIDED },
+        data: { status: ConsultationStatusEnum.CANCELLED },
+      });
     });
   });
 
