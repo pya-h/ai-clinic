@@ -157,6 +157,7 @@ model User {
   banReason           String?           @map("ban_reason")
   bannedAt            DateTime?         @map("banned_at")
   bannedBy            String?           @map("banned_by")
+  bannedByUser        User?             @relation("BannedByAdmin", fields: [bannedBy], references: [id], onDelete: SetNull)
   avatar              String?           @map("avatar")
   password            String
   botpressUserKey     String?           @map("botpress_user_key")
@@ -177,6 +178,9 @@ model User {
   notifications          Notification[]
   pushSubscriptions      PushSubscription[]
   matchRequests          MatchRequest[]     @relation("PatientMatchRequests")
+  bannedUsers            User[]             @relation("BannedByAdmin")
+  verifiedDoctors        DoctorProfile[]    @relation("VerifiedByAdmin")
+  reviewedDocuments      DoctorDocument[]   @relation("ReviewedByAdmin")
 
   @@index([role])
   @@index([isActive])
@@ -196,6 +200,7 @@ model Chat {
   consultation   Consultation? @relation(fields: [consultationId], references: [id], onDelete: SetNull)
   messages       Message[]
   parties        ChatParticipant[]
+  calls          Call[]
 
   @@map("chat")
 }
@@ -356,6 +361,7 @@ model DoctorProfile {
   verified         Boolean        @default(false)
   verifiedAt       DateTime?      @map("verified_at")
   verifiedBy       String?        @map("verified_by")
+  verifiedByUser   User?          @relation("VerifiedByAdmin", fields: [verifiedBy], references: [id], onDelete: SetNull)
   rejectionReason  String?        @map("rejection_reason")
   platformSummary  String?        @map("platform_summary")
 
@@ -369,6 +375,7 @@ model DoctorProfile {
   exceptions       AvailabilityException[]
 
   matchRequests    MatchRequest[]
+  matchRejections  MatchRejection[]
 
   @@map("doctor_profile")
 }
@@ -449,6 +456,7 @@ model Consultation {
   @@index([patientId, status])
   @@index([doctorId, status])
   @@index([status])
+  @@index([soapId])
   @@map("consultation")
 }
 
@@ -554,6 +562,7 @@ model DoctorDocument {
   status       DocumentStatusEnum @default(PENDING)
   reviewedAt   DateTime?          @map("reviewed_at")
   reviewedBy   String?            @map("reviewed_by")
+  reviewedByUser User?            @relation("ReviewedByAdmin", fields: [reviewedBy], references: [id], onDelete: SetNull)
   rejectReason String?            @map("reject_reason")
 
   @@map("doctor_document")
@@ -612,6 +621,7 @@ model MatchRejection {
   id             String       @id @default(uuid())
   matchRequestId String       @map("match_request_id")
   doctorId       Int          @map("doctor_id")
+  doctor         DoctorProfile @relation(fields: [doctorId], references: [id], onDelete: Cascade)
   rejectedAt     DateTime     @default(now()) @map("rejected_at")
 
   matchRequest   MatchRequest @relation(fields: [matchRequestId], references: [id], onDelete: Cascade)
@@ -628,6 +638,7 @@ model Call {
   createdAt DateTime @default(now()) @map("created_at")
 
   chatId         String?       @map("chat_id")
+  chat           Chat?         @relation(fields: [chatId], references: [id], onDelete: SetNull)
   consultationId String?       @map("consultation_id")
   consultation   Consultation? @relation(fields: [consultationId], references: [id], onDelete: SetNull)
 
@@ -643,6 +654,7 @@ model Call {
   duration     Int?
   recordingUrl String?        @map("recording_url")
 
+  @@index([chatId])
   @@index([consultationId])
   @@index([callerId])
   @@index([receiverId])
