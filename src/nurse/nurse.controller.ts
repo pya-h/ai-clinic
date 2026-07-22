@@ -56,6 +56,13 @@ export class NurseController {
     return this.nurseService.removeAssignment(user, id);
   }
 
+  @ApiOperation({ description: 'Get nurse dashboard with assignments and stats.' })
+  @Roles(UserRolesEnum.NURSE)
+  @Get('dashboard')
+  async getDashboard(@CurrentUser() user: User) {
+    return this.nurseService.getDashboard(user);
+  }
+
   @ApiOperation({ description: 'List nurse assignments for the current user (doctor sees their nurses, nurse sees their doctors).' })
   @Roles(UserRolesEnum.DOCTOR, UserRolesEnum.NURSE)
   @Get('assignments')

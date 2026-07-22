@@ -179,6 +179,46 @@ export class NurseService {
     throw new ForbiddenException('You do not have access to this assignment.');
   }
 
+  // ──────────────── Dashboard (N-02) ────────────────
+
+  async getDashboard(user: User) {
+    const assignments = await this.prisma.doctorNurseAssignment.findMany({
+      where: { nurseId: user.id, isActive: true },
+      include: this.assignmentInclude(),
+    });
+
+    const doctorIds = assignments.map((a) => a.doctorId);
+
+    const [upcomingAppointments, activeConsultations] = await Promise.all([
+      doctorIds.length > 0
+        ? this.prisma.appointment.count({
+            where: {
+              doctorId: { in: doctorIds },
+              status: 'CONFIRMED',
+              dateTime: { gte: new Date() },
+            },
+          })
+        : 0,
+      doctorIds.length > 0
+        ? this.prisma.consultation.count({
+            where: {
+              doctorId: { in: doctorIds },
+              status: 'IN_PROGRESS',
+            },
+          })
+        : 0,
+    ]);
+
+    return {
+      assignments,
+      stats: {
+        upcomingAppointments,
+        activeConsultations,
+        assignedDoctors: assignments.length,
+      },
+    };
+  }
+
   // ──────────────── Delegated Access (B-96) ────────────────
 
   /**

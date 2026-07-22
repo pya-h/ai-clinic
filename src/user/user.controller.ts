@@ -8,6 +8,7 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  Query,
   Req,
   UseGuards,
 } from '@nestjs/common';
@@ -16,9 +17,11 @@ import { ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { CookieAuthGuard } from '../auth/guards/cookie-auth.guard';
+import { RolesGuard } from '../auth/guards/roles.guard';
+import { Roles } from '../common/decorators/roles.decorator';
 import { CurrentUser } from './decorators/current-user.decorator';
 import { AdminGuard } from '../auth/guards/admin.guard';
-import { User } from '@prisma/client';
+import { User, UserRolesEnum } from '@prisma/client';
 import { FastifyRequest } from 'fastify';
 
 @ApiTags('User')
@@ -83,6 +86,19 @@ export class UserController {
       throw new BadRequestException('No file provided.');
     }
     return this.userService.uploadAvatar(user, file);
+  }
+
+  @ApiOperation({
+    description: 'Search users by name or email. Doctors can use this to find nurses to assign.',
+  })
+  @UseGuards(CookieAuthGuard, RolesGuard)
+  @Roles(UserRolesEnum.DOCTOR)
+  @Get('search')
+  async searchUsers(@Query('q') query: string) {
+    if (!query || query.trim().length < 2) {
+      return [];
+    }
+    return this.userService.searchUsers(query.trim(), [UserRolesEnum.DOCTOR]);
   }
 
   @ApiOperation({

@@ -181,6 +181,35 @@ export class UserService {
     });
   }
 
+  async searchUsers(query: string, excludeRoles: UserRolesEnum[] = []) {
+    const where: Prisma.UserWhereInput = {
+      isAdmin: false,
+      isSuperAdmin: false,
+      isBanned: false,
+      isActive: true,
+      ...(excludeRoles.length > 0 ? { role: { notIn: excludeRoles } } : {}),
+      OR: [
+        { firstname: { contains: query, mode: 'insensitive' } },
+        { lastname: { contains: query, mode: 'insensitive' } },
+        { email: { contains: query, mode: 'insensitive' } },
+      ],
+    };
+
+    return this.prisma.user.findMany({
+      where,
+      take: 20,
+      orderBy: { firstname: 'asc' },
+      select: {
+        id: true,
+        firstname: true,
+        lastname: true,
+        email: true,
+        role: true,
+        avatar: true,
+      },
+    });
+  }
+
   getPublicProfile(id: string) {
     return this.prisma.user.findUnique({
       where: { id },
