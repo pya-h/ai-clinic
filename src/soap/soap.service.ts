@@ -199,6 +199,42 @@ export class SoapService {
     return { data, total, skip, take };
   }
 
+  async getForNurse(
+    nurseUserId: string,
+    pagination: PaginationOptionsDto,
+  ): Promise<{ data: PatientSOAP[]; total: number; skip: number; take: number }> {
+    const doctorIds = await this.nurseService.getDoctorIdsForNurse(
+      nurseUserId,
+      NursePermissionEnum.VIEW_SOAPS,
+    );
+    if (doctorIds.length === 0) {
+      const skip = +(pagination.skip ?? 0);
+      const take = +(pagination.take ?? 20);
+      return { data: [], total: 0, skip, take };
+    }
+
+    const skip = +(pagination.skip ?? 0);
+    const take = +(pagination.take ?? 20);
+
+    const where = {
+      consultations: {
+        some: { doctorId: { in: doctorIds } },
+      },
+    };
+
+    const [data, total] = await Promise.all([
+      this.prisma.patientSOAP.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take,
+      }),
+      this.prisma.patientSOAP.count({ where }),
+    ]);
+
+    return { data, total, skip, take };
+  }
+
   /**
    * Get a single SOAP by ID, with ownership check.
    * Admins can access any SOAP. Nurses with VIEW_SOAPS permission

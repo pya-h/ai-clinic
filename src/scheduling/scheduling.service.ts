@@ -56,6 +56,25 @@ export class SchedulingService {
     return profile.id;
   }
 
+  async resolveDoctorIdForSchedule(user: User): Promise<number> {
+    if (user.role === UserRolesEnum.DOCTOR) {
+      return this.getDoctorProfileId(user.id);
+    }
+    if (user.role === UserRolesEnum.NURSE) {
+      const doctorIds = await this.nurseService.getDoctorIdsForNurse(
+        user.id,
+        NursePermissionEnum.MANAGE_SCHEDULE,
+      );
+      if (doctorIds.length === 0) {
+        throw new ForbiddenException(
+          'You do not have the Manage Schedule permission for any doctor.',
+        );
+      }
+      return doctorIds[0];
+    }
+    throw new ForbiddenException('Only doctors and nurses can manage schedules.');
+  }
+
   // ──────────────── Availability CRUD ────────────────
 
   async setAvailability(

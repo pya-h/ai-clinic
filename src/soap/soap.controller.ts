@@ -10,7 +10,7 @@ import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { SoapService } from './soap.service';
 import { CookieAuthGuard } from '../auth/guards/cookie-auth.guard';
 import { CurrentUser } from '../user/decorators/current-user.decorator';
-import { User } from '@prisma/client';
+import { User, UserRolesEnum } from '@prisma/client';
 import { PaginationOptionsDto } from '../common/dtos/pagination-options.dto';
 
 @ApiTags('SOAP')
@@ -21,13 +21,16 @@ export class SoapController {
 
   @ApiOperation({
     description:
-      'Get all SOAP notes for the current authenticated user (paginated).',
+      'Get SOAP notes — own for patients, delegated for nurses (paginated).',
   })
   @Get()
   async getMySoaps(
     @CurrentUser() user: User,
     @Query() pagination: PaginationOptionsDto,
   ) {
+    if (user.role === UserRolesEnum.NURSE) {
+      return this.soapService.getForNurse(user.id, pagination);
+    }
     return this.soapService.getByUser(user.id, pagination);
   }
 
