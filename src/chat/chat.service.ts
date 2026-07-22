@@ -472,6 +472,14 @@ export class ChatService {
       },
       include: {
         sender: { select: this.userSelect() },
+        repliedTo: {
+          select: {
+            id: true,
+            content: true,
+            senderId: true,
+            type: true,
+          },
+        },
       },
     });
   }
@@ -503,6 +511,14 @@ export class ChatService {
       },
       include: {
         sender: { select: this.userSelect() },
+        repliedTo: {
+          select: {
+            id: true,
+            content: true,
+            senderId: true,
+            type: true,
+          },
+        },
       },
     });
   }

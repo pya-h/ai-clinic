@@ -14,6 +14,7 @@ export class OptionalAuthGuard implements CanActivate {
     const user = session?.get('user');
 
     if (user?.isActive === false || user?.isBanned === true) {
+      session?.delete();
       (request as any).user = null;
       return true;
     }

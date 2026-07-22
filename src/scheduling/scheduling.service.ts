@@ -207,15 +207,17 @@ export class SchedulingService {
     doctorId: number,
     dto: CreateExceptionDto,
   ): Promise<AvailabilityException> {
-    if (
-      dto.isBlocked === false &&
-      dto.startTime &&
-      dto.endTime &&
-      dto.startTime >= dto.endTime
-    ) {
-      throw new BadRequestException(
-        'startTime must be before endTime for partial-day exceptions.',
-      );
+    if (dto.isBlocked === false) {
+      if (!dto.startTime || !dto.endTime) {
+        throw new BadRequestException(
+          'Both startTime and endTime are required for partial-day exceptions.',
+        );
+      }
+      if (dto.startTime >= dto.endTime) {
+        throw new BadRequestException(
+          'startTime must be before endTime for partial-day exceptions.',
+        );
+      }
     }
 
     try {
