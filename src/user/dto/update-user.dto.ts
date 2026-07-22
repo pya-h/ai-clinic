@@ -1,4 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { Transform } from 'class-transformer';
 import {
   IsBoolean,
   IsEmail,
@@ -13,6 +14,7 @@ export class UpdateUserDto {
   @ApiProperty({ description: 'User email' })
   @IsOptional()
   @IsEmail({}, { message: 'Email field must be a valid email address!' })
+  @Transform(({ value }) => value?.toLowerCase())
   @MaxLength(256, {
     message: 'Email address can not be longer than 256 characters!',
   })

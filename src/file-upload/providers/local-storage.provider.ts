@@ -20,6 +20,10 @@ export class LocalStorageProvider implements IStorageProvider {
     await fs.mkdir(dir, { recursive: true });
 
     const filePath = path.join(dir, fileName);
+    const resolvedPath = path.resolve(filePath);
+    if (!resolvedPath.startsWith(path.resolve(this.basePath))) {
+      throw new BadRequestException('Invalid file path.');
+    }
     await fs.writeFile(filePath, file);
 
     const key = `${folder}/${fileName}`;

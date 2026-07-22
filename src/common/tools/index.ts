@@ -5,7 +5,7 @@ export const generateRandomString = ({
   length?: number;
   prefix?: string;
 }) => {
-  const sourceChars = '0123456789abcdefghijklmnopqrstudvwxyz0123456789';
+  const sourceChars = '0123456789abcdefghijklmnopqrstuvwxyz';
   return (
     prefix +
     Array(length)

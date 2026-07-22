@@ -287,7 +287,19 @@ export class ChatService {
     };
 
     if (dto.repliedToId) {
-      messageData.repliedToId = BigInt(dto.repliedToId);
+      const repliedTo = await this.prisma.message.findUnique({
+        where: { id: BigInt(dto.repliedToId) },
+        select: { id: true, chatId: true },
+      });
+      if (!repliedTo) {
+        throw new NotFoundException('Message to reply to not found');
+      }
+      if (repliedTo.chatId !== chatId) {
+        throw new BadRequestException(
+          'Cannot reply to a message from a different chat',
+        );
+      }
+      messageData.repliedToId = repliedTo.id;
     }
 
     const message = await this.prisma.message.create({

@@ -1,5 +1,6 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { UserRolesEnum } from '@prisma/client';
+import { Transform } from 'class-transformer';
 import {
   IsBoolean,
   IsEmail,
@@ -25,6 +26,7 @@ export class AdminUpdateUserDto {
   @ApiPropertyOptional({ description: 'Email address.' })
   @IsOptional()
   @IsEmail()
+  @Transform(({ value }) => value?.toLowerCase())
   @MaxLength(255)
   email?: string;
 

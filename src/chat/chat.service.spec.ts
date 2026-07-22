@@ -434,6 +434,10 @@ describe('ChatService', () => {
 
     it('should handle repliedToId correctly', async () => {
       prisma.chat.findUnique.mockResolvedValue(mockChat);
+      prisma.message.findUnique.mockResolvedValue({
+        id: BigInt(5),
+        chatId,
+      });
       prisma.message.create.mockResolvedValue({
         ...mockMessage,
         repliedToId: BigInt(5),
