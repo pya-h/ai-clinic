@@ -132,6 +132,7 @@ export type MockPrismaService = {
   matchRequest: {
     findFirst: jest.Mock;
     findUnique: jest.Mock;
+    findUniqueOrThrow: jest.Mock;
     findMany: jest.Mock;
     create: jest.Mock;
     update: jest.Mock;
@@ -221,7 +222,7 @@ export function createMockPrismaService(): MockPrismaService {
     slotDuration: createModelMock() as any,
     availabilityException: createModelMock() as any,
     doctorDocument: createModelMock() as any,
-    matchRequest: createModelMock() as any,
+    matchRequest: createModelMock(['findUniqueOrThrow']) as any,
     notification: createModelMock(['count', 'updateMany']) as any,
     pushSubscription: createModelMock(['upsert', 'updateMany']) as any,
     payment: createModelMock(['count']) as any,

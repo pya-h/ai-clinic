@@ -642,13 +642,15 @@ describe('MatchingService', () => {
     });
 
     it('should accept match and create consultation', async () => {
-      prisma.matchRequest.findUnique.mockResolvedValue({
+      const matchData = {
         id: requestId,
         patientId: patient.id,
         soapId: null,
         matchedDoctorId: doctorProfileId,
         status: MatchStatusEnum.MATCHED,
-      });
+      };
+      prisma.matchRequest.findUnique.mockResolvedValue(matchData);
+      prisma.matchRequest.findUniqueOrThrow.mockResolvedValue(matchData);
       prisma.consultation.create.mockResolvedValue({
         id: consultationId,
         patientId: patient.id,
@@ -705,11 +707,13 @@ describe('MatchingService', () => {
     });
 
     it('should throw BadRequestException for invalid transition (not MATCHED)', async () => {
-      prisma.matchRequest.findUnique.mockResolvedValue({
+      const matchData = {
         id: requestId,
         matchedDoctorId: doctorProfileId,
         status: MatchStatusEnum.SEARCHING, // wrong status
-      });
+      };
+      prisma.matchRequest.findUnique.mockResolvedValue(matchData);
+      prisma.matchRequest.findUniqueOrThrow.mockResolvedValue(matchData);
 
       await expect(
         service.acceptMatch(requestId, doctor as any),
@@ -726,13 +730,15 @@ describe('MatchingService', () => {
 
     it('should pass soapId to consultation when present', async () => {
       const soapId = randomUUID();
-      prisma.matchRequest.findUnique.mockResolvedValue({
+      const matchData = {
         id: requestId,
         patientId: patient.id,
         soapId,
         matchedDoctorId: doctorProfileId,
         status: MatchStatusEnum.MATCHED,
-      });
+      };
+      prisma.matchRequest.findUnique.mockResolvedValue(matchData);
+      prisma.matchRequest.findUniqueOrThrow.mockResolvedValue(matchData);
       prisma.consultation.create.mockResolvedValue({
         id: consultationId,
         patientId: patient.id,
@@ -769,14 +775,16 @@ describe('MatchingService', () => {
     });
 
     it('should reject match, clear doctor, and re-score', async () => {
-      prisma.matchRequest.findUnique.mockResolvedValue({
+      const matchData = {
         id: requestId,
         patientId: patient.id,
         matchedDoctorId: doctorProfileId,
         specialty: DoctorSpecialtiesEnum.CARDIOLOGY,
         triageLevel: null,
         status: MatchStatusEnum.MATCHED,
-      });
+      };
+      prisma.matchRequest.findUnique.mockResolvedValue(matchData);
+      prisma.matchRequest.findUniqueOrThrow.mockResolvedValue(matchData);
       const updated = {
         id: requestId,
         status: MatchStatusEnum.SEARCHING,
@@ -825,11 +833,13 @@ describe('MatchingService', () => {
     });
 
     it('should throw BadRequestException for invalid transition', async () => {
-      prisma.matchRequest.findUnique.mockResolvedValue({
+      const matchData = {
         id: requestId,
         matchedDoctorId: doctorProfileId,
         status: MatchStatusEnum.CANCELLED,
-      });
+      };
+      prisma.matchRequest.findUnique.mockResolvedValue(matchData);
+      prisma.matchRequest.findUniqueOrThrow.mockResolvedValue(matchData);
 
       await expect(
         service.rejectMatch(requestId, doctor as any),
@@ -837,14 +847,16 @@ describe('MatchingService', () => {
     });
 
     it('should exclude the rejected doctor from re-scoring', async () => {
-      prisma.matchRequest.findUnique.mockResolvedValue({
+      const matchData = {
         id: requestId,
         patientId: patient.id,
         matchedDoctorId: doctorProfileId,
         specialty: null,
         triageLevel: null,
         status: MatchStatusEnum.MATCHED,
-      });
+      };
+      prisma.matchRequest.findUnique.mockResolvedValue(matchData);
+      prisma.matchRequest.findUniqueOrThrow.mockResolvedValue(matchData);
       prisma.matchRequest.update.mockResolvedValue({
         id: requestId,
         status: MatchStatusEnum.SEARCHING,

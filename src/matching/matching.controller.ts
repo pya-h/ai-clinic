@@ -42,6 +42,8 @@ export class MatchingController {
   }
 
   @ApiOperation({ description: 'Get the status of a match request.' })
+  @UseGuards(RolesGuard)
+  @Roles(UserRolesEnum.PATIENT, UserRolesEnum.DOCTOR)
   @Get('status/:id')
   async getStatus(
     @Param('id', ParseUUIDPipe) id: string,
@@ -67,6 +69,8 @@ export class MatchingController {
   }
 
   @ApiOperation({ description: 'Cancel an active match request (patient or admin).' })
+  @UseGuards(RolesGuard)
+  @Roles(UserRolesEnum.PATIENT)
   @Patch(':id/cancel')
   async cancel(
     @Param('id', ParseUUIDPipe) id: string,

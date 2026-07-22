@@ -302,9 +302,12 @@ export class MatchingService {
       );
     }
 
-    this.validateTransition(request.status, MatchStatusEnum.CONSULTATION_CREATED);
-
     const [consultation, updated] = await this.prisma.$transaction(async (tx) => {
+      const fresh = await tx.matchRequest.findUniqueOrThrow({
+        where: { id: matchRequestId },
+      });
+      this.validateTransition(fresh.status, MatchStatusEnum.CONSULTATION_CREATED);
+
       const cons = await tx.consultation.create({
         data: {
           patientId: request.patientId,
@@ -315,7 +318,7 @@ export class MatchingService {
       });
 
       const upd = await tx.matchRequest.update({
-        where: { id: matchRequestId, status: MatchStatusEnum.MATCHED },
+        where: { id: matchRequestId },
         data: {
           status: MatchStatusEnum.CONSULTATION_CREATED,
           consultationId: cons.id,
@@ -358,9 +361,12 @@ export class MatchingService {
       );
     }
 
-    this.validateTransition(request.status, MatchStatusEnum.SEARCHING);
-
     const updated = await this.prisma.$transaction(async (tx) => {
+      const fresh = await tx.matchRequest.findUniqueOrThrow({
+        where: { id: matchRequestId },
+      });
+      this.validateTransition(fresh.status, MatchStatusEnum.SEARCHING);
+
       await tx.matchRejection.create({
         data: {
           matchRequestId,

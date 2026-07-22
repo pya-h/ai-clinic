@@ -93,6 +93,8 @@ export class ConsultationController {
     description:
       'Advance consultation to pending payment (DOCTOR_DECIDED → PENDING_PAYMENT).',
   })
+  @UseGuards(RolesGuard)
+  @Roles(UserRolesEnum.PATIENT, UserRolesEnum.DOCTOR)
   @Patch(':id/advance-payment')
   async advanceToPayment(
     @Param('id', ParseUUIDPipe) id: string,
@@ -105,6 +107,8 @@ export class ConsultationController {
     description:
       'Confirm payment for a consultation (PENDING_PAYMENT → PAYMENT_CONFIRMED).',
   })
+  @UseGuards(RolesGuard)
+  @Roles(UserRolesEnum.PATIENT, UserRolesEnum.DOCTOR)
   @Patch(':id/confirm-payment')
   async confirmPayment(
     @Param('id', ParseUUIDPipe) id: string,
@@ -130,6 +134,8 @@ export class ConsultationController {
   @ApiOperation({
     description: 'Cancel a consultation (patient, doctor, or admin).',
   })
+  @UseGuards(RolesGuard)
+  @Roles(UserRolesEnum.PATIENT, UserRolesEnum.DOCTOR)
   @Patch(':id/cancel')
   async cancel(
     @Param('id', ParseUUIDPipe) id: string,
