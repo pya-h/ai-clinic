@@ -3,7 +3,8 @@
  *
  * Tests:
  *   createChat          — success, self-chat denied, participant not found, patient↔patient denied,
- *                          admin bypass, existing chat returned, deactivated participant
+ *                          admin bypass, existing chat returned, deactivated participant,
+ *                          nurse↔patient permission check
  *   getUserChats        — returns enriched list with unread counts
  *   getChatById         — success, not found, not participant
  *   getUserChatIds      — returns list of ids
@@ -23,6 +24,7 @@ import {
 } from '@nestjs/common';
 import { ChatService } from './chat.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { NurseService } from '../nurse/nurse.service';
 import { MessageTypeEnum, UserRolesEnum } from '@prisma/client';
 import {
   createMockPrismaService,
@@ -38,6 +40,7 @@ import { randomUUID } from 'crypto';
 describe('ChatService', () => {
   let service: ChatService;
   let prisma: MockPrismaService;
+  let nurseService: { getDoctorIdsForNurse: jest.Mock };
 
   // ── Random test data factories ─────────────────────────────
   const uuid = () => randomUUID();
@@ -115,11 +118,15 @@ describe('ChatService', () => {
 
   beforeEach(async () => {
     prisma = createMockPrismaService();
+    nurseService = {
+      getDoctorIdsForNurse: jest.fn().mockResolvedValue([]),
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         ChatService,
         { provide: PrismaService, useValue: prisma },
+        { provide: NurseService, useValue: nurseService },
       ],
     }).compile();
 
@@ -230,6 +237,80 @@ describe('ChatService', () => {
           }),
         }),
       );
+    });
+
+    it('should reject nurse→patient chat when nurse lacks CHAT_WITH_PATIENTS permission', async () => {
+      const nurseId = uuid();
+      const mockNurse = createMockUser({
+        id: nurseId,
+        email: randEmail(),
+        role: UserRolesEnum.NURSE,
+      });
+
+      prisma.user.findUnique
+        .mockResolvedValueOnce(mockNurse)
+        .mockResolvedValueOnce(mockPatient);
+      nurseService.getDoctorIdsForNurse.mockResolvedValue([]);
+
+      await expect(
+        service.createChat(nurseId, { participantId: patientId }),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('should allow nurse→patient chat when nurse has CHAT_WITH_PATIENTS permission', async () => {
+      const nurseId = uuid();
+      const mockNurse = createMockUser({
+        id: nurseId,
+        email: randEmail(),
+        role: UserRolesEnum.NURSE,
+      });
+
+      prisma.user.findUnique
+        .mockResolvedValueOnce(mockNurse)
+        .mockResolvedValueOnce(mockPatient);
+      nurseService.getDoctorIdsForNurse.mockResolvedValue([1]);
+      prisma.chat.findFirst.mockResolvedValue(null);
+      prisma.chat.create.mockResolvedValue(mockChat);
+
+      const result = await service.createChat(nurseId, { participantId: patientId });
+      expect(result).toBeDefined();
+    });
+
+    it('should reject patient→nurse chat when nurse lacks CHAT_WITH_PATIENTS permission', async () => {
+      const nurseId = uuid();
+      const mockNurse = createMockUser({
+        id: nurseId,
+        email: randEmail(),
+        role: UserRolesEnum.NURSE,
+      });
+
+      prisma.user.findUnique
+        .mockResolvedValueOnce(mockPatient)
+        .mockResolvedValueOnce(mockNurse);
+      nurseService.getDoctorIdsForNurse.mockResolvedValue([]);
+
+      await expect(
+        service.createChat(patientId, { participantId: nurseId }),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('should allow patient→nurse chat when nurse has CHAT_WITH_PATIENTS permission', async () => {
+      const nurseId = uuid();
+      const mockNurse = createMockUser({
+        id: nurseId,
+        email: randEmail(),
+        role: UserRolesEnum.NURSE,
+      });
+
+      prisma.user.findUnique
+        .mockResolvedValueOnce(mockPatient)
+        .mockResolvedValueOnce(mockNurse);
+      nurseService.getDoctorIdsForNurse.mockResolvedValue([1]);
+      prisma.chat.findFirst.mockResolvedValue(null);
+      prisma.chat.create.mockResolvedValue(mockChat);
+
+      const result = await service.createChat(patientId, { participantId: nurseId });
+      expect(result).toBeDefined();
     });
   });
 

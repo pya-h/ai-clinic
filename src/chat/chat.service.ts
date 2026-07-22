@@ -10,11 +10,13 @@ import {
   Chat,
   Message,
   MessageTypeEnum,
+  NursePermissionEnum,
   User,
   UserRolesEnum,
 } from '@prisma/client';
 import { CreateChatDto } from './dto/create-chat.dto';
 import { SendMessageDto } from './dto/send-message.dto';
+import { NurseService } from '../nurse/nurse.service';
 
 @Injectable()
 export class ChatService {
@@ -26,7 +28,10 @@ export class ChatService {
    */
   private onlineUsers: Map<string, Set<string>> = new Map();
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly nurseService: NurseService,
+  ) {}
 
   // ─────────────────────────── Chat Management ───────────────────────────
 
@@ -65,7 +70,7 @@ export class ChatService {
 
     // Enforce chat rules (admins bypass)
     if (!initiator.isAdmin && !initiator.isSuperAdmin) {
-      this.validateChatRules(initiator, participant);
+      await this.validateChatRules(initiator, participant);
     }
 
     // Check if chat already exists between these two users
@@ -517,10 +522,7 @@ export class ChatService {
 
   // ─────────────────────────── Private Helpers ───────────────────────────
 
-  /**
-   * Validate chat rules (non-admin path).
-   */
-  private validateChatRules(initiator: User, participant: User): void {
+  private async validateChatRules(initiator: User, participant: User): Promise<void> {
     // No patient ↔ patient chats
     if (
       initiator.role === UserRolesEnum.PATIENT &&
@@ -539,6 +541,38 @@ export class ChatService {
       ) {
         throw new BadRequestException(
           'Patients can only chat with doctors or nurses',
+        );
+      }
+    }
+
+    // Nurses need CHAT_WITH_PATIENTS permission to chat with patients
+    if (
+      initiator.role === UserRolesEnum.NURSE &&
+      participant.role === UserRolesEnum.PATIENT
+    ) {
+      const doctorIds = await this.nurseService.getDoctorIdsForNurse(
+        initiator.id,
+        NursePermissionEnum.CHAT_WITH_PATIENTS,
+      );
+      if (doctorIds.length === 0) {
+        throw new ForbiddenException(
+          'You do not have the Chat with Patients permission',
+        );
+      }
+    }
+
+    // Patient initiating chat with a nurse — verify the nurse has CHAT_WITH_PATIENTS
+    if (
+      initiator.role === UserRolesEnum.PATIENT &&
+      participant.role === UserRolesEnum.NURSE
+    ) {
+      const doctorIds = await this.nurseService.getDoctorIdsForNurse(
+        participant.id,
+        NursePermissionEnum.CHAT_WITH_PATIENTS,
+      );
+      if (doctorIds.length === 0) {
+        throw new ForbiddenException(
+          'This nurse is not available for patient chats',
         );
       }
     }
