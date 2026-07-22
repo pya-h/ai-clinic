@@ -8,6 +8,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import {
   AppointmentStatusEnum,
   ConsultationStatusEnum,
+  MatchStatusEnum,
   Prisma,
   User,
   UserRolesEnum,
@@ -235,7 +236,7 @@ export class DoctorService {
         where: { doctorId: profile.id, status: ConsultationStatusEnum.IN_PROGRESS },
       }),
       this.prisma.matchRequest.count({
-        where: { matchedDoctorId: profile.id, status: 'MATCHED' },
+        where: { matchedDoctorId: profile.id, status: MatchStatusEnum.MATCHED },
       }),
       this.prisma.consultation.groupBy({
         by: ['patientId'],

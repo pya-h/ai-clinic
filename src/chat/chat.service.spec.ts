@@ -269,6 +269,7 @@ describe('ChatService', () => {
         .mockResolvedValueOnce(mockNurse)
         .mockResolvedValueOnce(mockPatient);
       nurseService.getDoctorIdsForNurse.mockResolvedValue([1]);
+      prisma.consultation.findFirst.mockResolvedValue({ id: uuid() });
       prisma.chat.findFirst.mockResolvedValue(null);
       prisma.chat.create.mockResolvedValue(mockChat);
 
@@ -306,6 +307,7 @@ describe('ChatService', () => {
         .mockResolvedValueOnce(mockPatient)
         .mockResolvedValueOnce(mockNurse);
       nurseService.getDoctorIdsForNurse.mockResolvedValue([1]);
+      prisma.consultation.findFirst.mockResolvedValue({ id: uuid() });
       prisma.chat.findFirst.mockResolvedValue(null);
       prisma.chat.create.mockResolvedValue(mockChat);
 

@@ -559,6 +559,7 @@ export class ChatService {
           'You do not have the Chat with Patients permission',
         );
       }
+      await this.assertPatientBelongsToDoctor(participant.id, doctorIds);
     }
 
     // Patient initiating chat with a nurse — verify the nurse has CHAT_WITH_PATIENTS
@@ -573,6 +574,34 @@ export class ChatService {
       if (doctorIds.length === 0) {
         throw new ForbiddenException(
           'This nurse is not available for patient chats',
+        );
+      }
+      await this.assertPatientBelongsToDoctor(initiator.id, doctorIds);
+    }
+  }
+
+  private async assertPatientBelongsToDoctor(
+    patientUserId: string,
+    doctorIds: number[],
+  ): Promise<void> {
+    const relation = await this.prisma.consultation.findFirst({
+      where: {
+        patientId: patientUserId,
+        doctorId: { in: doctorIds },
+      },
+      select: { id: true },
+    });
+    if (!relation) {
+      const appointment = await this.prisma.appointment.findFirst({
+        where: {
+          patientId: patientUserId,
+          doctorId: { in: doctorIds },
+        },
+        select: { id: true },
+      });
+      if (!appointment) {
+        throw new ForbiddenException(
+          'This patient does not belong to your assigned doctor(s)',
         );
       }
     }

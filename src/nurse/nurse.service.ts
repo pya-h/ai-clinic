@@ -44,25 +44,27 @@ export class NurseService {
       throw new BadRequestException('Cannot assign an admin as a nurse.');
     }
 
-    if (targetUser.role !== UserRolesEnum.NURSE) {
-      await this.prisma.user.update({
-        where: { id: targetUser.id },
-        data: { role: UserRolesEnum.NURSE },
-      });
-      this.logger.log(
-        `Upgraded user ${targetUser.id} role from ${targetUser.role} to NURSE`,
-      );
-    }
-
     try {
-      const assignment = await this.prisma.doctorNurseAssignment.create({
-        data: {
-          doctorId: doctorProfile.id,
-          nurseId: dto.nurseId,
-          permissions: dto.permissions ?? [NursePermissionEnum.VIEW_PATIENTS],
-          isActive: true,
-        },
-        include: this.assignmentInclude(),
+      const assignment = await this.prisma.$transaction(async (tx) => {
+        if (targetUser.role !== UserRolesEnum.NURSE) {
+          await tx.user.update({
+            where: { id: targetUser.id },
+            data: { role: UserRolesEnum.NURSE },
+          });
+          this.logger.log(
+            `Upgraded user ${targetUser.id} role from ${targetUser.role} to NURSE`,
+          );
+        }
+
+        return tx.doctorNurseAssignment.create({
+          data: {
+            doctorId: doctorProfile.id,
+            nurseId: dto.nurseId,
+            permissions: dto.permissions ?? [NursePermissionEnum.VIEW_PATIENTS],
+            isActive: true,
+          },
+          include: this.assignmentInclude(),
+        });
       });
 
       this.logger.log(
