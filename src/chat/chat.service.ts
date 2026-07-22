@@ -400,40 +400,43 @@ export class ChatService {
 
     this.assertParticipant(chat, userId);
 
-    // Fetch messages not sent by this user, up to the given messageId
-    const messages = await this.prisma.message.findMany({
-      where: {
-        chatId,
-        id: { lte: messageId },
-        senderId: { not: userId },
-        deletedAt: null,
-      },
-      select: { id: true, readBy: true },
-    });
-
-    const now = new Date().toISOString();
-
-    const updates = messages
-      .filter((msg) => {
-        const readBy = (msg.readBy as any[]) || [];
-        return !readBy.some((r) => r.userId === userId);
-      })
-      .map((msg) => {
-        const readBy = [...((msg.readBy as any[]) || []), { userId, readAt: now }];
-        return this.prisma.message.update({
-          where: { id: msg.id },
-          data: { readBy },
-        });
+    await this.prisma.$transaction(async (tx) => {
+      const messages = await tx.message.findMany({
+        where: {
+          chatId,
+          id: { lte: messageId },
+          senderId: { not: userId },
+          deletedAt: null,
+        },
+        select: { id: true, readBy: true },
       });
 
-    if (updates.length > 0) {
-      await this.prisma.$transaction(updates);
-    }
+      const now = new Date().toISOString();
 
-    // Update participant's lastSeenAt
-    await this.prisma.chatParticipant.update({
-      where: { chatId_userId: { chatId, userId } },
-      data: { lastSeenAt: new Date() },
+      const updates = messages
+        .filter((msg) => {
+          const readBy = (msg.readBy as any[]) || [];
+          return !readBy.some((r) => r.userId === userId);
+        })
+        .map((msg) => {
+          const readBy = [
+            ...((msg.readBy as any[]) || []),
+            { userId, readAt: now },
+          ];
+          return tx.message.update({
+            where: { id: msg.id },
+            data: { readBy },
+          });
+        });
+
+      if (updates.length > 0) {
+        await Promise.all(updates);
+      }
+
+      await tx.chatParticipant.update({
+        where: { chatId_userId: { chatId, userId } },
+        data: { lastSeenAt: new Date() },
+      });
     });
   }
 

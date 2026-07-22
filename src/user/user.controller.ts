@@ -55,8 +55,14 @@ export class UserController {
   async updateUserData(
     @CurrentUser() user: User,
     @Body() updateUserData: UpdateUserDto,
+    @Req() req: FastifyRequest,
   ) {
-    return this.userService.updateUser(user, updateUserData);
+    const result = await this.userService.updateUser(user, updateUserData);
+    const freshUser = await this.userService.getById(user.id);
+    if (freshUser) {
+      (req as any).session.set('user', freshUser);
+    }
+    return result;
   }
 
   @ApiOperation({

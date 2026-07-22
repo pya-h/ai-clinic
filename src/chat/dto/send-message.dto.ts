@@ -29,6 +29,9 @@ export class SendMessageDto {
   @IsOptional()
   @IsString()
   @MaxLength(2048)
+  @Matches(/^(\/uploads\/|https:\/\/)/, {
+    message: 'fileUrl must be a relative path starting with /uploads/ or an absolute HTTPS URL.',
+  })
   fileUrl?: string;
 
   @ApiProperty({
