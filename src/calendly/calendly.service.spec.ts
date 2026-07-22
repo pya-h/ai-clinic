@@ -422,6 +422,38 @@ describe('CalendlyService', () => {
         expect(prisma.appointment.update).toHaveBeenCalled();
       });
 
+      it.each([
+        AppointmentStatusEnum.COMPLETED,
+        AppointmentStatusEnum.CANCELLED,
+        AppointmentStatusEnum.NO_SHOW,
+      ])('should skip if appointment is in terminal state %s', async (status) => {
+        prisma.appointment.findUnique.mockResolvedValue({
+          id: 5,
+          status,
+          calendlyEventUri: 'old-uri',
+        });
+
+        await service.handleWebhookEvent({
+          event: 'invitee.created',
+          created_at: '2026-06-01T00:00:00Z',
+          created_by: 'calendly',
+          payload: {
+            uri: 'inv-uri',
+            email: 'patient@test.com',
+            name: 'John Doe',
+            status: 'active',
+            reschedule_url: '',
+            cancel_url: '',
+            event: 'event-uri',
+            created_at: '2026-06-01T00:00:00Z',
+            updated_at: '2026-06-01T00:00:00Z',
+            tracking: { utm_content: 'apt_5' },
+          },
+        });
+
+        expect(prisma.appointment.update).not.toHaveBeenCalled();
+      });
+
       it('should do nothing if no matching appointment found', async () => {
         prisma.appointment.findUnique.mockResolvedValue(null);
         prisma.appointment.findFirst.mockResolvedValue(null);
@@ -479,10 +511,14 @@ describe('CalendlyService', () => {
         });
       });
 
-      it('should skip if appointment already cancelled', async () => {
+      it.each([
+        AppointmentStatusEnum.COMPLETED,
+        AppointmentStatusEnum.CANCELLED,
+        AppointmentStatusEnum.NO_SHOW,
+      ])('should skip if appointment is in terminal state %s', async (status) => {
         prisma.appointment.findFirst.mockResolvedValue({
           id: 10,
-          status: AppointmentStatusEnum.CANCELLED,
+          status,
           calendlyEventUri: 'event-uri',
         });
 

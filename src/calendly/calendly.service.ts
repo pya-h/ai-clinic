@@ -222,6 +222,18 @@ export class CalendlyService {
       return;
     }
 
+    const terminalStates: AppointmentStatusEnum[] = [
+      AppointmentStatusEnum.COMPLETED,
+      AppointmentStatusEnum.CANCELLED,
+      AppointmentStatusEnum.NO_SHOW,
+    ];
+    if (terminalStates.includes(appointment.status)) {
+      this.logger.warn(
+        `Ignoring Calendly invitee.created for appointment ${appointment.id} — already in terminal state ${appointment.status}`,
+      );
+      return;
+    }
+
     await this.prisma.appointment.update({
       where: { id: appointment.id },
       data: {
@@ -251,7 +263,12 @@ export class CalendlyService {
       return;
     }
 
-    if (appointment.status === AppointmentStatusEnum.CANCELLED) {
+    const terminalStates: AppointmentStatusEnum[] = [
+      AppointmentStatusEnum.COMPLETED,
+      AppointmentStatusEnum.CANCELLED,
+      AppointmentStatusEnum.NO_SHOW,
+    ];
+    if (terminalStates.includes(appointment.status)) {
       return;
     }
 
