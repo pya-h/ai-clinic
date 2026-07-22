@@ -207,6 +207,17 @@ export class SchedulingService {
     doctorId: number,
     dto: CreateExceptionDto,
   ): Promise<AvailabilityException> {
+    if (
+      dto.isBlocked === false &&
+      dto.startTime &&
+      dto.endTime &&
+      dto.startTime >= dto.endTime
+    ) {
+      throw new BadRequestException(
+        'startTime must be before endTime for partial-day exceptions.',
+      );
+    }
+
     try {
       const normalizedDate = new Date(dto.date);
       normalizedDate.setUTCHours(0, 0, 0, 0);
@@ -363,7 +374,7 @@ export class SchedulingService {
 
       if (exception?.isBlocked) {
         // Full day blocked
-        current.setDate(current.getDate() + 1);
+        current.setUTCDate(current.getUTCDate() + 1);
         continue;
       }
 
@@ -380,7 +391,7 @@ export class SchedulingService {
       }
 
       if (timeWindows.length === 0) {
-        current.setDate(current.getDate() + 1);
+        current.setUTCDate(current.getUTCDate() + 1);
         continue;
       }
 
@@ -415,7 +426,7 @@ export class SchedulingService {
         }
       }
 
-      current.setDate(current.getDate() + 1);
+      current.setUTCDate(current.getUTCDate() + 1);
     }
 
     return slots;
@@ -633,9 +644,20 @@ export class SchedulingService {
       );
     }
 
-    const updated = await this.prisma.appointment.update({
-      where: { id },
+    const result = await this.prisma.appointment.updateMany({
+      where: {
+        id,
+        status: { notIn: [AppointmentStatusEnum.CANCELLED, AppointmentStatusEnum.COMPLETED] },
+      },
       data: { status: AppointmentStatusEnum.CANCELLED },
+    });
+    if (result.count === 0) {
+      throw new ConflictException(
+        'Appointment status changed concurrently. Please retry.',
+      );
+    }
+    const updated = await this.prisma.appointment.findUniqueOrThrow({
+      where: { id },
       include: this.appointmentInclude(),
     });
 
@@ -790,7 +812,7 @@ export class SchedulingService {
         const exception = exceptionMap.get(dateStr);
 
         if (exception?.isBlocked) {
-          current.setDate(current.getDate() + 1);
+          current.setUTCDate(current.getUTCDate() + 1);
           continue;
         }
 
@@ -826,7 +848,7 @@ export class SchedulingService {
           }
         }
 
-        current.setDate(current.getDate() + 1);
+        current.setUTCDate(current.getUTCDate() + 1);
       }
 
       result.set(doctorId, count);

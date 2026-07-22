@@ -346,7 +346,8 @@ describe('Scheduling (e2e)', () => {
         patientId: patientUser.id,
         status: AppointmentStatusEnum.CONFIRMED,
       });
-      prisma.appointment.update.mockResolvedValue({
+      prisma.appointment.updateMany.mockResolvedValue({ count: 1 });
+      prisma.appointment.findUniqueOrThrow.mockResolvedValue({
         id: 1,
         status: AppointmentStatusEnum.CANCELLED,
       });

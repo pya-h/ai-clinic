@@ -780,7 +780,8 @@ describe('SchedulingService', () => {
         doctorId: 42,
         status: AppointmentStatusEnum.PENDING,
       });
-      prisma.appointment.update.mockResolvedValue({
+      prisma.appointment.updateMany.mockResolvedValue({ count: 1 });
+      prisma.appointment.findUniqueOrThrow.mockResolvedValue({
         id: 1,
         status: AppointmentStatusEnum.CANCELLED,
       });

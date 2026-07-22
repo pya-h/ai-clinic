@@ -162,6 +162,6 @@ export class ApiService {
     if (!params.length) {
       return '';
     }
-    return '?' + params.map(([field, value]) => `${field}=${value}`).join('&');
+    return '?' + params.map(([field, value]) => `${encodeURIComponent(String(field))}=${encodeURIComponent(String(value ?? ''))}`).join('&');
   }
 }

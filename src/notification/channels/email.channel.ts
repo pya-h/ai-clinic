@@ -51,21 +51,33 @@ export class EmailChannel {
     }
   }
 
+  private escapeHtml(str: string): string {
+    return str
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
   private renderTemplate(
     subject: string,
     body: string,
     firstname: string,
     _data?: Record<string, any>,
   ): string {
+    const safeName = this.escapeHtml(firstname || 'User');
+    const safeSubject = this.escapeHtml(subject);
+    const safeBody = this.escapeHtml(body);
+
     return `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
         <div style="background: #2563eb; color: white; padding: 20px; text-align: center;">
           <h1 style="margin: 0; font-size: 24px;">AI Clinic</h1>
         </div>
         <div style="padding: 20px; background: #f9fafb;">
-          <p>Hello ${firstname},</p>
-          <h2 style="color: #1f2937;">${subject}</h2>
-          <p style="color: #4b5563; line-height: 1.6;">${body}</p>
+          <p>Hello ${safeName},</p>
+          <h2 style="color: #1f2937;">${safeSubject}</h2>
+          <p style="color: #4b5563; line-height: 1.6;">${safeBody}</p>
         </div>
         <div style="padding: 12px 20px; background: #e5e7eb; text-align: center; font-size: 12px; color: #6b7280;">
           AI Clinic &mdash; You received this email because you have an account with us.

@@ -91,7 +91,12 @@ export class UserController {
     if (!file) {
       throw new BadRequestException('No file provided.');
     }
-    return this.userService.uploadAvatar(user, file);
+    const result = await this.userService.uploadAvatar(user, file);
+    const freshUser = await this.userService.getById(user.id);
+    if (freshUser) {
+      (req as any).session.set('user', freshUser);
+    }
+    return result;
   }
 
   @ApiOperation({
