@@ -155,10 +155,10 @@ describe('RolesGuard', () => {
     expect(guard.canActivate(ctx)).toBe(true);
   });
 
-  it('should throw ForbiddenException when roles required but no user', () => {
+  it('should throw UnauthorizedException when roles required but no user', () => {
     jest.spyOn(reflector, 'getAllAndOverride').mockReturnValue(['PATIENT']);
     const ctx = createMockContext(null); // no request.user set
-    expect(() => guard.canActivate(ctx)).toThrow(ForbiddenException);
+    expect(() => guard.canActivate(ctx)).toThrow(UnauthorizedException);
     expect(() => guard.canActivate(ctx)).toThrow('Authentication required');
   });
 

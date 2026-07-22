@@ -331,7 +331,7 @@ export class SchedulingService {
       where: {
         doctorId,
         dateTime: { gte: startDate, lte: endDate },
-        status: { notIn: [AppointmentStatusEnum.CANCELLED] },
+        status: { notIn: [AppointmentStatusEnum.CANCELLED, AppointmentStatusEnum.NO_SHOW] },
       },
     });
 
@@ -464,7 +464,7 @@ export class SchedulingService {
 
     // Validate booking is not in the past
     const bookingDateTime = new Date(dto.dateTime);
-    if (bookingDateTime <= new Date()) {
+    if (bookingDateTime < new Date()) {
       throw new BadRequestException('Cannot book an appointment in the past.');
     }
 
@@ -477,7 +477,7 @@ export class SchedulingService {
         const candidates = await tx.appointment.findMany({
           where: {
             doctorId: dto.doctorId,
-            status: { not: AppointmentStatusEnum.CANCELLED },
+            status: { notIn: [AppointmentStatusEnum.CANCELLED, AppointmentStatusEnum.NO_SHOW] },
             dateTime: { lt: bookingEndTime },
           },
           select: { dateTime: true, durationMinutes: true },
@@ -737,7 +737,7 @@ export class SchedulingService {
           where: {
             doctorId: { in: doctorIds },
             dateTime: { gte: startDate, lte: endDate },
-            status: { notIn: [AppointmentStatusEnum.CANCELLED] },
+            status: { notIn: [AppointmentStatusEnum.CANCELLED, AppointmentStatusEnum.NO_SHOW] },
           },
         }),
       ]);

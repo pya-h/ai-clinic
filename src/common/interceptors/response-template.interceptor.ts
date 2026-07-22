@@ -5,8 +5,10 @@ import {
   Injectable,
   Logger,
   NestInterceptor,
+  StreamableFile,
 } from '@nestjs/common';
 import { map, Observable } from 'rxjs';
+import { Readable } from 'stream';
 
 @Injectable()
 export class ResponseTemplateInterceptor<T> implements NestInterceptor<T, any> {
@@ -18,6 +20,14 @@ export class ResponseTemplateInterceptor<T> implements NestInterceptor<T, any> {
   ): Observable<any> | Promise<Observable<any>> {
     return next.handle().pipe(
       map((data: unknown) => {
+        if (
+          data instanceof StreamableFile ||
+          Buffer.isBuffer(data) ||
+          data instanceof Readable
+        ) {
+          return data;
+        }
+
         const response = context.switchToHttp().getResponse();
         try {
           const statusCode: number = response.statusCode;
