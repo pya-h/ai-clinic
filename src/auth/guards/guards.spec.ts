@@ -30,6 +30,7 @@ function createMockContext(
         if (key === 'user') return sessionUser;
         return undefined;
       }),
+      delete: jest.fn(),
     },
   };
   if (requestUser !== undefined) {
@@ -99,6 +100,83 @@ describe('CookieAuthGuard', () => {
     expect(result).toBe(true);
     const req = ctx.switchToHttp().getRequest() as any;
     expect(req.user).toEqual(user);
+  });
+
+  describe('with PrismaService (DB verification)', () => {
+    let guardWithPrisma: CookieAuthGuard;
+    let mockPrisma: any;
+
+    beforeEach(() => {
+      mockPrisma = {
+        user: {
+          findFirst: jest.fn(),
+        },
+      };
+      guardWithPrisma = new CookieAuthGuard(mockPrisma);
+      (CookieAuthGuard as any).statusCache.clear();
+    });
+
+    it('should verify user status from DB and return true for active user', async () => {
+      const user = { id: randomUuid(), isActive: true, role: 'PATIENT' };
+      mockPrisma.user.findFirst.mockResolvedValue({ isActive: true, isBanned: false, banReason: null });
+      const ctx = createMockContext(user);
+
+      const result = await guardWithPrisma.canActivate(ctx);
+      expect(result).toBe(true);
+      expect(mockPrisma.user.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: user.id },
+        }),
+      );
+    });
+
+    it('should throw ForbiddenException when DB shows user is banned', async () => {
+      const user = { id: randomUuid(), isActive: true, role: 'PATIENT' };
+      mockPrisma.user.findFirst.mockResolvedValue({ isActive: true, isBanned: true, banReason: 'spam' });
+      const ctx = createMockContext(user);
+
+      await expect(guardWithPrisma.canActivate(ctx)).rejects.toThrow(ForbiddenException);
+    });
+
+    it('should throw ForbiddenException when DB shows user is deactivated', async () => {
+      const user = { id: randomUuid(), isActive: true, role: 'PATIENT' };
+      mockPrisma.user.findFirst.mockResolvedValue({ isActive: false, isBanned: false, banReason: null });
+      const ctx = createMockContext(user);
+
+      await expect(guardWithPrisma.canActivate(ctx)).rejects.toThrow(ForbiddenException);
+    });
+
+    it('should fall through when user not found in DB (trust session)', async () => {
+      const user = { id: randomUuid(), isActive: true, role: 'PATIENT' };
+      mockPrisma.user.findFirst.mockResolvedValue(null);
+      const ctx = createMockContext(user);
+
+      const result = await guardWithPrisma.canActivate(ctx);
+      expect(result).toBe(true);
+    });
+
+    it('should fall through on DB error (trust session)', async () => {
+      const user = { id: randomUuid(), isActive: true, role: 'PATIENT' };
+      mockPrisma.user.findFirst.mockRejectedValue(new Error('DB connection lost'));
+      const ctx = createMockContext(user);
+
+      const result = await guardWithPrisma.canActivate(ctx);
+      expect(result).toBe(true);
+    });
+
+    it('should use cached status within TTL and skip DB query', async () => {
+      const userId = randomUuid();
+      const user = { id: userId, isActive: true, role: 'PATIENT' };
+      mockPrisma.user.findFirst.mockResolvedValue({ isActive: true, isBanned: false, banReason: null });
+
+      const ctx1 = createMockContext(user);
+      await guardWithPrisma.canActivate(ctx1);
+      expect(mockPrisma.user.findFirst).toHaveBeenCalledTimes(1);
+
+      const ctx2 = createMockContext(user);
+      await guardWithPrisma.canActivate(ctx2);
+      expect(mockPrisma.user.findFirst).toHaveBeenCalledTimes(1);
+    });
   });
 });
 

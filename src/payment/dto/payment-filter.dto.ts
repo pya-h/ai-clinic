@@ -1,4 +1,4 @@
-import { IsEnum, IsInt, IsOptional, Max, Min } from 'class-validator';
+import { IsEnum, IsInt, IsOptional, IsUUID, Max, Min } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { PaymentStatusEnum } from '@prisma/client';
@@ -8,6 +8,11 @@ export class PaymentFilterDto {
   @IsEnum(PaymentStatusEnum)
   @IsOptional()
   status?: PaymentStatusEnum;
+
+  @ApiPropertyOptional({ description: 'Filter by user ID (admin only).' })
+  @IsUUID()
+  @IsOptional()
+  userId?: string;
 
   @ApiPropertyOptional({ default: 0 })
   @Type(() => Number)

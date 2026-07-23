@@ -67,6 +67,7 @@ describe('ChatGateway', () => {
       editMessage: jest.fn(),
       deleteMessage: jest.fn(),
       getChatParticipantUserIds: jest.fn().mockResolvedValue([]),
+      getUserStatus: jest.fn().mockResolvedValue({ isActive: true, isBanned: false }),
     };
 
     notificationService = {
@@ -99,7 +100,7 @@ describe('ChatGateway', () => {
   // ─── handleConnection ───
 
   describe('handleConnection', () => {
-    it('should set user online, join rooms, and broadcast online status', async () => {
+    it('should set user online, join rooms, and broadcast online status to chat rooms', async () => {
       const client = createMockSocket();
       chatService.getUserChatIds.mockResolvedValue(['chat-1', 'chat-2']);
       chatService.isOnline.mockReturnValue(false);
@@ -110,10 +111,22 @@ describe('ChatGateway', () => {
       expect(client.join).toHaveBeenCalledWith('user:user-1');
       expect(client.join).toHaveBeenCalledWith('chat:chat-1');
       expect(client.join).toHaveBeenCalledWith('chat:chat-2');
-      expect(gateway.server.emit).toHaveBeenCalledWith('user:online', {
+      expect(gateway.server.to).toHaveBeenCalledWith(['chat:chat-1', 'chat:chat-2']);
+      expect((gateway.server as any)._toEmit).toHaveBeenCalledWith('user:online', {
         userId: 'user-1',
         isOnline: true,
       });
+    });
+
+    it('should not broadcast when user has no chats', async () => {
+      const client = createMockSocket();
+      chatService.getUserChatIds.mockResolvedValue([]);
+      chatService.isOnline.mockReturnValue(false);
+
+      await gateway.handleConnection(client as any);
+
+      expect(gateway.server.emit).not.toHaveBeenCalled();
+      expect((gateway.server as any)._toEmit).not.toHaveBeenCalledWith('user:online', expect.anything());
     });
 
     it('should not broadcast online if user was already online', async () => {
@@ -138,32 +151,34 @@ describe('ChatGateway', () => {
   // ─── handleDisconnect ───
 
   describe('handleDisconnect', () => {
-    it('should set user offline and broadcast when no sockets remain', () => {
+    it('should set user offline and broadcast to chat rooms when no sockets remain', async () => {
       const client = createMockSocket();
       chatService.isOnline.mockReturnValue(false);
+      chatService.getUserChatIds.mockResolvedValue(['chat-1', 'chat-2']);
 
-      gateway.handleDisconnect(client as any);
+      await gateway.handleDisconnect(client as any);
 
       expect(chatService.setOffline).toHaveBeenCalledWith('user-1', 'socket-1');
-      expect(gateway.server.emit).toHaveBeenCalledWith('user:online', {
+      expect(gateway.server.to).toHaveBeenCalledWith(['chat:chat-1', 'chat:chat-2']);
+      expect((gateway.server as any)._toEmit).toHaveBeenCalledWith('user:online', {
         userId: 'user-1',
         isOnline: false,
       });
     });
 
-    it('should not broadcast offline if user has remaining sockets', () => {
+    it('should not broadcast offline if user has remaining sockets', async () => {
       const client = createMockSocket();
       chatService.isOnline.mockReturnValue(true);
 
-      gateway.handleDisconnect(client as any);
+      await gateway.handleDisconnect(client as any);
 
-      expect(gateway.server.emit).not.toHaveBeenCalled();
+      expect(chatService.getUserChatIds).not.toHaveBeenCalled();
     });
 
-    it('should do nothing when client has no user', () => {
+    it('should do nothing when client has no user', async () => {
       const client = createMockSocket(null);
 
-      gateway.handleDisconnect(client as any);
+      await gateway.handleDisconnect(client as any);
 
       expect(chatService.setOffline).not.toHaveBeenCalled();
     });
@@ -225,6 +240,42 @@ describe('ChatGateway', () => {
 
     it('should throw WsException when user is missing', async () => {
       const client = createMockSocket(null);
+
+      await expect(
+        gateway.handleMessage(client as any, {
+          chatId: 'chat-1',
+          content: 'Hello',
+        }),
+      ).rejects.toThrow(WsException);
+    });
+
+    it('should throw WsException when content exceeds 5000 characters', async () => {
+      const client = createMockSocket();
+      const longContent = 'x'.repeat(5001);
+
+      await expect(
+        gateway.handleMessage(client as any, {
+          chatId: 'chat-1',
+          content: longContent,
+        }),
+      ).rejects.toThrow(WsException);
+    });
+
+    it('should throw WsException for invalid message type', async () => {
+      const client = createMockSocket();
+
+      await expect(
+        gateway.handleMessage(client as any, {
+          chatId: 'chat-1',
+          content: 'Hello',
+          type: 'INVALID_TYPE' as any,
+        }),
+      ).rejects.toThrow(WsException);
+    });
+
+    it('should throw WsException when user is banned (status check)', async () => {
+      const client = createMockSocket();
+      chatService.getUserStatus.mockResolvedValue({ isActive: true, isBanned: true });
 
       await expect(
         gateway.handleMessage(client as any, {
@@ -377,6 +428,15 @@ describe('ChatGateway', () => {
 
       await expect(
         gateway.handleEdit(client as any, { messageId: '1', content: '' }),
+      ).rejects.toThrow(WsException);
+    });
+
+    it('should throw WsException when content exceeds 5000 characters', async () => {
+      const client = createMockSocket();
+      const longContent = 'x'.repeat(5001);
+
+      await expect(
+        gateway.handleEdit(client as any, { messageId: '1', content: longContent }),
       ).rejects.toThrow(WsException);
     });
 

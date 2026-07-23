@@ -43,6 +43,8 @@ export class ChatGateway
   private readonly logger = new Logger(ChatGateway.name);
   private readonly msgRateLimit = new WsRateLimiter(20, 10_000);
   private readonly typingRateLimit = new WsRateLimiter(30, 10_000);
+  private readonly userStatusCache = new Map<string, { isActive: boolean; isBanned: boolean; checkedAt: number }>();
+  private static readonly STATUS_CACHE_TTL = 60_000;
 
   constructor(
     private readonly chatService: ChatService,
@@ -54,6 +56,7 @@ export class ChatGateway
   onModuleDestroy(): void {
     this.msgRateLimit.destroy();
     this.typingRateLimit.destroy();
+    this.userStatusCache.clear();
   }
 
   /**
@@ -101,12 +104,11 @@ export class ChatGateway
     const wasOnline = this.chatService.isOnline(user.id);
     this.chatService.setOnline(user.id, client.id);
 
-    // Join personal room for targeted events
     client.join(`user:${user.id}`);
 
-    // Join all chat rooms the user is part of
+    let chatIds: string[] = [];
     try {
-      const chatIds = await this.chatService.getUserChatIds(user.id);
+      chatIds = await this.chatService.getUserChatIds(user.id);
       for (const chatId of chatIds) {
         client.join(`chat:${chatId}`);
       }
@@ -114,9 +116,9 @@ export class ChatGateway
       this.logger.error(`Failed to join chat rooms for ${user.id}: ${err.message}`);
     }
 
-    // Broadcast online status only if they weren't already online (first tab)
-    if (!wasOnline) {
-      this.server.emit('user:online', {
+    if (!wasOnline && chatIds.length > 0) {
+      const rooms = chatIds.map(id => `chat:${id}`);
+      this.server.to(rooms).emit('user:online', {
         userId: user.id,
         isOnline: true,
       });
@@ -128,18 +130,25 @@ export class ChatGateway
    * 1. Remove from presence tracking
    * 2. If user has no more connected sockets, broadcast offline
    */
-  handleDisconnect(client: Socket): void {
+  async handleDisconnect(client: Socket): Promise<void> {
     const user = client.data.user;
     if (!user) return;
 
     this.chatService.setOffline(user.id, client.id);
 
-    // Only broadcast offline if user has zero remaining sockets
     if (!this.chatService.isOnline(user.id)) {
-      this.server.emit('user:online', {
-        userId: user.id,
-        isOnline: false,
-      });
+      try {
+        const chatIds = await this.chatService.getUserChatIds(user.id);
+        if (chatIds.length > 0) {
+          const rooms = chatIds.map(id => `chat:${id}`);
+          this.server.to(rooms).emit('user:online', {
+            userId: user.id,
+            isOnline: false,
+          });
+        }
+      } catch (err) {
+        this.logger.error(`Failed to broadcast offline for ${user.id}: ${err.message}`);
+      }
     }
   }
 
@@ -168,6 +177,14 @@ export class ChatGateway
     if (!payload.chatId || !payload.content) {
       throw new WsException('chatId and content are required');
     }
+    if (payload.content.length > 5000) {
+      throw new WsException('Message content exceeds 5000 characters');
+    }
+    if (payload.type && !Object.values(MessageTypeEnum).includes(payload.type)) {
+      throw new WsException('Invalid message type');
+    }
+
+    await this.checkUserStatus(user.id);
 
     try {
       const message = await this.chatService.sendMessage(
@@ -285,6 +302,11 @@ export class ChatGateway
     if (!payload.messageId || !payload.content) {
       throw new WsException('messageId and content are required');
     }
+    if (payload.content.length > 5000) {
+      throw new WsException('Message content exceeds 5000 characters');
+    }
+
+    await this.checkUserStatus(user.id);
 
     try {
       const message = await this.chatService.editMessage(
@@ -323,6 +345,8 @@ export class ChatGateway
     if (!payload.messageId) {
       throw new WsException('messageId is required');
     }
+
+    await this.checkUserStatus(user.id);
 
     try {
       const message = await this.chatService.deleteMessage(
@@ -408,6 +432,22 @@ export class ChatGateway
    * For WebSocket auth, we attempt to parse the signed session cookie.
    * Since the WS handshake is an HTTP upgrade, the cookie header is available.
    */
+  private async checkUserStatus(userId: string): Promise<void> {
+    const now = Date.now();
+    const cached = this.userStatusCache.get(userId);
+    if (cached && now - cached.checkedAt < ChatGateway.STATUS_CACHE_TTL) {
+      if (!cached.isActive || cached.isBanned) {
+        throw new WsException('Account suspended');
+      }
+      return;
+    }
+    const status = await this.chatService.getUserStatus(userId);
+    this.userStatusCache.set(userId, { ...status, checkedAt: now });
+    if (!status.isActive || status.isBanned) {
+      throw new WsException('Account suspended');
+    }
+  }
+
   private async notifyOfflineParticipants(
     chatId: string,
     senderId: string,

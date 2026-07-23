@@ -551,6 +551,15 @@ export class ChatService {
     return sockets ? Array.from(sockets) : [];
   }
 
+  async getUserStatus(userId: string): Promise<{ isActive: boolean; isBanned: boolean }> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { isActive: true, isBanned: true },
+    });
+    if (!user) return { isActive: false, isBanned: false };
+    return { isActive: user.isActive, isBanned: user.isBanned };
+  }
+
   // ─────────────────────────── Private Helpers ───────────────────────────
 
   private async validateChatRules(initiator: User, participant: User): Promise<void> {

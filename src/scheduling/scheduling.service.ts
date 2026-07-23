@@ -56,7 +56,10 @@ export class SchedulingService {
     return profile.id;
   }
 
-  async resolveDoctorIdForSchedule(user: User): Promise<number> {
+  async resolveDoctorIdForSchedule(
+    user: User,
+    targetDoctorId?: number,
+  ): Promise<number> {
     if (user.role === UserRolesEnum.DOCTOR) {
       return this.getDoctorProfileId(user.id);
     }
@@ -69,6 +72,14 @@ export class SchedulingService {
         throw new ForbiddenException(
           'You do not have the Manage Schedule permission for any doctor.',
         );
+      }
+      if (targetDoctorId !== undefined) {
+        if (!doctorIds.includes(targetDoctorId)) {
+          throw new ForbiddenException(
+            'You do not have the Manage Schedule permission for this doctor.',
+          );
+        }
+        return targetDoctorId;
       }
       return doctorIds[0];
     }

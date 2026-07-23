@@ -92,7 +92,13 @@ export class PaymentService {
     const skip = filters.skip ?? 0;
     const take = filters.take ?? 20;
 
-    const where: Record<string, any> = { userId: user.id };
+    const isAdmin = user.isAdmin || user.isSuperAdmin;
+    const where: Record<string, any> = {};
+    if (isAdmin && filters.userId) {
+      where.userId = filters.userId;
+    } else if (!isAdmin) {
+      where.userId = user.id;
+    }
     if (filters.status) {
       where.status = filters.status;
     }
