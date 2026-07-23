@@ -102,20 +102,24 @@ describe('BotpressService', () => {
   });
 
   describe('constructor', () => {
-    it('should throw ServiceUnavailableException when webhookId is missing', async () => {
-      await expect(
-        Test.createTestingModule({
-          providers: [
-            BotpressService,
-            { provide: PrismaService, useValue: prisma },
-            { provide: CacheService, useValue: cache },
-            {
-              provide: ConfigService,
-              useValue: { get: jest.fn().mockReturnValue(undefined) },
-            },
-          ],
-        }).compile(),
-      ).rejects.toThrow(ServiceUnavailableException);
+    it('should create service in disabled state when webhookId is missing', async () => {
+      const mod = await Test.createTestingModule({
+        providers: [
+          BotpressService,
+          { provide: PrismaService, useValue: prisma },
+          { provide: CacheService, useValue: cache },
+          {
+            provide: ConfigService,
+            useValue: { get: jest.fn().mockReturnValue(undefined) },
+          },
+        ],
+      }).compile();
+
+      const disabledSvc = mod.get<BotpressService>(BotpressService);
+      expect(disabledSvc).toBeDefined();
+      await expect(disabledSvc.startGuest()).rejects.toThrow(
+        ServiceUnavailableException,
+      );
     });
 
     it('should default deliveryMode to sse when not configured', () => {

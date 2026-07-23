@@ -1,5 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
+import { ServiceUnavailableException } from '@nestjs/common';
 import { OpenAiService } from './openai.service';
 import { OpenAiChatRoles } from './enums/openai-roles.enum';
 
@@ -22,11 +23,10 @@ describe('OpenAiService', () => {
 
   beforeEach(async () => {
     const configService = {
-      get: jest.fn(),
-      getOrThrow: jest.fn((key: string) => {
+      get: jest.fn((key: string) => {
         if (key === 'openai.model') return 'gpt-4';
         if (key === 'openai.key') return 'test-api-key';
-        throw new Error(`Missing key: ${key}`);
+        return undefined;
       }),
     };
 
@@ -200,6 +200,46 @@ describe('OpenAiService', () => {
 
       const history = await service.getChatHistory('user-123');
       expect(history.length).toBeGreaterThan(1);
+    });
+  });
+
+  describe('disabled mode (missing config)', () => {
+    let disabledService: OpenAiService;
+
+    beforeEach(async () => {
+      const module: TestingModule = await Test.createTestingModule({
+        providers: [
+          OpenAiService,
+          {
+            provide: ConfigService,
+            useValue: { get: jest.fn().mockReturnValue(undefined) },
+          },
+        ],
+      }).compile();
+
+      disabledService = module.get<OpenAiService>(OpenAiService);
+    });
+
+    it('should create service without throwing', () => {
+      expect(disabledService).toBeDefined();
+    });
+
+    it('should throw ServiceUnavailableException on runCompletion', async () => {
+      await expect(
+        disabledService.runCompletion('chat-1', 'hello'),
+      ).rejects.toThrow(ServiceUnavailableException);
+    });
+
+    it('should throw ServiceUnavailableException on openNewChat', async () => {
+      await expect(
+        disabledService.openNewChat('user-1', 'hello'),
+      ).rejects.toThrow(ServiceUnavailableException);
+    });
+
+    it('should still allow getChatHistory', async () => {
+      const history = await disabledService.getChatHistory('chat-1');
+      expect(history).toHaveLength(1);
+      expect(history[0].role).toBe(OpenAiChatRoles.SYSTEM);
     });
   });
 });

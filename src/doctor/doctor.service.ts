@@ -37,7 +37,7 @@ export class DoctorService {
 
   async createDoctorProfile(
     user: User,
-    data: Prisma.DoctorProfileCreateWithoutUserInput,
+    data: Prisma.DoctorProfileUncheckedCreateWithoutUserInput,
   ) {
     if (user.role !== UserRolesEnum.DOCTOR) {
       throw new MethodNotAllowedException(

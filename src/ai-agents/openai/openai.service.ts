@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import OpenAI from 'openai';
 import { TOpenAiMessage } from './types/openai-message.type';
@@ -6,16 +6,23 @@ import { OpenAiChatRoles } from './enums/openai-roles.enum';
 
 @Injectable()
 export class OpenAiService {
-  private openaiClient: OpenAI;
+  private openaiClient: OpenAI | null = null;
   private readonly modelName: string;
   private readonly primaryPrompt =
     'You are a medical assistant. Your job is to talk to patients, ask questions, and build a SOAP note. After gathering enough data, diagnose the illness or suggest further testing. Format your answer clearly with sections for Subjective, Objective, Assessment, and Plan.';
 
   constructor(readonly configService: ConfigService) {
-    this.modelName = configService.getOrThrow<string>('openai.model');
-    this.openaiClient = new OpenAI({
-      apiKey: configService.getOrThrow<string>('openai.key'),
-    });
+    const apiKey = configService.get<string>('openai.key');
+    const model = configService.get<string>('openai.model');
+    if (apiKey && model) {
+      this.modelName = model;
+      this.openaiClient = new OpenAI({ apiKey });
+    } else {
+      this.modelName = '';
+      new Logger('OpenAiService').warn(
+        'OpenAI not configured — AI completion features disabled',
+      );
+    }
   }
 
   private static readonly MAX_HISTORY_ENTRIES = 500;
@@ -52,6 +59,9 @@ export class OpenAiService {
   }
 
   async runCompletion(chatId: string, prompt: string) {
+    if (!this.openaiClient) {
+      throw new ServiceUnavailableException('OpenAI service is not configured.');
+    }
     const result = await this.openaiClient.chat.completions.create({
       model: this.modelName,
       messages: [

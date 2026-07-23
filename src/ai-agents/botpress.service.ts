@@ -43,7 +43,9 @@ export class BotpressService {
   ) {
     this.webhookId = configService.get<string>('botpress.webhookId') ?? '';
     if (!this.webhookId) {
-      throw new ServiceUnavailableException('Bot Agent Key is missing');
+      this.logger.warn('BOTAGENT_KEY not set — Botpress chat features disabled');
+      this.deliveryMode = 'sse';
+      return;
     }
     this.deliveryMode = configService.get<'sse' | 'poll'>('botpress.deliveryMode') ?? 'sse';
     this.logger.log(`Botpress delivery mode: ${this.deliveryMode}`);
@@ -58,6 +60,9 @@ export class BotpressService {
   }
 
   private async getClient(user: User, updateCacheDeadline?: boolean): Promise<IUserContext> {
+    if (!this.webhookId) {
+      throw new ServiceUnavailableException('Botpress chat is not configured.');
+    }
     const existing = await this.cacheService.get<IUserContext>(
       this.cachingOptions.group,
       user.id,
@@ -281,6 +286,9 @@ export class BotpressService {
   }
 
   async startGuest(): Promise<{ id: string; guest: true }> {
+    if (!this.webhookId) {
+      throw new ServiceUnavailableException('Botpress chat is not configured.');
+    }
     this.pruneGuestContexts();
 
     const client = await chat.Client.connect({
