@@ -593,13 +593,14 @@ describe('MatchingService', () => {
         status: MatchStatusEnum.MATCHED,
         matchedDoctorId: 5,
       };
-      prisma.matchRequest.update.mockResolvedValue(updated);
+      prisma.matchRequest.updateMany.mockResolvedValue({ count: 1 });
+      prisma.matchRequest.findUniqueOrThrow.mockResolvedValue(updated);
 
       const result = await service.matchDoctor(requestId, 5);
 
       expect(result).toEqual(updated);
-      expect(prisma.matchRequest.update).toHaveBeenCalledWith({
-        where: { id: requestId },
+      expect(prisma.matchRequest.updateMany).toHaveBeenCalledWith({
+        where: { id: requestId, status: MatchStatusEnum.SEARCHING },
         data: {
           status: MatchStatusEnum.MATCHED,
           matchedDoctorId: 5,
@@ -890,13 +891,17 @@ describe('MatchingService', () => {
         status: MatchStatusEnum.TIMEOUT,
         resolvedAt: expect.any(Date),
       };
-      prisma.matchRequest.update.mockResolvedValue(updated);
+      prisma.matchRequest.updateMany.mockResolvedValue({ count: 1 });
+      prisma.matchRequest.findUniqueOrThrow.mockResolvedValue(updated);
 
       const result = await service.timeoutRequest(requestId);
 
       expect(result).toEqual(updated);
-      expect(prisma.matchRequest.update).toHaveBeenCalledWith({
-        where: { id: requestId },
+      expect(prisma.matchRequest.updateMany).toHaveBeenCalledWith({
+        where: {
+          id: requestId,
+          status: { in: [MatchStatusEnum.SEARCHING, MatchStatusEnum.MATCHED] },
+        },
         data: {
           status: MatchStatusEnum.TIMEOUT,
           resolvedAt: expect.any(Date),
@@ -910,14 +915,16 @@ describe('MatchingService', () => {
         id: requestId,
         status: MatchStatusEnum.MATCHED,
       });
-      prisma.matchRequest.update.mockResolvedValue({
+      const updated = {
         id: requestId,
         status: MatchStatusEnum.TIMEOUT,
-      });
+      };
+      prisma.matchRequest.updateMany.mockResolvedValue({ count: 1 });
+      prisma.matchRequest.findUniqueOrThrow.mockResolvedValue(updated);
 
       const result = await service.timeoutRequest(requestId);
 
-      expect(prisma.matchRequest.update).toHaveBeenCalled();
+      expect(prisma.matchRequest.updateMany).toHaveBeenCalled();
       expect(result.status).toBe(MatchStatusEnum.TIMEOUT);
     });
 
@@ -932,7 +939,7 @@ describe('MatchingService', () => {
       const result = await service.timeoutRequest(requestId);
 
       expect(result).toEqual(existing);
-      expect(prisma.matchRequest.update).not.toHaveBeenCalled();
+      expect(prisma.matchRequest.updateMany).not.toHaveBeenCalled();
     });
 
     it('should be a no-op for CONSULTATION_CREATED request', async () => {
@@ -946,7 +953,7 @@ describe('MatchingService', () => {
       const result = await service.timeoutRequest(requestId);
 
       expect(result).toEqual(existing);
-      expect(prisma.matchRequest.update).not.toHaveBeenCalled();
+      expect(prisma.matchRequest.updateMany).not.toHaveBeenCalled();
     });
 
     it('should be a no-op for already TIMEOUT request', async () => {
@@ -957,7 +964,7 @@ describe('MatchingService', () => {
       const result = await service.timeoutRequest(requestId);
 
       expect(result).toEqual(existing);
-      expect(prisma.matchRequest.update).not.toHaveBeenCalled();
+      expect(prisma.matchRequest.updateMany).not.toHaveBeenCalled();
     });
 
     it('should throw NotFoundException when request not found', async () => {
@@ -984,7 +991,8 @@ describe('MatchingService', () => {
         status: MatchStatusEnum.CANCELLED,
         resolvedAt: expect.any(Date),
       };
-      prisma.matchRequest.update.mockResolvedValue(updated);
+      prisma.matchRequest.updateMany.mockResolvedValue({ count: 1 });
+      prisma.matchRequest.findUniqueOrThrow.mockResolvedValue(updated);
 
       const result = await service.cancelRequest(requestId, patient as any);
 
@@ -998,7 +1006,8 @@ describe('MatchingService', () => {
         patientId: patient.id,
         status: MatchStatusEnum.MATCHED,
       });
-      prisma.matchRequest.update.mockResolvedValue({
+      prisma.matchRequest.updateMany.mockResolvedValue({ count: 1 });
+      prisma.matchRequest.findUniqueOrThrow.mockResolvedValue({
         id: requestId,
         status: MatchStatusEnum.CANCELLED,
       });
@@ -1015,7 +1024,8 @@ describe('MatchingService', () => {
         patientId: patient.id,
         status: MatchStatusEnum.ACCEPTED,
       });
-      prisma.matchRequest.update.mockResolvedValue({
+      prisma.matchRequest.updateMany.mockResolvedValue({ count: 1 });
+      prisma.matchRequest.findUniqueOrThrow.mockResolvedValue({
         id: requestId,
         status: MatchStatusEnum.CANCELLED,
       });
@@ -1032,7 +1042,8 @@ describe('MatchingService', () => {
         patientId: randomUUID(), // someone else's request
         status: MatchStatusEnum.SEARCHING,
       });
-      prisma.matchRequest.update.mockResolvedValue({
+      prisma.matchRequest.updateMany.mockResolvedValue({ count: 1 });
+      prisma.matchRequest.findUniqueOrThrow.mockResolvedValue({
         id: requestId,
         status: MatchStatusEnum.CANCELLED,
       });
@@ -1049,7 +1060,8 @@ describe('MatchingService', () => {
         patientId: randomUUID(),
         status: MatchStatusEnum.MATCHED,
       });
-      prisma.matchRequest.update.mockResolvedValue({
+      prisma.matchRequest.updateMany.mockResolvedValue({ count: 1 });
+      prisma.matchRequest.findUniqueOrThrow.mockResolvedValue({
         id: requestId,
         status: MatchStatusEnum.CANCELLED,
       });
@@ -1123,13 +1135,14 @@ describe('MatchingService', () => {
         status: MatchStatusEnum.MANUAL_BROWSE,
         resolvedAt: expect.any(Date),
       };
-      prisma.matchRequest.update.mockResolvedValue(updated);
+      prisma.matchRequest.updateMany.mockResolvedValue({ count: 1 });
+      prisma.matchRequest.findUniqueOrThrow.mockResolvedValue(updated);
 
       const result = await service.fallbackToManualBrowse(requestId, patient as any);
 
       expect(result).toEqual(updated);
-      expect(prisma.matchRequest.update).toHaveBeenCalledWith({
-        where: { id: requestId },
+      expect(prisma.matchRequest.updateMany).toHaveBeenCalledWith({
+        where: { id: requestId, status: MatchStatusEnum.TIMEOUT },
         data: {
           status: MatchStatusEnum.MANUAL_BROWSE,
           resolvedAt: expect.any(Date),

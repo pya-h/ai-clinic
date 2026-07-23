@@ -470,7 +470,8 @@ describe('Matching (e2e)', () => {
         ...mockMatchRequest,
         status: MatchStatusEnum.SEARCHING,
       });
-      prisma.matchRequest.update.mockResolvedValue({
+      prisma.matchRequest.updateMany.mockResolvedValue({ count: 1 });
+      prisma.matchRequest.findUniqueOrThrow.mockResolvedValue({
         ...mockMatchRequest,
         status: MatchStatusEnum.CANCELLED,
         resolvedAt: new Date(),
@@ -494,7 +495,8 @@ describe('Matching (e2e)', () => {
         ...mockMatchRequest,
         status: MatchStatusEnum.SEARCHING,
       });
-      prisma.matchRequest.update.mockResolvedValue({
+      prisma.matchRequest.updateMany.mockResolvedValue({ count: 1 });
+      prisma.matchRequest.findUniqueOrThrow.mockResolvedValue({
         ...mockMatchRequest,
         status: MatchStatusEnum.CANCELLED,
         resolvedAt: new Date(),
@@ -578,7 +580,8 @@ describe('Matching (e2e)', () => {
         ...mockMatchRequest,
         status: MatchStatusEnum.TIMEOUT,
       });
-      prisma.matchRequest.update.mockResolvedValue({
+      prisma.matchRequest.updateMany.mockResolvedValue({ count: 1 });
+      prisma.matchRequest.findUniqueOrThrow.mockResolvedValue({
         ...mockMatchRequest,
         status: MatchStatusEnum.MANUAL_BROWSE,
         resolvedAt: new Date(),

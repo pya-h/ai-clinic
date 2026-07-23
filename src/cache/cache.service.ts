@@ -142,7 +142,7 @@ export class CacheService {
       );
       const keysSet = new Set(keys);
       for (const [mapKey, item] of this.keysWithDelEvent) {
-        if (keysSet.has(item.key)) {
+        if (item.group === group && keysSet.has(item.key)) {
           this.keysWithDelEvent.delete(mapKey);
         }
       }

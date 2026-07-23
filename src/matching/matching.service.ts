@@ -268,12 +268,18 @@ export class MatchingService {
     const request = await this.getByIdRaw(matchRequestId);
     this.validateTransition(request.status, MatchStatusEnum.MATCHED);
 
-    return this.prisma.matchRequest.update({
-      where: { id: matchRequestId },
+    const { count } = await this.prisma.matchRequest.updateMany({
+      where: { id: matchRequestId, status: request.status },
       data: {
         status: MatchStatusEnum.MATCHED,
         matchedDoctorId: doctorId,
       },
+    });
+    if (count === 0) {
+      throw new ConflictException('Match request status changed concurrently.');
+    }
+    return this.prisma.matchRequest.findUniqueOrThrow({
+      where: { id: matchRequestId },
     });
   }
 
@@ -410,12 +416,18 @@ export class MatchingService {
       return request;
     }
 
-    return this.prisma.matchRequest.update({
-      where: { id: matchRequestId },
+    await this.prisma.matchRequest.updateMany({
+      where: {
+        id: matchRequestId,
+        status: { in: [MatchStatusEnum.SEARCHING, MatchStatusEnum.MATCHED] },
+      },
       data: {
         status: MatchStatusEnum.TIMEOUT,
         resolvedAt: new Date(),
       },
+    });
+    return this.prisma.matchRequest.findUniqueOrThrow({
+      where: { id: matchRequestId },
     });
   }
 
@@ -430,12 +442,18 @@ export class MatchingService {
 
     this.validateTransition(request.status, MatchStatusEnum.CANCELLED);
 
-    return this.prisma.matchRequest.update({
-      where: { id: matchRequestId },
+    const { count } = await this.prisma.matchRequest.updateMany({
+      where: { id: matchRequestId, status: request.status },
       data: {
         status: MatchStatusEnum.CANCELLED,
         resolvedAt: new Date(),
       },
+    });
+    if (count === 0) {
+      throw new ConflictException('Match request status changed concurrently.');
+    }
+    return this.prisma.matchRequest.findUniqueOrThrow({
+      where: { id: matchRequestId },
     });
   }
 
@@ -450,12 +468,18 @@ export class MatchingService {
 
     this.validateTransition(request.status, MatchStatusEnum.MANUAL_BROWSE);
 
-    return this.prisma.matchRequest.update({
-      where: { id: matchRequestId },
+    const { count } = await this.prisma.matchRequest.updateMany({
+      where: { id: matchRequestId, status: request.status },
       data: {
         status: MatchStatusEnum.MANUAL_BROWSE,
         resolvedAt: new Date(),
       },
+    });
+    if (count === 0) {
+      throw new ConflictException('Match request status changed concurrently.');
+    }
+    return this.prisma.matchRequest.findUniqueOrThrow({
+      where: { id: matchRequestId },
     });
   }
 
@@ -498,12 +522,18 @@ export class MatchingService {
         request.status === MatchStatusEnum.MATCHED) &&
       this.isExpired(request)
     ) {
-      return this.prisma.matchRequest.update({
-        where: { id: matchRequestId },
+      await this.prisma.matchRequest.updateMany({
+        where: {
+          id: matchRequestId,
+          status: { in: [MatchStatusEnum.SEARCHING, MatchStatusEnum.MATCHED] },
+        },
         data: {
           status: MatchStatusEnum.TIMEOUT,
           resolvedAt: new Date(),
         },
+      });
+      return this.prisma.matchRequest.findUniqueOrThrow({
+        where: { id: matchRequestId },
         include: {
           matchedDoctor: {
             include: {

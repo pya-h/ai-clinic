@@ -430,7 +430,8 @@ describe('Payment (e2e)', () => {
 
       const pendingPayment = buildPayment();
       prisma.payment.findUnique.mockResolvedValue(pendingPayment);
-      prisma.payment.update.mockResolvedValue(
+      prisma.payment.updateMany.mockResolvedValue({ count: 1 });
+      prisma.payment.findUniqueOrThrow.mockResolvedValue(
         buildPayment({
           status: PaymentStatusEnum.COMPLETED,
           paidAt: new Date(),
@@ -452,7 +453,8 @@ describe('Payment (e2e)', () => {
       sessionUser = adminUser;
 
       prisma.payment.findUnique.mockResolvedValue(buildPayment());
-      prisma.payment.update.mockResolvedValue(
+      prisma.payment.updateMany.mockResolvedValue({ count: 1 });
+      prisma.payment.findUniqueOrThrow.mockResolvedValue(
         buildPayment({
           status: PaymentStatusEnum.COMPLETED,
           paidAt: new Date(),

@@ -132,24 +132,28 @@ export class PaymentService {
     );
 
     const updated = await this.prisma.$transaction(async (tx) => {
-      const paid = await tx.payment.update({
-        where: { id },
+      const { count } = await tx.payment.updateMany({
+        where: { id, status: PaymentStatusEnum.PENDING },
         data: {
           status: PaymentStatusEnum.COMPLETED,
           paidAt: new Date(),
         },
       });
+      if (count === 0) {
+        throw new ConflictException(
+          `Cannot confirm a payment with status ${payment.status}.`,
+        );
+      }
+      const paid = await tx.payment.findUniqueOrThrow({ where: { id } });
 
       if (payment.consultationId) {
-        const consultation = await tx.consultation.findUnique({
-          where: { id: payment.consultationId },
+        await tx.consultation.updateMany({
+          where: {
+            id: payment.consultationId,
+            status: ConsultationStatusEnum.PENDING_PAYMENT,
+          },
+          data: { status: ConsultationStatusEnum.PAYMENT_CONFIRMED },
         });
-        if (consultation?.status === ConsultationStatusEnum.PENDING_PAYMENT) {
-          await tx.consultation.update({
-            where: { id: payment.consultationId },
-            data: { status: ConsultationStatusEnum.PAYMENT_CONFIRMED },
-          });
-        }
       }
 
       return paid;

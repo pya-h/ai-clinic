@@ -46,14 +46,17 @@ describe('PaymentService', () => {
     prisma = {
       payment: {
         findUnique: jest.fn(),
+        findUniqueOrThrow: jest.fn(),
         findMany: jest.fn(),
         create: jest.fn(),
         update: jest.fn(),
+        updateMany: jest.fn(),
         count: jest.fn(),
       },
       consultation: {
         findUnique: jest.fn(),
         update: jest.fn(),
+        updateMany: jest.fn(),
       },
       $transaction: jest.fn((cb) => cb(prisma)),
     };
@@ -258,13 +261,14 @@ describe('PaymentService', () => {
         paidAt: new Date(),
       };
       prisma.payment.findUnique.mockResolvedValue(mockPayment);
-      prisma.payment.update.mockResolvedValue(confirmed);
+      prisma.payment.updateMany.mockResolvedValue({ count: 1 });
+      prisma.payment.findUniqueOrThrow.mockResolvedValue(confirmed);
 
       const result = await service.confirmPayment(1, mockUser as any);
 
       expect(result.status).toBe(PaymentStatusEnum.COMPLETED);
-      expect(prisma.payment.update).toHaveBeenCalledWith({
-        where: { id: 1 },
+      expect(prisma.payment.updateMany).toHaveBeenCalledWith({
+        where: { id: 1, status: PaymentStatusEnum.PENDING },
         data: {
           status: PaymentStatusEnum.COMPLETED,
           paidAt: expect.any(Date),
@@ -307,7 +311,8 @@ describe('PaymentService', () => {
         paidAt: new Date(),
       };
       prisma.payment.findUnique.mockResolvedValue(mockPayment);
-      prisma.payment.update.mockResolvedValue(confirmed);
+      prisma.payment.updateMany.mockResolvedValue({ count: 1 });
+      prisma.payment.findUniqueOrThrow.mockResolvedValue(confirmed);
 
       const result = await service.confirmPayment(1, mockAdminUser as any);
       expect(result.status).toBe(PaymentStatusEnum.COMPLETED);
