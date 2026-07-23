@@ -10,7 +10,6 @@ import { ReviewService } from '../review/review.service';
 import { SchedulingService } from '../scheduling/scheduling.service';
 import {
   MatchStatusEnum,
-  UserRolesEnum,
   DoctorSpecialtiesEnum,
   ConsultationStatusEnum,
   TriageLevelEnum,

@@ -7,7 +7,6 @@
  */
 
 import {
-  FastifyAdapter,
   NestFastifyApplication,
 } from '@nestjs/platform-fastify';
 import { MockUser } from './mock-session.helper';

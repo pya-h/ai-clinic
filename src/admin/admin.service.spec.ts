@@ -330,7 +330,7 @@ describe('AdminService', () => {
         verifiedBy: mockAdminUser.id,
       });
 
-      const result = await service.verifyDoctor(
+      await service.verifyDoctor(
         1,
         { approved: true },
         mockAdminUser as any,

@@ -20,7 +20,6 @@ import { DoctorService } from './doctor.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { FileUploadService } from '../file-upload/file-upload.service';
 import {
-  UserRolesEnum,
   DoctorSpecialtiesEnum,
   VisitMethodsEnum,
   DocumentTypeEnum,

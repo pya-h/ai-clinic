@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { SchedulingService, AvailableSlot } from './scheduling.service';
+import { SchedulingService } from './scheduling.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { CalendlyService } from '../calendly/calendly.service';
 import { NurseService } from '../nurse/nurse.service';

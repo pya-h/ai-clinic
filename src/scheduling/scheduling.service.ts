@@ -777,11 +777,30 @@ export class SchedulingService {
         }),
       ]);
 
+    const availByDoctor = new Map<number, typeof allAvailability>();
+    for (const a of allAvailability) {
+      const arr = availByDoctor.get(a.doctorId);
+      if (arr) arr.push(a); else availByDoctor.set(a.doctorId, [a]);
+    }
+    const durByDoctor = new Map<number, typeof allDurations>();
+    for (const d of allDurations) {
+      const arr = durByDoctor.get(d.doctorId);
+      if (arr) arr.push(d); else durByDoctor.set(d.doctorId, [d]);
+    }
+    const excByDoctor = new Map<number, typeof allExceptions>();
+    for (const e of allExceptions) {
+      const arr = excByDoctor.get(e.doctorId);
+      if (arr) arr.push(e); else excByDoctor.set(e.doctorId, [e]);
+    }
+    const aptByDoctor = new Map<number, typeof allAppointments>();
+    for (const a of allAppointments) {
+      const arr = aptByDoctor.get(a.doctorId);
+      if (arr) arr.push(a); else aptByDoctor.set(a.doctorId, [a]);
+    }
+
     for (const doctorId of doctorIds) {
-      const availability = allAvailability.filter(
-        (a) => a.doctorId === doctorId,
-      );
-      const durations = allDurations.filter((d) => d.doctorId === doctorId);
+      const availability = availByDoctor.get(doctorId) ?? [];
+      const durations = durByDoctor.get(doctorId) ?? [];
       if (availability.length === 0 || durations.length === 0) continue;
 
       const weeklySchedule = new Map<
@@ -795,7 +814,7 @@ export class SchedulingService {
       }
 
       const exceptionMap = new Map<string, AvailabilityException>();
-      for (const ex of allExceptions.filter((e) => e.doctorId === doctorId)) {
+      for (const ex of excByDoctor.get(doctorId) ?? []) {
         exceptionMap.set(this.dateToString(ex.date), ex);
       }
 
@@ -803,9 +822,7 @@ export class SchedulingService {
         string,
         { startMin: number; endMin: number }[]
       >();
-      for (const apt of allAppointments.filter(
-        (a) => a.doctorId === doctorId,
-      )) {
+      for (const apt of aptByDoctor.get(doctorId) ?? []) {
         const dateStr = this.dateToString(apt.dateTime);
         const startMin =
           apt.dateTime.getUTCHours() * 60 + apt.dateTime.getUTCMinutes();

@@ -27,7 +27,7 @@ import {
   MockUser,
 } from './helpers/mock-session.helper';
 import { randomUuid } from './helpers/test-data.factory';
-import { UserRolesEnum, ConsultationStatusEnum } from '@prisma/client';
+import { ConsultationStatusEnum } from '@prisma/client';
 import authConfigs from '../src/configs/auth';
 import generalConfigs from '../src/configs/general';
 

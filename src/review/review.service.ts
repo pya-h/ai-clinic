@@ -309,9 +309,16 @@ export class ReviewService {
       }),
     ]);
 
+    const aggMap = new Map(aggs.map((a) => [a.doctorId, a]));
+    const groupMap = new Map<number, typeof groups>();
+    for (const g of groups) {
+      const arr = groupMap.get(g.doctorId);
+      if (arr) arr.push(g); else groupMap.set(g.doctorId, [g]);
+    }
+
     for (const id of uncachedIds) {
-      const agg = aggs.find((a) => a.doctorId === id);
-      const docGroups = groups.filter((g) => g.doctorId === id);
+      const agg = aggMap.get(id);
+      const docGroups = groupMap.get(id) ?? [];
 
       const distribution: Record<1 | 2 | 3 | 4 | 5, number> = {
         1: 0, 2: 0, 3: 0, 4: 0, 5: 0,

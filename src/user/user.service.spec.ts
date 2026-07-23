@@ -15,7 +15,6 @@ import { Test, TestingModule } from '@nestjs/testing';
 import {
   BadRequestException,
   ConflictException,
-  ForbiddenException,
 } from '@nestjs/common';
 import { UserService } from './user.service';
 import { PrismaService } from '../prisma/prisma.service';

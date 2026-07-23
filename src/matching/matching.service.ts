@@ -630,11 +630,9 @@ export class MatchingService {
       where: { matchRequestId },
       select: { doctorId: true },
     });
-    const ids = rejections.map((r) => r.doctorId);
-    if (!ids.includes(currentRejectorId)) {
-      ids.push(currentRejectorId);
-    }
-    return ids;
+    const idSet = new Set(rejections.map((r) => r.doctorId));
+    idSet.add(currentRejectorId);
+    return Array.from(idSet);
   }
 
   async getDoctorUserId(doctorProfileId: number): Promise<string | null> {

@@ -35,8 +35,6 @@ import {
 import {
   ConsultationStatusEnum,
   ConsultationModeEnum,
-  VisitMethodsEnum,
-  UserRolesEnum,
 } from '@prisma/client';
 import authConfigs from '../src/configs/auth';
 import generalConfigs from '../src/configs/general';
@@ -48,8 +46,6 @@ import {
 } from './helpers/mock-session.helper';
 import {
   randomUuid,
-  randomFirstName,
-  randomLastName,
   buildDoctorProfile,
 } from './helpers/test-data.factory';
 

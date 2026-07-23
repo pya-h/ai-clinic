@@ -32,12 +32,12 @@ export class CookieAuthGuard implements CanActivate {
     (request as any).user = user;
 
     if (this.prisma) {
-      return this.verifyUserStatus(user, session, request);
+      return this.verifyUserStatus(user, session);
     }
     return true;
   }
 
-  private async verifyUserStatus(user: any, session: any, request: any): Promise<boolean> {
+  private async verifyUserStatus(user: any, session: any): Promise<boolean> {
     const now = Date.now();
     const cached = CookieAuthGuard.statusCache.get(user.id);
     if (cached && now - cached.checkedAt < CookieAuthGuard.STATUS_TTL) {

@@ -684,7 +684,7 @@ describe('ConsultationService', () => {
       prisma.consultation.findMany.mockResolvedValue([]);
       prisma.consultation.count.mockResolvedValue(0);
 
-      const result = await service.list(doctor as any, filters);
+      await service.list(doctor as any, filters);
 
       expect(prisma.consultation.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -697,7 +697,7 @@ describe('ConsultationService', () => {
       prisma.consultation.findMany.mockResolvedValue([]);
       prisma.consultation.count.mockResolvedValue(0);
 
-      const result = await service.list(admin as any, filters);
+      await service.list(admin as any, filters);
 
       // Admin should have no patientId or doctorId filter
       expect(prisma.consultation.findMany).toHaveBeenCalledWith(

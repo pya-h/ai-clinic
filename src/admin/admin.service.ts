@@ -15,7 +15,7 @@ import { AdminUpdateUserDto } from './dto/admin-update-user.dto';
 import { VerifyDoctorDto } from './dto/verify-doctor.dto';
 import { BanUserDto } from './dto/ban-user.dto';
 import { NotificationService } from '../notification/notification.service';
-import { ConsultationStatusEnum, AppointmentStatusEnum, PaymentStatusEnum } from '@prisma/client';
+import { ConsultationStatusEnum, PaymentStatusEnum } from '@prisma/client';
 
 @Injectable()
 export class AdminService {

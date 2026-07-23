@@ -1,6 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { NursePermissionEnum } from '@prisma/client';
-import { ArrayNotEmpty, IsArray, IsEnum, IsOptional, IsString, IsUUID } from 'class-validator';
+import { ArrayNotEmpty, IsArray, IsEnum, IsOptional, IsUUID } from 'class-validator';
 
 export class AssignNurseDto {
   @ApiProperty({ description: 'User ID to assign as nurse. PATIENT/NONE users are auto-upgraded to NURSE role.' })

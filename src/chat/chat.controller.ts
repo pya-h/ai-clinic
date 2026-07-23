@@ -2,7 +2,6 @@ import {
   Body,
   Controller,
   Get,
-  Logger,
   Param,
   ParseUUIDPipe,
   Post,
@@ -22,8 +21,6 @@ import { PaginationOptionsDto } from '../common/dtos/pagination-options.dto';
 @Controller('chat')
 @UseGuards(CookieAuthGuard)
 export class ChatController {
-  private readonly logger = new Logger(ChatController.name);
-
   constructor(private readonly chatService: ChatService) {}
 
   @Post()

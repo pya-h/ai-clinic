@@ -4,7 +4,6 @@ import {
   Get,
   Headers,
   HttpCode,
-  Logger,
   Param,
   ParseIntPipe,
   Post,
@@ -28,8 +27,6 @@ import { SkipThrottle } from '@nestjs/throttler';
 @ApiTags('Calendly')
 @Controller('calendly')
 export class CalendlyController {
-  private readonly logger = new Logger(CalendlyController.name);
-
   constructor(private readonly calendlyService: CalendlyService) {}
 
   @ApiOperation({

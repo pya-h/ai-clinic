@@ -1,7 +1,6 @@
 import {
   Injectable,
   Logger,
-  BadRequestException,
   ForbiddenException,
   NotFoundException,
   InternalServerErrorException,
@@ -14,7 +13,6 @@ import {
   CalendlyEventType,
   CalendlyEventTypeListResponse,
   CalendlyScheduledEvent,
-  CalendlyInvitee,
   CalendlySchedulingLink,
   CalendlyWebhookEvent,
 } from './types/calendly.types';
@@ -30,7 +28,6 @@ export class CalendlyService {
   private readonly apiKey: string;
   private readonly organizationUri: string;
   private readonly webhookSigningKey: string;
-  private readonly userUri: string;
   private readonly baseUrl = 'https://api.calendly.com';
 
   constructor(
@@ -41,7 +38,6 @@ export class CalendlyService {
     this.apiKey = this.config.get<string>('calendly.apiKey') || '';
     this.organizationUri = this.config.get<string>('calendly.organizationUri') || '';
     this.webhookSigningKey = this.config.get<string>('calendly.webhookSigningKey') || '';
-    this.userUri = this.config.get<string>('calendly.userUri') || '';
   }
 
   isConfigured(): boolean {

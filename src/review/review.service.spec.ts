@@ -9,7 +9,6 @@ import {
   ForbiddenException,
   NotFoundException,
 } from '@nestjs/common';
-import { UserRolesEnum } from '@prisma/client';
 import {
   buildUser,
   buildDoctorUser,

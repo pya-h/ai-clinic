@@ -463,6 +463,7 @@ export class ConsultationService {
     } else if (user.role === UserRolesEnum.DOCTOR) {
       const doctorProfile = await this.prisma.doctorProfile.findUnique({
         where: { userId: user.id },
+        select: { id: true },
       });
       if (!doctorProfile) {
         throw new NotFoundException('Doctor profile not found.');
@@ -505,6 +506,7 @@ export class ConsultationService {
   ): Promise<Consultation[]> {
     const doctorProfile = await this.prisma.doctorProfile.findUnique({
       where: { userId: user.id },
+      select: { id: true },
     });
     if (!doctorProfile) {
       throw new NotFoundException('Doctor profile not found.');
@@ -543,6 +545,7 @@ export class ConsultationService {
     if (user.role === UserRolesEnum.DOCTOR) {
       const doctorProfile = await this.prisma.doctorProfile.findUnique({
         where: { userId: user.id },
+        select: { id: true },
       });
       if (!doctorProfile || consultation.doctorId !== doctorProfile.id) {
         throw new ForbiddenException(
@@ -579,6 +582,7 @@ export class ConsultationService {
 
     const doctorProfile = await this.prisma.doctorProfile.findUnique({
       where: { userId: user.id },
+      select: { id: true },
     });
     if (!doctorProfile || consultation.doctorId !== doctorProfile.id) {
       throw new ForbiddenException(

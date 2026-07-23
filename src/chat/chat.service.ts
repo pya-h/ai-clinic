@@ -2,7 +2,6 @@ import {
   BadRequestException,
   ForbiddenException,
   Injectable,
-  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
@@ -20,12 +19,6 @@ import { NurseService } from '../nurse/nurse.service';
 
 @Injectable()
 export class ChatService {
-  private readonly logger = new Logger(ChatService.name);
-
-  /**
-   * Presence tracking: userId → Set of socketIds.
-   * A user can be connected from multiple tabs/devices.
-   */
   private onlineUsers: Map<string, Set<string>> = new Map();
 
   constructor(
@@ -124,9 +117,6 @@ export class ChatService {
     return chat;
   }
 
-  /**
-   * Get all chats for a user with the last message and unread count.
-   */
   async getUserChats(
     userId: string,
     skip = 0,
@@ -196,9 +186,6 @@ export class ChatService {
     return { chats: enrichedChats, total };
   }
 
-  /**
-   * Get a single chat by ID, verifying the user is a participant.
-   */
   async getChatById(chatId: string, userId: string): Promise<any> {
     const chat = await this.prisma.chat.findUnique({
       where: { id: chatId },
@@ -226,9 +213,6 @@ export class ChatService {
     };
   }
 
-  /**
-   * Get all chat IDs for a user (used by gateway to join rooms).
-   */
   async getUserChatIds(userId: string): Promise<string[]> {
     const participants = await this.prisma.chatParticipant.findMany({
       where: { userId },
@@ -255,9 +239,6 @@ export class ChatService {
 
   // ─────────────────────────── Message Management ───────────────────────────
 
-  /**
-   * Send a message in a chat.
-   */
   async sendMessage(
     chatId: string,
     senderId: string,
@@ -328,9 +309,6 @@ export class ChatService {
     return message;
   }
 
-  /**
-   * Get paginated messages for a chat, newest first.
-   */
   async getMessages(
     chatId: string,
     userId: string,
@@ -380,10 +358,6 @@ export class ChatService {
     };
   }
 
-  /**
-   * Mark all messages up to a given messageId as read by the user.
-   * Updates the readBy JSON on each unread message.
-   */
   async markAsRead(
     chatId: string,
     userId: string,
@@ -442,9 +416,6 @@ export class ChatService {
     });
   }
 
-  /**
-   * Edit a message (only the sender can edit, and only TEXT messages).
-   */
   async editMessage(
     messageId: bigint,
     userId: string,
@@ -486,9 +457,6 @@ export class ChatService {
     });
   }
 
-  /**
-   * Soft-delete a message (only the sender can delete).
-   */
   async deleteMessage(
     messageId: bigint,
     userId: string,
@@ -649,9 +617,6 @@ export class ChatService {
     }
   }
 
-  /**
-   * Find an existing (non-closed) chat between two users.
-   */
   private async findExistingChat(
     userId1: string,
     userId2: string,
@@ -670,9 +635,6 @@ export class ChatService {
     });
   }
 
-  /**
-   * Assert the user is a participant in the chat.
-   */
   private assertParticipant(
     chat: Chat & { parties: Array<{ userId: string }> },
     userId: string,
@@ -683,9 +645,6 @@ export class ChatService {
     }
   }
 
-  /**
-   * Compute unread indicator (simple: if last message isn't from the user and lastSeenAt is before createdAt).
-   */
   private computeUnreadIndicator(
     lastMessage: any,
     myParticipant: any,
@@ -704,9 +663,6 @@ export class ChatService {
     return 1;
   }
 
-  /**
-   * Serialize a message — BigInt id → string for JSON compatibility.
-   */
   serializeMessage(message: any): any {
     return {
       ...message,
@@ -721,9 +677,6 @@ export class ChatService {
     };
   }
 
-  /**
-   * Get participant user IDs for a chat room.
-   */
   async getChatParticipantUserIds(chatId: string): Promise<string[]> {
     const participants = await this.prisma.chatParticipant.findMany({
       where: { chatId },
@@ -732,9 +685,6 @@ export class ChatService {
     return participants.map((p) => p.userId);
   }
 
-  /**
-   * Shared user select fields (exclude sensitive data).
-   */
   private userSelect() {
     return {
       id: true,

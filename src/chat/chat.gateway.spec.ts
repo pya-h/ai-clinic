@@ -18,13 +18,6 @@ describe('ChatGateway', () => {
     isActive: true,
   };
 
-  const mockUser2 = {
-    id: 'user-2',
-    firstname: 'Jane',
-    lastname: 'Smith',
-    isActive: true,
-  };
-
   const createMockSocket = (user: any = mockUser) => ({
     data: { user },
     id: 'socket-1',

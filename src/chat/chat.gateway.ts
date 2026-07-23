@@ -154,10 +154,6 @@ export class ChatGateway
 
   // ─────────────────────────── Events ───────────────────────────
 
-  /**
-   * Handle incoming chat message.
-   * Saves to DB and broadcasts to all participants in the room.
-   */
   @SubscribeMessage('chat:message')
   async handleMessage(
     @ConnectedSocket() client: Socket,
@@ -200,7 +196,6 @@ export class ChatGateway
 
       const serialized = this.chatService.serializeMessage(message);
 
-      // Broadcast to all participants in the chat room
       this.server.to(`chat:${payload.chatId}`).emit('chat:message', {
         message: serialized,
       });
@@ -221,10 +216,6 @@ export class ChatGateway
     }
   }
 
-  /**
-   * Handle typing indicator.
-   * Broadcasts to other participants in the chat room.
-   */
   @SubscribeMessage('chat:typing')
   async handleTyping(
     @ConnectedSocket() client: Socket,
@@ -240,7 +231,6 @@ export class ChatGateway
 
     await this.chatService.assertChatParticipant(payload.chatId, user.id);
 
-    // Broadcast to others (not back to sender)
     client.to(`chat:${payload.chatId}`).emit('chat:typing', {
       userId: user.id,
       firstname: user.firstname,
@@ -248,10 +238,6 @@ export class ChatGateway
     });
   }
 
-  /**
-   * Handle read receipt.
-   * Marks messages as read in DB and notifies other participants.
-   */
   @SubscribeMessage('chat:read')
   async handleRead(
     @ConnectedSocket() client: Socket,
@@ -272,7 +258,6 @@ export class ChatGateway
         BigInt(payload.messageId),
       );
 
-      // Notify others about the read receipt
       client.to(`chat:${payload.chatId}`).emit('chat:read', {
         userId: user.id,
         messageId: payload.messageId,
@@ -287,9 +272,6 @@ export class ChatGateway
     }
   }
 
-  /**
-   * Handle message edit.
-   */
   @SubscribeMessage('chat:edit')
   async handleEdit(
     @ConnectedSocket() client: Socket,
@@ -317,7 +299,6 @@ export class ChatGateway
 
       const serialized = this.chatService.serializeMessage(message);
 
-      // Find the chat to broadcast to
       this.server.to(`chat:${message.chatId}`).emit('chat:edited', {
         message: serialized,
       });
@@ -330,9 +311,6 @@ export class ChatGateway
     }
   }
 
-  /**
-   * Handle message deletion (soft delete).
-   */
   @SubscribeMessage('chat:delete')
   async handleDelete(
     @ConnectedSocket() client: Socket,
@@ -368,9 +346,6 @@ export class ChatGateway
     }
   }
 
-  /**
-   * Client explicitly joins a chat room (e.g. when viewing a chat).
-   */
   @SubscribeMessage('chat:join')
   async handleJoin(
     @ConnectedSocket() client: Socket,
@@ -389,9 +364,6 @@ export class ChatGateway
     client.join(`chat:${payload.chatId}`);
   }
 
-  /**
-   * Client explicitly leaves a chat room.
-   */
   @SubscribeMessage('chat:leave')
   handleLeave(
     @ConnectedSocket() client: Socket,
@@ -410,28 +382,13 @@ export class ChatGateway
 
   // ─────────────────────────── Helpers ───────────────────────────
 
-  /**
-   * Utility: let the gateway add a user to a chat room in real-time
-   * (e.g., when a new chat is created via REST API).
-   */
   addUserToRoom(userId: string, chatId: string): void {
     const socketIds = this.chatService.getSocketIds(userId);
     for (const socketId of socketIds) {
-      // Use Socket.IO's server-side room API to join the user's socket
       this.server.in(socketId).socketsJoin(`chat:${chatId}`);
     }
   }
 
-  /**
-   * Extract user from Socket.IO handshake by parsing the secure session cookie.
-   *
-   * @fastify/secure-session stores data in an encrypted cookie. We need to
-   * parse it the same way the Fastify plugin does — using sodium-native
-   * with a key derived from SESSION_SECRET.
-   *
-   * For WebSocket auth, we attempt to parse the signed session cookie.
-   * Since the WS handshake is an HTTP upgrade, the cookie header is available.
-   */
   private async checkUserStatus(userId: string): Promise<void> {
     const now = Date.now();
     const cached = this.userStatusCache.get(userId);
@@ -477,20 +434,14 @@ export class ChatGateway
       const cookieName =
         this.configService.get<string>('auth.sessionCookieName') || 'sid';
 
-      // Parse the cookie string
       const cookies = this.parseCookies(cookieHeader);
       const sessionCookie = cookies[cookieName];
       if (!sessionCookie) return null;
 
-      // Decode the secure session
       const sessionSecret = this.configService.getOrThrow<string>(
         'auth.sessionSecret',
       );
       const key = createHash('sha256').update(sessionSecret).digest();
-
-      // @fastify/secure-session uses sodium-native to encrypt.
-      // The cookie value is base64-encoded: nonce (24 bytes) + cipher.
-      // We use sodium's crypto_secretbox_open_easy to decrypt.
       const sodium = require('sodium-native');
       const raw = Buffer.from(sessionCookie, 'base64');
       if (raw.length < 25) return null; // nonce(24) + at least 1 byte
@@ -516,9 +467,6 @@ export class ChatGateway
     }
   }
 
-  /**
-   * Simple cookie string parser.
-   */
   private parseCookies(cookieHeader: string): Record<string, string> {
     const cookies: Record<string, string> = {};
     cookieHeader.split(';').forEach((cookie) => {

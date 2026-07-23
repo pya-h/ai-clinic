@@ -29,7 +29,9 @@ export class UserService {
   }
 
   async userExists(userId: string): Promise<boolean> {
-    return Boolean(await this.getById(userId));
+    return Boolean(
+      await this.prisma.user.findUnique({ where: { id: userId }, select: { id: true } }),
+    );
   }
 
   async emailExists(email: string): Promise<boolean> {
