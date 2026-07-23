@@ -409,6 +409,8 @@ export class ChatService {
           deletedAt: null,
         },
         select: { id: true, readBy: true },
+        orderBy: { id: 'desc' },
+        take: 500,
       });
 
       const now = new Date().toISOString();

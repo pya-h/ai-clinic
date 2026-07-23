@@ -12,9 +12,11 @@ export class EmailChannel {
     private readonly configService: ConfigService,
     private readonly prisma: PrismaService,
   ) {
+    const port = this.configService.get<number>('notification.smtp.port');
     this.transporter = nodemailer.createTransport({
       host: this.configService.get<string>('notification.smtp.host'),
-      port: this.configService.get<number>('notification.smtp.port'),
+      port,
+      secure: port === 465,
       auth: {
         user: this.configService.get<string>('notification.smtp.user'),
         pass: this.configService.get<string>('notification.smtp.pass'),

@@ -21,8 +21,12 @@ export class WebPushChannel {
       'notification.vapid.privateKey',
     );
 
-    if (vapidPublicKey && vapidPrivateKey) {
-      webpush.setVapidDetails(vapidSubject ?? '', vapidPublicKey, vapidPrivateKey);
+    if (vapidPublicKey && vapidPrivateKey && vapidSubject) {
+      webpush.setVapidDetails(vapidSubject, vapidPublicKey, vapidPrivateKey);
+    } else if (vapidPublicKey && vapidPrivateKey) {
+      this.logger.warn(
+        'VAPID subject not configured — web push notifications disabled',
+      );
     } else {
       this.logger.warn(
         'VAPID keys not configured — web push notifications disabled',
