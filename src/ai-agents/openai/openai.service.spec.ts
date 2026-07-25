@@ -191,7 +191,7 @@ describe('OpenAiService', () => {
       expect(result).toBe('');
     });
 
-    it('should use userId as chatId', async () => {
+    it('should use unique chatId per new chat (not userId)', async () => {
       mockCreate.mockResolvedValue({
         choices: [{ message: { content: 'Hi' } }],
       });
@@ -199,7 +199,7 @@ describe('OpenAiService', () => {
       await service.openNewChat('user-123', 'Hello');
 
       const history = await service.getChatHistory('user-123');
-      expect(history.length).toBeGreaterThan(1);
+      expect(history.length).toBe(1);
     });
   });
 

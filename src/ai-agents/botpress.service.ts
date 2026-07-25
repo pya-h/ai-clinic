@@ -107,10 +107,11 @@ export class BotpressService {
         }).catch((err) => this.logger.warn('Failed to persist botpress userKey:', err));
       }
 
-      const ctx = await this.cacheService.set<IUserContext>(
+      const ctx: IUserContext = { client };
+      await this.cacheService.set<IUserContext>(
         this.cachingOptions.group,
         user.id,
-        { client },
+        ctx,
         this.cachingOptions.ttl,
       );
 
@@ -472,7 +473,7 @@ export class BotpressService {
     );
     if (ctx?.listener) {
       try {
-        ctx.listener.disconnect?.();
+        await ctx.listener.disconnect?.();
       } catch (error) {
         this.logger.warn(
           `Error disconnecting listener for user ${userId}:`,

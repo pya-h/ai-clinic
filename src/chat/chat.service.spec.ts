@@ -167,6 +167,39 @@ describe('ChatService', () => {
       ).rejects.toThrow(BadRequestException);
     });
 
+    it('should reject when initiator is deactivated', async () => {
+      const deactivated = { ...mockPatient, isActive: false };
+      prisma.user.findUnique
+        .mockResolvedValueOnce(deactivated)
+        .mockResolvedValueOnce(mockDoctor);
+
+      await expect(
+        service.createChat(patientId, { participantId: doctorId }),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('should reject when initiator is banned', async () => {
+      const banned = { ...mockPatient, isBanned: true };
+      prisma.user.findUnique
+        .mockResolvedValueOnce(banned)
+        .mockResolvedValueOnce(mockDoctor);
+
+      await expect(
+        service.createChat(patientId, { participantId: doctorId }),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('should reject when participant is banned', async () => {
+      const banned = { ...mockDoctor, isBanned: true };
+      prisma.user.findUnique
+        .mockResolvedValueOnce(mockPatient)
+        .mockResolvedValueOnce(banned);
+
+      await expect(
+        service.createChat(patientId, { participantId: doctorId }),
+      ).rejects.toThrow(BadRequestException);
+    });
+
     it('should reject patient↔patient chat', async () => {
       const otherPatientId = uuid();
       const otherPatient = createMockUser({
@@ -386,6 +419,7 @@ describe('ChatService', () => {
   describe('sendMessage', () => {
     it('should send a text message', async () => {
       prisma.chat.findUnique.mockResolvedValue(mockChat);
+      prisma.user.findUnique.mockResolvedValue({ isActive: true, isBanned: false });
       prisma.message.create.mockResolvedValue(mockMessage);
       prisma.chat.update.mockResolvedValue(mockChat);
 
@@ -432,8 +466,27 @@ describe('ChatService', () => {
       ).rejects.toThrow(ForbiddenException);
     });
 
+    it('should throw ForbiddenException when sender is deactivated', async () => {
+      prisma.chat.findUnique.mockResolvedValue(mockChat);
+      prisma.user.findUnique.mockResolvedValue({ isActive: false, isBanned: false });
+
+      await expect(
+        service.sendMessage(chatId, patientId, { content: 'hi' }),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('should throw ForbiddenException when sender is banned', async () => {
+      prisma.chat.findUnique.mockResolvedValue(mockChat);
+      prisma.user.findUnique.mockResolvedValue({ isActive: true, isBanned: true });
+
+      await expect(
+        service.sendMessage(chatId, patientId, { content: 'hi' }),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
     it('should handle repliedToId correctly', async () => {
       prisma.chat.findUnique.mockResolvedValue(mockChat);
+      prisma.user.findUnique.mockResolvedValue({ isActive: true, isBanned: false });
       prisma.message.findUnique.mockResolvedValue({
         id: BigInt(5),
         chatId,

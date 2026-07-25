@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Inject,
   Injectable,
@@ -95,6 +96,16 @@ export class AdminService {
 
     if (!currentUser.isSuperAdmin && (target.isAdmin || target.isSuperAdmin)) {
       throw new ForbiddenException('Only superadmins can modify admin accounts.');
+    }
+
+    if (dto.email) {
+      const existingByEmail = await this.prisma.user.findFirst({
+        where: { email: { equals: dto.email, mode: 'insensitive' }, id: { not: userId } },
+        select: { id: true },
+      });
+      if (existingByEmail) {
+        throw new ConflictException('This email is already in use.');
+      }
     }
 
     return this.prisma.user.update({

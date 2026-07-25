@@ -57,8 +57,17 @@ export class ChatService {
     if (!participant) {
       throw new NotFoundException('Participant not found');
     }
+    if (!initiator.isActive) {
+      throw new ForbiddenException('Your account is deactivated');
+    }
+    if (initiator.isBanned) {
+      throw new ForbiddenException('Your account is banned');
+    }
     if (!participant.isActive) {
       throw new BadRequestException('Participant account is deactivated');
+    }
+    if (participant.isBanned) {
+      throw new BadRequestException('Participant account is banned');
     }
 
     // Enforce chat rules (admins bypass)
@@ -258,6 +267,17 @@ export class ChatService {
     }
 
     this.assertParticipant(chat, senderId);
+
+    const sender = await this.prisma.user.findUnique({
+      where: { id: senderId },
+      select: { isActive: true, isBanned: true },
+    });
+    if (!sender || !sender.isActive) {
+      throw new ForbiddenException('Your account is deactivated');
+    }
+    if (sender.isBanned) {
+      throw new ForbiddenException('Your account is banned');
+    }
 
     const messageData: any = {
       chatId,

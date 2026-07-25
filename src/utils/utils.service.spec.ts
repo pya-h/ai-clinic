@@ -78,7 +78,7 @@ describe('UtilsService', () => {
     it('should capitalize first letter of each word', () => {
       expect(service.toCapitalCase('hello world')).toBe('Hello World');
       expect(service.toCapitalCase('patient')).toBe('Patient');
-      expect(service.toCapitalCase('DOCTOR')).toBe('DOCTOR'); // already caps
+      expect(service.toCapitalCase('DOCTOR')).toBe('Doctor');
     });
 
     it('should handle empty string', () => {
@@ -137,7 +137,7 @@ describe('UtilsService', () => {
       for (let i = 0; i < 50; i++) {
         const num = service.generateRandomNumberInRange(min, max);
         expect(num).toBeGreaterThanOrEqual(min);
-        expect(num).toBeLessThan(max);
+        expect(num).toBeLessThanOrEqual(max);
       }
     });
 
@@ -150,7 +150,7 @@ describe('UtilsService', () => {
       for (let i = 0; i < 20; i++) {
         const num = service.generateRandomNumberInRange(10, 1);
         expect(num).toBeGreaterThanOrEqual(1);
-        expect(num).toBeLessThan(10);
+        expect(num).toBeLessThanOrEqual(10);
       }
     });
   });

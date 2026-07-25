@@ -109,7 +109,7 @@ export class FileUploadService {
    * Validate file MIME type before reading the full buffer.
    */
   private validateFile(file: MultipartFile): void {
-    if (!file || !file.mimetype) {
+    if (!file || !file.mimetype || !file.filename) {
       throw new BadRequestException('No file provided.');
     }
 

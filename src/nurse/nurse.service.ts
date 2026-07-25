@@ -44,41 +44,57 @@ export class NurseService {
       throw new BadRequestException('Cannot assign an admin as a nurse.');
     }
 
-    try {
-      const assignment = await this.prisma.$transaction(async (tx) => {
-        if (targetUser.role !== UserRolesEnum.NURSE) {
-          await tx.user.update({
-            where: { id: targetUser.id },
-            data: { role: UserRolesEnum.NURSE },
-          });
-          this.logger.log(
-            `Upgraded user ${targetUser.id} role from ${targetUser.role} to NURSE`,
-          );
-        }
+    const assignment = await this.prisma.$transaction(async (tx) => {
+      if (targetUser.role !== UserRolesEnum.NURSE) {
+        await tx.user.update({
+          where: { id: targetUser.id },
+          data: { role: UserRolesEnum.NURSE },
+        });
+        this.logger.log(
+          `Upgraded user ${targetUser.id} role from ${targetUser.role} to NURSE`,
+        );
+      }
 
-        return tx.doctorNurseAssignment.create({
-          data: {
+      const existing = await tx.doctorNurseAssignment.findUnique({
+        where: {
+          doctorId_nurseId: {
             doctorId: doctorProfile.id,
             nurseId: dto.nurseId,
-            permissions: dto.permissions ?? [NursePermissionEnum.VIEW_PATIENTS],
+          },
+        },
+      });
+
+      if (existing) {
+        if (existing.isActive) {
+          throw new ConflictException(
+            'This nurse is already assigned to you.',
+          );
+        }
+        return tx.doctorNurseAssignment.update({
+          where: { id: existing.id },
+          data: {
             isActive: true,
+            permissions: dto.permissions ?? [NursePermissionEnum.VIEW_PATIENTS],
           },
           include: this.assignmentInclude(),
         });
-      });
-
-      this.logger.log(
-        `Doctor ${doctorProfile.id} assigned nurse ${dto.nurseId}`,
-      );
-      return assignment;
-    } catch (error: any) {
-      if (error.code === 'P2002') {
-        throw new ConflictException(
-          'This nurse is already assigned to you.',
-        );
       }
-      throw error;
-    }
+
+      return tx.doctorNurseAssignment.create({
+        data: {
+          doctorId: doctorProfile.id,
+          nurseId: dto.nurseId,
+          permissions: dto.permissions ?? [NursePermissionEnum.VIEW_PATIENTS],
+          isActive: true,
+        },
+        include: this.assignmentInclude(),
+      });
+    });
+
+    this.logger.log(
+      `Doctor ${doctorProfile.id} assigned nurse ${dto.nurseId}`,
+    );
+    return assignment;
   }
 
   async updatePermissions(
@@ -96,6 +112,9 @@ export class NurseService {
     }
     if (assignment.doctorId !== doctorProfile.id) {
       throw new ForbiddenException('You do not own this assignment.');
+    }
+    if (!assignment.isActive) {
+      throw new BadRequestException('Cannot update permissions on an inactive assignment.');
     }
 
     return this.prisma.doctorNurseAssignment.update({

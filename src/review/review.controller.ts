@@ -51,8 +51,7 @@ export class ReviewController {
   }
 
   @ApiOperation({ description: 'Delete own review (or admin can delete any).' })
-  @UseGuards(CookieAuthGuard, RolesGuard)
-  @Roles(UserRolesEnum.PATIENT)
+  @UseGuards(CookieAuthGuard)
   @HttpCode(HttpStatus.NO_CONTENT)
   @Delete(':id')
   async delete(

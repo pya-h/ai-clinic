@@ -24,7 +24,7 @@ export class UtilsService {
     if (min > max) {
       [min, max] = [max, min];
     }
-    return Math.floor(Math.random() * (max - min)) + min;
+    return Math.floor(Math.random() * (max - min + 1)) + min;
   }
 
   approximate(
@@ -37,7 +37,7 @@ export class UtilsService {
   }
 
   toCapitalCase(word: string): string {
-    return word.replace(/\b\w/g, (char) => char.toUpperCase());
+    return word.toLowerCase().replace(/\b\w/g, (char) => char.toUpperCase());
   }
 
   truncateString(str: string, maxLength: number = 20): string {

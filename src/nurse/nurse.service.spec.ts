@@ -147,14 +147,48 @@ describe('NurseService', () => {
       ).rejects.toThrow(BadRequestException);
     });
 
-    it('should throw ConflictException on duplicate assignment', async () => {
+    it('should throw ConflictException on duplicate active assignment', async () => {
       prisma.doctorProfile.findUnique.mockResolvedValue(doctorProfile);
       prisma.user.findUnique.mockResolvedValue(nurseUser);
-      prisma.doctorNurseAssignment.create.mockRejectedValue({ code: 'P2002' });
+      prisma.doctorNurseAssignment.findUnique.mockResolvedValue({
+        id: 1,
+        doctorId: doctorProfile.id,
+        nurseId: nurseUser.id,
+        isActive: true,
+      });
 
       await expect(
         service.assignNurse(doctorUser as any, { nurseId: nurseUser.id }),
       ).rejects.toThrow(ConflictException);
+    });
+
+    it('should reactivate a soft-deleted assignment', async () => {
+      prisma.doctorProfile.findUnique.mockResolvedValue(doctorProfile);
+      prisma.user.findUnique.mockResolvedValue(nurseUser);
+      prisma.doctorNurseAssignment.findUnique.mockResolvedValue({
+        id: 1,
+        doctorId: doctorProfile.id,
+        nurseId: nurseUser.id,
+        isActive: false,
+      });
+      const reactivated = {
+        id: 1,
+        doctorId: doctorProfile.id,
+        nurseId: nurseUser.id,
+        isActive: true,
+        permissions: [NursePermissionEnum.VIEW_PATIENTS],
+      };
+      prisma.doctorNurseAssignment.update.mockResolvedValue(reactivated);
+
+      const result = await service.assignNurse(doctorUser as any, { nurseId: nurseUser.id });
+
+      expect(result).toEqual(reactivated);
+      expect(prisma.doctorNurseAssignment.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 1 },
+          data: expect.objectContaining({ isActive: true }),
+        }),
+      );
     });
   });
 
@@ -201,6 +235,20 @@ describe('NurseService', () => {
           permissions: [NursePermissionEnum.VIEW_PATIENTS],
         }),
       ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('should throw BadRequestException when assignment is inactive', async () => {
+      prisma.doctorProfile.findUnique.mockResolvedValue(doctorProfile);
+      prisma.doctorNurseAssignment.findUnique.mockResolvedValue({
+        ...assignment,
+        isActive: false,
+      });
+
+      await expect(
+        service.updatePermissions(doctorUser as any, 1, {
+          permissions: [NursePermissionEnum.MANAGE_SCHEDULE],
+        }),
+      ).rejects.toThrow(BadRequestException);
     });
   });
 

@@ -11,23 +11,23 @@ import {
 } from 'class-validator';
 
 export class UpdateUserDto {
-  @ApiProperty({ description: 'User email' })
+  @ApiPropertyOptional({ description: 'User email' })
   @IsOptional()
   @IsEmail({}, { message: 'Email field must be a valid email address!' })
   @Transform(({ value }) => value?.toLowerCase())
-  @MaxLength(256, {
-    message: 'Email address can not be longer than 256 characters!',
+  @MaxLength(255, {
+    message: 'Email address can not be longer than 255 characters!',
   })
   email?: string;
 
-  @ApiProperty({ description: 'The displaying name of the user' })
+  @ApiPropertyOptional({ description: 'The displaying name of the user' })
   @IsOptional()
   @IsString()
   @MinLength(3, { message: 'First name is too short!' })
   @MaxLength(100)
   firstname?: string;
 
-  @ApiProperty({ description: 'The displaying lastname of the user' })
+  @ApiPropertyOptional({ description: 'The displaying lastname of the user' })
   @IsOptional()
   @IsString()
   @MinLength(3, { message: 'Last name is too short!' })

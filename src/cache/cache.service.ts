@@ -121,6 +121,7 @@ export class CacheService {
     if (this.delEvents[group] && !bypassDeleteEvent) {
       await this.delEvents[group](key);
     }
+    this.keysWithDelEvent.delete(`${group}:${key}`);
     return this.cacheManager.del(`${group}:${key}`);
   }
 
@@ -194,7 +195,9 @@ export class CacheService {
     await Promise.all(
       passedDues.map(async (item) => {
         try {
-          await this.delEvents[item.group](item.key);
+          if (this.delEvents[item.group]) {
+            await this.delEvents[item.group](item.key);
+          }
         } catch (error) {
           this.logger.error(
             `Failed to execute TTL event for ${item.group}:${item.key}:`,

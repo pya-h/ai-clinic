@@ -650,7 +650,6 @@ describe('MatchingService', () => {
         status: MatchStatusEnum.MATCHED,
       };
       prisma.matchRequest.findUnique.mockResolvedValue(matchData);
-      prisma.matchRequest.findUniqueOrThrow.mockResolvedValue(matchData);
       prisma.consultation.create.mockResolvedValue({
         id: consultationId,
         patientId: patient.id,
@@ -713,7 +712,6 @@ describe('MatchingService', () => {
         status: MatchStatusEnum.SEARCHING, // wrong status
       };
       prisma.matchRequest.findUnique.mockResolvedValue(matchData);
-      prisma.matchRequest.findUniqueOrThrow.mockResolvedValue(matchData);
 
       await expect(
         service.acceptMatch(requestId, doctor as any),
@@ -738,7 +736,6 @@ describe('MatchingService', () => {
         status: MatchStatusEnum.MATCHED,
       };
       prisma.matchRequest.findUnique.mockResolvedValue(matchData);
-      prisma.matchRequest.findUniqueOrThrow.mockResolvedValue(matchData);
       prisma.consultation.create.mockResolvedValue({
         id: consultationId,
         patientId: patient.id,
@@ -784,7 +781,6 @@ describe('MatchingService', () => {
         status: MatchStatusEnum.MATCHED,
       };
       prisma.matchRequest.findUnique.mockResolvedValue(matchData);
-      prisma.matchRequest.findUniqueOrThrow.mockResolvedValue(matchData);
       const updated = {
         id: requestId,
         status: MatchStatusEnum.SEARCHING,
@@ -839,7 +835,6 @@ describe('MatchingService', () => {
         status: MatchStatusEnum.CANCELLED,
       };
       prisma.matchRequest.findUnique.mockResolvedValue(matchData);
-      prisma.matchRequest.findUniqueOrThrow.mockResolvedValue(matchData);
 
       await expect(
         service.rejectMatch(requestId, doctor as any),
@@ -856,7 +851,6 @@ describe('MatchingService', () => {
         status: MatchStatusEnum.MATCHED,
       };
       prisma.matchRequest.findUnique.mockResolvedValue(matchData);
-      prisma.matchRequest.findUniqueOrThrow.mockResolvedValue(matchData);
       prisma.matchRequest.update.mockResolvedValue({
         id: requestId,
         status: MatchStatusEnum.SEARCHING,

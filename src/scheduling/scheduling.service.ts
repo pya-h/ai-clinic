@@ -149,15 +149,24 @@ export class SchedulingService {
       throw new BadRequestException('startTime must be before endTime.');
     }
 
-    return this.prisma.doctorAvailability.update({
-      where: { id },
-      data: {
-        ...(dto.dayOfWeek !== undefined && { dayOfWeek: dto.dayOfWeek }),
-        ...(dto.startTime !== undefined && { startTime: dto.startTime }),
-        ...(dto.endTime !== undefined && { endTime: dto.endTime }),
-        ...(dto.isActive !== undefined && { isActive: dto.isActive }),
-      },
-    });
+    try {
+      return await this.prisma.doctorAvailability.update({
+        where: { id },
+        data: {
+          ...(dto.dayOfWeek !== undefined && { dayOfWeek: dto.dayOfWeek }),
+          ...(dto.startTime !== undefined && { startTime: dto.startTime }),
+          ...(dto.endTime !== undefined && { endTime: dto.endTime }),
+          ...(dto.isActive !== undefined && { isActive: dto.isActive }),
+        },
+      });
+    } catch (error: any) {
+      if (error.code === 'P2002') {
+        throw new ConflictException(
+          'Availability already exists for this day and start time.',
+        );
+      }
+      throw error;
+    }
   }
 
   async deleteAvailability(id: number, doctorId: number): Promise<void> {
@@ -378,6 +387,9 @@ export class SchedulingService {
     const slots: AvailableSlot[] = [];
     const current = new Date(startDate);
     const end = new Date(endDate);
+    const now = new Date();
+    const todayStr = this.dateToString(now);
+    const nowMinutes = now.getUTCHours() * 60 + now.getUTCMinutes();
 
     while (current <= end) {
       const dateStr = this.dateToString(current);
@@ -425,7 +437,8 @@ export class SchedulingService {
               (apt) => slotStart < apt.endMin && slotEnd > apt.startMin,
             );
 
-            if (!overlaps) {
+            const isToday = dateStr === todayStr;
+            if (!overlaps && !(isToday && slotStart < nowMinutes)) {
               slots.push({
                 date: dateStr,
                 startTime: this.minutesToTime(slotStart),

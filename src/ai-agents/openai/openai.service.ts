@@ -1,5 +1,6 @@
 import { Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { randomUUID } from 'crypto';
 import OpenAI from 'openai';
 import { TOpenAiMessage } from './types/openai-message.type';
 import { OpenAiChatRoles } from './enums/openai-roles.enum';
@@ -79,9 +80,9 @@ export class OpenAiService {
     return result;
   }
 
-  async openNewChat(userId: string, message: string): Promise<string> {
-    // TODO: Create a new chat
-    return (await this.runCompletion(userId, message)).choices[0]
+  async openNewChat(_userId: string, message: string): Promise<string> {
+    const chatId = randomUUID();
+    return (await this.runCompletion(chatId, message)).choices[0]
       .message.content ?? '';
   }
 }

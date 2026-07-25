@@ -97,7 +97,7 @@ export class MatchingService {
     const doctors = await this.prisma.doctorProfile.findMany({
       where: {
         verified: true,
-        user: { isActive: true },
+        user: { isActive: true, isBanned: false },
         ...(criteria.excludeDoctorIds?.length
           ? { id: { notIn: criteria.excludeDoctorIds } }
           : {}),
@@ -300,25 +300,27 @@ export class MatchingService {
       throw new NotFoundException('Doctor profile not found.');
     }
 
-    const request = await this.getByIdRaw(matchRequestId);
-
-    if (request.matchedDoctorId !== doctorProfile.id) {
-      throw new ForbiddenException(
-        'This match request is not assigned to you.',
-      );
-    }
-
     const [consultation, updated] = await this.prisma.$transaction(async (tx) => {
-      const fresh = await tx.matchRequest.findUniqueOrThrow({
+      const fresh = await tx.matchRequest.findUnique({
         where: { id: matchRequestId },
       });
+      if (!fresh) {
+        throw new NotFoundException('Match request not found.');
+      }
+
+      if (fresh.matchedDoctorId !== doctorProfile.id) {
+        throw new ForbiddenException(
+          'This match request is not assigned to you.',
+        );
+      }
+
       this.validateTransition(fresh.status, MatchStatusEnum.CONSULTATION_CREATED);
 
       const cons = await tx.consultation.create({
         data: {
-          patientId: request.patientId,
+          patientId: fresh.patientId,
           doctorId: doctorProfile.id,
-          soapId: request.soapId ?? null,
+          soapId: fresh.soapId ?? null,
           status: ConsultationStatusEnum.PENDING_DOCTOR_REVIEW,
         },
       });
@@ -359,18 +361,20 @@ export class MatchingService {
       throw new NotFoundException('Doctor profile not found.');
     }
 
-    const request = await this.getByIdRaw(matchRequestId);
-
-    if (request.matchedDoctorId !== doctorProfile.id) {
-      throw new ForbiddenException(
-        'This match request is not assigned to you.',
-      );
-    }
-
     const updated = await this.prisma.$transaction(async (tx) => {
-      const fresh = await tx.matchRequest.findUniqueOrThrow({
+      const fresh = await tx.matchRequest.findUnique({
         where: { id: matchRequestId },
       });
+      if (!fresh) {
+        throw new NotFoundException('Match request not found.');
+      }
+
+      if (fresh.matchedDoctorId !== doctorProfile.id) {
+        throw new ForbiddenException(
+          'This match request is not assigned to you.',
+        );
+      }
+
       this.validateTransition(fresh.status, MatchStatusEnum.SEARCHING);
 
       await tx.matchRejection.create({
@@ -392,8 +396,8 @@ export class MatchingService {
     const previouslyRejected = await this.getRejectedDoctorIds(matchRequestId, doctorProfile.id);
 
     const nextDoctors = await this.scoreDoctors({
-      specialty: request.specialty ?? undefined,
-      triageLevel: request.triageLevel ?? undefined,
+      specialty: updated.specialty ?? undefined,
+      triageLevel: updated.triageLevel ?? undefined,
       excludeDoctorIds: previouslyRejected,
     });
 
