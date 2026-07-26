@@ -193,10 +193,18 @@ describe('DoctorService', () => {
     it('should return paginated verified doctors with no filters', async () => {
       prisma.doctorProfile.findMany.mockResolvedValue(mockProfiles);
       prisma.doctorProfile.count.mockResolvedValue(1);
+      prisma.doctorReview.groupBy.mockResolvedValue([
+        { doctorId: mockProfiles[0].id, _avg: { rating: 4.2 }, _count: { rating: 5 } },
+      ]);
 
       const result = await service.findAll({});
 
-      expect(result).toEqual({ data: mockProfiles, total: 1, skip: 0, take: 20 });
+      expect(result).toEqual({
+        data: mockProfiles.map((p) => ({ ...p, averageRating: 4.2, totalReviews: 5 })),
+        total: 1,
+        skip: 0,
+        take: 20,
+      });
       expect(prisma.doctorProfile.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
           where: { verified: true },
@@ -209,6 +217,7 @@ describe('DoctorService', () => {
     it('should filter by specialty', async () => {
       prisma.doctorProfile.findMany.mockResolvedValue([]);
       prisma.doctorProfile.count.mockResolvedValue(0);
+      prisma.doctorReview.groupBy.mockResolvedValue([]);
 
       await service.findAll({ specialty: DoctorSpecialtiesEnum.CARDIOLOGY });
 
@@ -225,6 +234,7 @@ describe('DoctorService', () => {
     it('should filter by visitMethod', async () => {
       prisma.doctorProfile.findMany.mockResolvedValue([]);
       prisma.doctorProfile.count.mockResolvedValue(0);
+      prisma.doctorReview.groupBy.mockResolvedValue([]);
 
       await service.findAll({ visitMethod: VisitMethodsEnum.CHAT });
 
@@ -240,6 +250,7 @@ describe('DoctorService', () => {
     it('should apply pagination from query params', async () => {
       prisma.doctorProfile.findMany.mockResolvedValue([]);
       prisma.doctorProfile.count.mockResolvedValue(0);
+      prisma.doctorReview.groupBy.mockResolvedValue([]);
 
       const result = await service.findAll({ skip: 10 as any, take: 5 as any });
 
@@ -251,6 +262,7 @@ describe('DoctorService', () => {
       const searchTerm = mockDoctorUser.lastname;
       prisma.doctorProfile.findMany.mockResolvedValue([]);
       prisma.doctorProfile.count.mockResolvedValue(0);
+      prisma.doctorReview.groupBy.mockResolvedValue([]);
 
       await service.findAll({ search: searchTerm });
 

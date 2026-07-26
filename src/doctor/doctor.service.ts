@@ -117,7 +117,7 @@ export class DoctorService {
     const skip = filters.skip ? Number(filters.skip) : 0;
     const take = filters.take ? Number(filters.take) : 20;
 
-    const [data, total] = await Promise.all([
+    const [profiles, total] = await Promise.all([
       this.prisma.doctorProfile.findMany({
         where,
         skip,
@@ -130,6 +130,31 @@ export class DoctorService {
       }),
       this.prisma.doctorProfile.count({ where }),
     ]);
+
+    const doctorIds = profiles.map((p) => p.id);
+    const ratings = doctorIds.length
+      ? await this.prisma.doctorReview.groupBy({
+          by: ['doctorId'],
+          where: { doctorId: { in: doctorIds } },
+          _avg: { rating: true },
+          _count: { rating: true },
+        })
+      : [];
+    const ratingMap = new Map(
+      ratings.map((r) => [r.doctorId, r]),
+    );
+
+    const data = profiles.map((profile) => {
+      const agg = ratingMap.get(profile.id);
+      return {
+        ...profile,
+        averageRating:
+          agg && agg._count.rating > 0
+            ? Math.round((agg._avg.rating ?? 0) * 10) / 10
+            : null,
+        totalReviews: agg?._count.rating ?? 0,
+      };
+    });
 
     return { data, total, skip, take };
   }

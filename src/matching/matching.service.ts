@@ -59,7 +59,7 @@ export interface ScoredDoctor {
   avatar: string | null;
   specialty: DoctorSpecialtiesEnum;
   secondarySpecialties: DoctorSpecialtiesEnum[];
-  rating: number | null;
+  averageRating: number | null;
   totalReviews: number;
   availableSlots: number;
   score: number;
@@ -177,7 +177,7 @@ export class MatchingService {
         avatar: doctor.user.avatar,
         specialty: doctor.specialty,
         secondarySpecialties: doctor.secondarySpecialties,
-        rating: ratingData.averageRating,
+        averageRating: ratingData.averageRating,
         totalReviews: ratingData.totalReviews,
         availableSlots: availableSlotCount,
         score: Math.round(totalScore * 100) / 100,

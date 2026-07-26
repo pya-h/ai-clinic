@@ -287,7 +287,7 @@ describe('MatchingService', () => {
 
       expect(result).toHaveLength(1);
       // Falls back to averageRating: null => ratingScore 0.5
-      expect(result[0].rating).toBeNull();
+      expect(result[0].averageRating).toBeNull();
     });
 
     it('should handle scheduling service errors gracefully', async () => {
@@ -382,7 +382,7 @@ describe('MatchingService', () => {
           avatar: 'avatar-url.jpg',
           specialty: DoctorSpecialtiesEnum.PSYCHIATRY,
           secondarySpecialties: [DoctorSpecialtiesEnum.NEUROLOGY],
-          rating: 3.5,
+          averageRating: 3.5,
           totalReviews: 8,
           availableSlots: 0,
         }),

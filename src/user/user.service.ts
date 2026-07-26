@@ -160,6 +160,7 @@ export class UserService {
     return this.prisma.user.findMany({
       where: { isAdmin: false },
       select: {
+        id: true,
         avatar: true,
         createdAt: true,
         firstname: true,
@@ -222,6 +223,7 @@ export class UserService {
         role: true,
         avatar: true,
         isPrivate: true,
+        createdAt: true,
       },
     });
   }

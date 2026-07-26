@@ -38,7 +38,7 @@ export class ChatService {
   async createChat(
     initiatorId: string,
     dto: CreateChatDto,
-  ): Promise<Chat> {
+  ): Promise<any> {
     const { participantId, topic, consultationId } = dto;
 
     if (initiatorId === participantId) {
@@ -123,7 +123,15 @@ export class ChatService {
       },
     });
 
-    return chat;
+    const { parties, ...rest } = chat;
+    return {
+      ...rest,
+      participants: parties.map((p) => ({
+        ...p.user,
+        joinedAt: p.joinedAt,
+        lastSeenAt: p.lastSeenAt,
+      })),
+    };
   }
 
   async getUserChats(
@@ -211,9 +219,10 @@ export class ChatService {
 
     this.assertParticipant(chat, userId);
 
+    const { parties, ...rest } = chat;
     return {
-      ...chat,
-      participants: chat.parties.map((p) => ({
+      ...rest,
+      participants: parties.map((p) => ({
         ...p.user,
         joinedAt: p.joinedAt,
         lastSeenAt: p.lastSeenAt,

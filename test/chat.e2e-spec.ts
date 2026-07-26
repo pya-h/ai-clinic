@@ -227,7 +227,7 @@ describe('Chat (e2e)', () => {
       const body = JSON.parse(res.body);
       expect(body.contents).toBeDefined();
       expect(body.contents.id).toBe(mockChat.id);
-      expect(body.contents.parties).toHaveLength(2);
+      expect(body.contents.participants).toHaveLength(2);
     });
 
     it('should return existing chat if one already exists', async () => {

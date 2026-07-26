@@ -341,6 +341,9 @@ describe('Doctor (e2e)', () => {
       sessionUser = null; // no auth needed
       prisma.doctorProfile.findMany.mockResolvedValue(mockListResult);
       prisma.doctorProfile.count.mockResolvedValue(1);
+      prisma.doctorReview.groupBy.mockResolvedValue([
+        { doctorId: 1, _avg: { rating: 4.0 }, _count: { rating: 3 } },
+      ]);
 
       const res = await app.inject({
         method: 'GET',
@@ -356,6 +359,7 @@ describe('Doctor (e2e)', () => {
     it('should pass specialty filter to query', async () => {
       prisma.doctorProfile.findMany.mockResolvedValue([]);
       prisma.doctorProfile.count.mockResolvedValue(0);
+      prisma.doctorReview.groupBy.mockResolvedValue([]);
 
       const res = await app.inject({
         method: 'GET',
@@ -371,6 +375,7 @@ describe('Doctor (e2e)', () => {
     it('should support pagination params', async () => {
       prisma.doctorProfile.findMany.mockResolvedValue([]);
       prisma.doctorProfile.count.mockResolvedValue(50);
+      prisma.doctorReview.groupBy.mockResolvedValue([]);
 
       const res = await app.inject({
         method: 'GET',
