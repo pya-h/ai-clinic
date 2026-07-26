@@ -311,11 +311,16 @@ export class MatchingGateway
       const key = createHash('sha256').update(sessionSecret).digest();
 
       const sodium = require('sodium-native');
-      const raw = Buffer.from(sessionCookie, 'base64');
-      if (raw.length < 25) return null;
 
-      const nonce = raw.subarray(0, 24);
-      const cipher = raw.subarray(24);
+      // @fastify/secure-session encodes as "cipher_b64;nonce_b64"
+      const parts = sessionCookie.split(';');
+      if (parts.length < 2) return null;
+
+      const cipher = Buffer.from(parts[0], 'base64');
+      const nonce = Buffer.from(parts[1], 'base64');
+
+      if (nonce.length !== sodium.crypto_secretbox_NONCEBYTES) return null;
+      if (cipher.length < sodium.crypto_secretbox_MACBYTES) return null;
 
       const plaintext = Buffer.alloc(
         cipher.length - sodium.crypto_secretbox_MACBYTES,
