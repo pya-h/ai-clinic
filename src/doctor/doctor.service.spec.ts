@@ -49,8 +49,8 @@ describe('DoctorService', () => {
   const mockProfileData = {
     startedAt: randomCareerStartDate(),
     specialty: randomSpecialty(),
-    visitMethods: ['ONLINE'],
-    visitTypes: ['FIRST_VISIT'],
+    visitMethods: ['CHAT'],
+    visitTypes: ['CONSULTATION'],
   };
 
   const mockProfile = buildDoctorProfile({ userId: mockDoctorUser.id });

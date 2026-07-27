@@ -81,7 +81,15 @@ export class ChatService {
       participantId,
     );
     if (existingChat) {
-      return existingChat;
+      const { parties, ...rest } = existingChat;
+      return {
+        ...rest,
+        participants: parties.map((p) => ({
+          ...p.user,
+          joinedAt: p.joinedAt,
+          lastSeenAt: p.lastSeenAt,
+        })),
+      };
     }
 
     // If consultationId is given, verify it exists and either party is involved
@@ -649,7 +657,7 @@ export class ChatService {
   private async findExistingChat(
     userId1: string,
     userId2: string,
-  ): Promise<Chat | null> {
+  ) {
     return this.prisma.chat.findFirst({
       where: {
         closedAt: null,
