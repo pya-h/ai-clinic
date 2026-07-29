@@ -40,6 +40,10 @@ export class ExceptionTemplateFilter implements ExceptionFilter {
           ? rawMessage.join('; ')
           : String(rawMessage);
       }
+    } else if (exception?.code === 'FST_REQ_FILE_TOO_LARGE') {
+      status = HttpStatus.PAYLOAD_TOO_LARGE;
+      message = 'File too large.';
+      this.logger.warn(message);
     } else {
       status = HttpStatus.INTERNAL_SERVER_ERROR;
       message = 'Internal Server Error';
