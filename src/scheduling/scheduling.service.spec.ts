@@ -563,6 +563,10 @@ describe('SchedulingService', () => {
     beforeEach(() => {
       prisma.slotDuration.findFirst.mockResolvedValue({ price: 50 });
       prisma.appointment.findMany.mockResolvedValue([]); // no overlap
+      prisma.availabilityException.findFirst.mockResolvedValue(null);
+      prisma.doctorAvailability.findMany.mockResolvedValue([
+        { startTime: '00:00', endTime: '23:59', isActive: true },
+      ]);
     });
 
     it('should book an appointment', async () => {

@@ -505,6 +505,65 @@ export class SchedulingService {
       throw new BadRequestException('Cannot book an appointment in the past.');
     }
 
+    // Validate booking falls within doctor's availability window
+    const bookingDayOfWeek = bookingDateTime.getUTCDay();
+    const bookingDateStr = this.dateToString(bookingDateTime);
+    const bookingStartMin =
+      bookingDateTime.getUTCHours() * 60 + bookingDateTime.getUTCMinutes();
+    const bookingEndMin = bookingStartMin + dto.durationMinutes;
+
+    const exception = await this.prisma.availabilityException.findFirst({
+      where: {
+        doctorId: dto.doctorId,
+        date: new Date(bookingDateStr + 'T00:00:00.000Z'),
+      },
+    });
+
+    if (exception?.isBlocked) {
+      throw new BadRequestException('Doctor is unavailable on this date.');
+    }
+
+    let timeWindows: { startTime: string; endTime: string }[];
+    if (
+      exception &&
+      !exception.isBlocked &&
+      exception.startTime &&
+      exception.endTime
+    ) {
+      timeWindows = [
+        { startTime: exception.startTime, endTime: exception.endTime },
+      ];
+    } else {
+      const availability = await this.prisma.doctorAvailability.findMany({
+        where: {
+          doctorId: dto.doctorId,
+          dayOfWeek: bookingDayOfWeek,
+          isActive: true,
+        },
+      });
+      timeWindows = availability.map((a) => ({
+        startTime: a.startTime,
+        endTime: a.endTime,
+      }));
+    }
+
+    if (timeWindows.length === 0) {
+      throw new BadRequestException(
+        'Doctor has no availability on this day.',
+      );
+    }
+
+    const fitsWindow = timeWindows.some((w) => {
+      const windowStart = this.timeToMinutes(w.startTime);
+      const windowEnd = this.timeToMinutes(w.endTime);
+      return bookingStartMin >= windowStart && bookingEndMin <= windowEnd;
+    });
+    if (!fitsWindow) {
+      throw new BadRequestException(
+        'Requested time is outside doctor availability hours.',
+      );
+    }
+
     // Overlap check + create in a serializable transaction to prevent double-booking
     const bookingEndTime = new Date(bookingDateTime.getTime() + dto.durationMinutes * 60000);
     let appointment: Appointment;
