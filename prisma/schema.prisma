@@ -565,6 +565,8 @@ model DoctorDocument {
   reviewedByUser User?            @relation("ReviewedByAdmin", fields: [reviewedBy], references: [id], onDelete: SetNull)
   rejectReason String?            @map("reject_reason")
 
+  @@index([doctorId])
+  @@index([reviewedBy])
   @@map("doctor_document")
 }
 
