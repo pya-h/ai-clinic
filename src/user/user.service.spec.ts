@@ -209,12 +209,28 @@ describe('UserService', () => {
   // ───────────────────── getUsers ─────────────────────
 
   describe('getUsers', () => {
-    it('should return list of non-admin users', async () => {
+    it('should return paginated list of non-admin users', async () => {
       prisma.user.findMany.mockResolvedValue([mockUser]);
+      prisma.user.count.mockResolvedValue(1);
       const result = await service.getUsers();
-      expect(Array.isArray(result)).toBe(true);
+      expect(result.data).toEqual([mockUser]);
+      expect(result.total).toBe(1);
+      expect(result.skip).toBe(0);
+      expect(result.take).toBe(50);
       expect(prisma.user.findMany).toHaveBeenCalledWith(
-        expect.objectContaining({ where: { isAdmin: false } }),
+        expect.objectContaining({ where: { isAdmin: false }, skip: 0, take: 50 }),
+      );
+    });
+
+    it('should respect custom skip and take', async () => {
+      prisma.user.findMany.mockResolvedValue([]);
+      prisma.user.count.mockResolvedValue(100);
+      const result = await service.getUsers(20, 10);
+      expect(result.skip).toBe(20);
+      expect(result.take).toBe(10);
+      expect(result.total).toBe(100);
+      expect(prisma.user.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ skip: 20, take: 10 }),
       );
     });
   });

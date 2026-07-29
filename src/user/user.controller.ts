@@ -23,6 +23,7 @@ import { CurrentUser } from './decorators/current-user.decorator';
 import { AdminGuard } from '../auth/guards/admin.guard';
 import { User, UserRolesEnum } from '@prisma/client';
 import { FastifyRequest } from 'fastify';
+import { PaginationOptionsDto } from '../common/dtos/pagination-options.dto';
 
 @ApiTags('User')
 @Controller('user')
@@ -43,8 +44,8 @@ export class UserController {
   })
   @UseGuards(CookieAuthGuard, AdminGuard)
   @Get('all')
-  getUsers() {
-    return this.userService.getUsers();
+  getUsers(@Query() pagination: PaginationOptionsDto) {
+    return this.userService.getUsers(pagination.skip, pagination.take);
   }
 
   @ApiOperation({

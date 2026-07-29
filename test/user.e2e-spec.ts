@@ -150,7 +150,7 @@ describe('User (e2e)', () => {
   // ─── GET /user/all ───
 
   describe('GET /user/all', () => {
-    it('should return user list for admin', async () => {
+    it('should return paginated user list for admin', async () => {
       sessionUser = createMockAdminUser();
       const fName = randomFirstName();
       const lName = randomLastName();
@@ -164,6 +164,7 @@ describe('User (e2e)', () => {
           role: UserRolesEnum.PATIENT,
         },
       ]);
+      prisma.user.count.mockResolvedValue(1);
 
       const res = await app.inject({
         method: 'GET',
@@ -172,7 +173,8 @@ describe('User (e2e)', () => {
 
       expect(res.statusCode).toBe(HttpStatus.OK);
       const body = JSON.parse(res.body);
-      expect(Array.isArray(body.contents)).toBe(true);
+      expect(Array.isArray(body.contents.data)).toBe(true);
+      expect(body.contents.total).toBe(1);
     });
 
     it('should reject non-admin user', async () => {

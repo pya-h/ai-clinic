@@ -1,4 +1,4 @@
-import { CanActivate, ExecutionContext, ForbiddenException, Injectable, Optional, UnauthorizedException } from '@nestjs/common';
+import { CanActivate, ExecutionContext, ForbiddenException, Injectable, Logger, Optional, UnauthorizedException } from '@nestjs/common';
 import { FastifyRequest } from 'fastify';
 import { PrismaService } from '../../prisma/prisma.service';
 
@@ -6,6 +6,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 export class CookieAuthGuard implements CanActivate {
   private static readonly statusCache = new Map<string, { isActive: boolean; isBanned: boolean; banReason: string | null; checkedAt: number }>();
   private static readonly STATUS_TTL = 60_000;
+  private readonly logger = new Logger(CookieAuthGuard.name);
 
   constructor(@Optional() private readonly prisma?: PrismaService) {}
 
@@ -59,11 +60,13 @@ export class CookieAuthGuard implements CanActivate {
         where: { id: user.id },
         select: { isActive: true, isBanned: true, banReason: true },
       });
-    } catch {
+    } catch (error) {
+      this.logger.warn(`Failed to verify user status from DB for ${user.id}: ${error}`);
       return true;
     }
 
     if (!dbUser) {
+      this.logger.warn(`User ${user.id} has valid session but not found in DB`);
       return true;
     }
 

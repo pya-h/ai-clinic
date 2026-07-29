@@ -156,19 +156,22 @@ export class UserService {
     return { message: 'Password changed successfully.' };
   }
 
-  getUsers() {
-    return this.prisma.user.findMany({
-      where: { isAdmin: false },
-      select: {
-        id: true,
-        avatar: true,
-        createdAt: true,
-        firstname: true,
-        lastname: true,
-        isPrivate: true,
-        role: true,
-      },
-    });
+  async getUsers(skip = 0, take = 50) {
+    const where = { isAdmin: false };
+    const select = {
+      id: true,
+      avatar: true,
+      createdAt: true,
+      firstname: true,
+      lastname: true,
+      isPrivate: true,
+      role: true,
+    };
+    const [data, total] = await Promise.all([
+      this.prisma.user.findMany({ where, select, skip, take, orderBy: { createdAt: 'desc' as const } }),
+      this.prisma.user.count({ where }),
+    ]);
+    return { data, total, skip, take };
   }
 
   /**

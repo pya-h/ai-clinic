@@ -146,7 +146,7 @@ describe('CookieAuthGuard', () => {
       await expect(guardWithPrisma.canActivate(ctx)).rejects.toThrow(ForbiddenException);
     });
 
-    it('should fall through when user not found in DB (trust session)', async () => {
+    it('should log warning and return true when user not found in DB', async () => {
       const user = { id: randomUuid(), isActive: true, role: 'PATIENT' };
       mockPrisma.user.findFirst.mockResolvedValue(null);
       const ctx = createMockContext(user);
