@@ -370,4 +370,478 @@ describe('Scheduling (e2e)', () => {
       expect(res.statusCode).toBe(HttpStatus.UNAUTHORIZED);
     });
   });
+
+  // ─── PATCH /scheduling/availability/:id ───
+
+  describe('PATCH /scheduling/availability/:id', () => {
+    const mockAvailability = {
+      id: 10,
+      doctorId: 1,
+      dayOfWeek: 1,
+      startTime: '09:00',
+      endTime: '17:00',
+      isActive: true,
+    };
+
+    it('should update availability as doctor', async () => {
+      sessionUser = doctorUser;
+      prisma.doctorProfile.findUnique.mockResolvedValue(mockDoctorProfile);
+      prisma.doctorAvailability.findUnique.mockResolvedValue(mockAvailability);
+      prisma.doctorAvailability.update.mockResolvedValue({
+        ...mockAvailability,
+        endTime: '18:00',
+      });
+
+      const res = await app.inject({
+        method: 'PATCH',
+        url: '/scheduling/availability/10',
+        payload: { endTime: '18:00' },
+      });
+
+      expect(res.statusCode).toBe(HttpStatus.OK);
+      const body = res.json();
+      expect(body.contents.endTime).toBe('18:00');
+      expect(body.contents.doctorId).toBe(1);
+    });
+
+    it('should return 404 for non-existent availability', async () => {
+      sessionUser = doctorUser;
+      prisma.doctorProfile.findUnique.mockResolvedValue(mockDoctorProfile);
+      prisma.doctorAvailability.findUnique.mockResolvedValue(null);
+
+      const res = await app.inject({
+        method: 'PATCH',
+        url: '/scheduling/availability/999',
+        payload: { endTime: '18:00' },
+      });
+
+      expect(res.statusCode).toBe(HttpStatus.NOT_FOUND);
+    });
+
+    it('should reject when doctor does not own the availability', async () => {
+      sessionUser = doctorUser;
+      prisma.doctorProfile.findUnique.mockResolvedValue(mockDoctorProfile);
+      prisma.doctorAvailability.findUnique.mockResolvedValue({
+        ...mockAvailability,
+        doctorId: 999,
+      });
+
+      const res = await app.inject({
+        method: 'PATCH',
+        url: '/scheduling/availability/10',
+        payload: { endTime: '18:00' },
+      });
+
+      expect(res.statusCode).toBe(HttpStatus.FORBIDDEN);
+    });
+
+    it('should reject patient role', async () => {
+      sessionUser = patientUser;
+
+      const res = await app.inject({
+        method: 'PATCH',
+        url: '/scheduling/availability/10',
+        payload: { endTime: '18:00' },
+      });
+
+      expect(res.statusCode).toBe(HttpStatus.FORBIDDEN);
+    });
+
+    it('should reject unauthenticated', async () => {
+      sessionUser = null;
+
+      const res = await app.inject({
+        method: 'PATCH',
+        url: '/scheduling/availability/10',
+        payload: { endTime: '18:00' },
+      });
+
+      expect(res.statusCode).toBe(HttpStatus.UNAUTHORIZED);
+    });
+  });
+
+  // ─── DELETE /scheduling/availability/:id ───
+
+  describe('DELETE /scheduling/availability/:id', () => {
+    const mockAvailability = {
+      id: 10,
+      doctorId: 1,
+      dayOfWeek: 1,
+      startTime: '09:00',
+      endTime: '17:00',
+      isActive: true,
+    };
+
+    it('should delete availability as doctor', async () => {
+      sessionUser = doctorUser;
+      prisma.doctorProfile.findUnique.mockResolvedValue(mockDoctorProfile);
+      prisma.doctorAvailability.findUnique.mockResolvedValue(mockAvailability);
+      prisma.doctorAvailability.delete.mockResolvedValue(mockAvailability);
+
+      const res = await app.inject({
+        method: 'DELETE',
+        url: '/scheduling/availability/10',
+      });
+
+      expect(res.statusCode).toBe(HttpStatus.OK);
+    });
+
+    it('should return 404 for non-existent availability', async () => {
+      sessionUser = doctorUser;
+      prisma.doctorProfile.findUnique.mockResolvedValue(mockDoctorProfile);
+      prisma.doctorAvailability.findUnique.mockResolvedValue(null);
+
+      const res = await app.inject({
+        method: 'DELETE',
+        url: '/scheduling/availability/999',
+      });
+
+      expect(res.statusCode).toBe(HttpStatus.NOT_FOUND);
+    });
+
+    it('should reject when doctor does not own the availability', async () => {
+      sessionUser = doctorUser;
+      prisma.doctorProfile.findUnique.mockResolvedValue(mockDoctorProfile);
+      prisma.doctorAvailability.findUnique.mockResolvedValue({
+        ...mockAvailability,
+        doctorId: 999,
+      });
+
+      const res = await app.inject({
+        method: 'DELETE',
+        url: '/scheduling/availability/10',
+      });
+
+      expect(res.statusCode).toBe(HttpStatus.FORBIDDEN);
+    });
+
+    it('should reject unauthenticated', async () => {
+      sessionUser = null;
+
+      const res = await app.inject({
+        method: 'DELETE',
+        url: '/scheduling/availability/10',
+      });
+
+      expect(res.statusCode).toBe(HttpStatus.UNAUTHORIZED);
+    });
+  });
+
+  // ─── POST /scheduling/slot-durations ───
+
+  describe('POST /scheduling/slot-durations', () => {
+    it('should create slot duration as doctor', async () => {
+      sessionUser = doctorUser;
+      prisma.doctorProfile.findUnique.mockResolvedValue(mockDoctorProfile);
+      prisma.slotDuration.create.mockResolvedValue({
+        id: 1,
+        doctorId: 1,
+        minutes: 30,
+        price: 50,
+        label: 'Quick Check-Up',
+        isActive: true,
+      });
+
+      const res = await app.inject({
+        method: 'POST',
+        url: '/scheduling/slot-durations',
+        payload: { minutes: 30, price: 50, label: 'Quick Check-Up' },
+      });
+
+      expect(res.statusCode).toBe(HttpStatus.CREATED);
+      const body = res.json();
+      expect(body.contents.minutes).toBe(30);
+      expect(body.contents.price).toBe(50);
+      expect(body.contents.label).toBe('Quick Check-Up');
+    });
+
+    it('should reject invalid minutes (below min)', async () => {
+      sessionUser = doctorUser;
+      prisma.doctorProfile.findUnique.mockResolvedValue(mockDoctorProfile);
+
+      const res = await app.inject({
+        method: 'POST',
+        url: '/scheduling/slot-durations',
+        payload: { minutes: 2, price: 50 },
+      });
+
+      expect(res.statusCode).toBe(HttpStatus.BAD_REQUEST);
+    });
+
+    it('should reject patient role', async () => {
+      sessionUser = patientUser;
+
+      const res = await app.inject({
+        method: 'POST',
+        url: '/scheduling/slot-durations',
+        payload: { minutes: 30, price: 50 },
+      });
+
+      expect(res.statusCode).toBe(HttpStatus.FORBIDDEN);
+    });
+
+    it('should reject unauthenticated', async () => {
+      sessionUser = null;
+
+      const res = await app.inject({
+        method: 'POST',
+        url: '/scheduling/slot-durations',
+        payload: { minutes: 30, price: 50 },
+      });
+
+      expect(res.statusCode).toBe(HttpStatus.UNAUTHORIZED);
+    });
+  });
+
+  // ─── GET /scheduling/slot-durations ───
+
+  describe('GET /scheduling/slot-durations', () => {
+    it('should return own slot durations as doctor', async () => {
+      sessionUser = doctorUser;
+      prisma.doctorProfile.findUnique.mockResolvedValue(mockDoctorProfile);
+      prisma.slotDuration.findMany.mockResolvedValue([
+        { id: 1, doctorId: 1, minutes: 30, price: 50, label: '30 min', isActive: true },
+        { id: 2, doctorId: 1, minutes: 60, price: 90, label: '60 min', isActive: true },
+      ]);
+
+      const res = await app.inject({
+        method: 'GET',
+        url: '/scheduling/slot-durations',
+      });
+
+      expect(res.statusCode).toBe(HttpStatus.OK);
+      const body = res.json();
+      expect(body.contents).toHaveLength(2);
+      expect(body.contents[0].minutes).toBe(30);
+      expect(body.contents[1].minutes).toBe(60);
+    });
+
+    it('should reject patient role', async () => {
+      sessionUser = patientUser;
+
+      const res = await app.inject({
+        method: 'GET',
+        url: '/scheduling/slot-durations',
+      });
+
+      expect(res.statusCode).toBe(HttpStatus.FORBIDDEN);
+    });
+
+    it('should reject unauthenticated', async () => {
+      sessionUser = null;
+
+      const res = await app.inject({
+        method: 'GET',
+        url: '/scheduling/slot-durations',
+      });
+
+      expect(res.statusCode).toBe(HttpStatus.UNAUTHORIZED);
+    });
+  });
+
+  // ─── POST /scheduling/exceptions ───
+
+  describe('POST /scheduling/exceptions', () => {
+    it('should create a full-day exception as doctor', async () => {
+      sessionUser = doctorUser;
+      prisma.doctorProfile.findUnique.mockResolvedValue(mockDoctorProfile);
+      prisma.availabilityException.create.mockResolvedValue({
+        id: 1,
+        doctorId: 1,
+        date: new Date('2026-08-15'),
+        isBlocked: true,
+        startTime: null,
+        endTime: null,
+        reason: 'Vacation',
+      });
+
+      const res = await app.inject({
+        method: 'POST',
+        url: '/scheduling/exceptions',
+        payload: { date: '2026-08-15', isBlocked: true, reason: 'Vacation' },
+      });
+
+      expect(res.statusCode).toBe(HttpStatus.CREATED);
+      const body = res.json();
+      expect(body.contents.isBlocked).toBe(true);
+      expect(body.contents.reason).toBe('Vacation');
+    });
+
+    it('should create a partial-day exception with times', async () => {
+      sessionUser = doctorUser;
+      prisma.doctorProfile.findUnique.mockResolvedValue(mockDoctorProfile);
+      prisma.availabilityException.create.mockResolvedValue({
+        id: 2,
+        doctorId: 1,
+        date: new Date('2026-08-20'),
+        isBlocked: false,
+        startTime: '09:00',
+        endTime: '12:00',
+        reason: 'Half day',
+      });
+
+      const res = await app.inject({
+        method: 'POST',
+        url: '/scheduling/exceptions',
+        payload: {
+          date: '2026-08-20',
+          isBlocked: false,
+          startTime: '09:00',
+          endTime: '12:00',
+          reason: 'Half day',
+        },
+      });
+
+      expect(res.statusCode).toBe(HttpStatus.CREATED);
+      const body = res.json();
+      expect(body.contents.isBlocked).toBe(false);
+      expect(body.contents.startTime).toBe('09:00');
+      expect(body.contents.endTime).toBe('12:00');
+    });
+
+    it('should reject patient role', async () => {
+      sessionUser = patientUser;
+
+      const res = await app.inject({
+        method: 'POST',
+        url: '/scheduling/exceptions',
+        payload: { date: '2026-08-15' },
+      });
+
+      expect(res.statusCode).toBe(HttpStatus.FORBIDDEN);
+    });
+
+    it('should reject unauthenticated', async () => {
+      sessionUser = null;
+
+      const res = await app.inject({
+        method: 'POST',
+        url: '/scheduling/exceptions',
+        payload: { date: '2026-08-15' },
+      });
+
+      expect(res.statusCode).toBe(HttpStatus.UNAUTHORIZED);
+    });
+  });
+
+  // ─── GET /scheduling/exceptions ───
+
+  describe('GET /scheduling/exceptions', () => {
+    it('should return own exceptions as doctor', async () => {
+      sessionUser = doctorUser;
+      prisma.doctorProfile.findUnique.mockResolvedValue(mockDoctorProfile);
+      prisma.availabilityException.findMany.mockResolvedValue([
+        {
+          id: 1,
+          doctorId: 1,
+          date: new Date('2026-08-15'),
+          isBlocked: true,
+          startTime: null,
+          endTime: null,
+          reason: 'Vacation',
+        },
+      ]);
+
+      const res = await app.inject({
+        method: 'GET',
+        url: '/scheduling/exceptions',
+      });
+
+      expect(res.statusCode).toBe(HttpStatus.OK);
+      const body = res.json();
+      expect(body.contents).toHaveLength(1);
+      expect(body.contents[0].isBlocked).toBe(true);
+      expect(body.contents[0].reason).toBe('Vacation');
+    });
+
+    it('should reject patient role', async () => {
+      sessionUser = patientUser;
+
+      const res = await app.inject({
+        method: 'GET',
+        url: '/scheduling/exceptions',
+      });
+
+      expect(res.statusCode).toBe(HttpStatus.FORBIDDEN);
+    });
+
+    it('should reject unauthenticated', async () => {
+      sessionUser = null;
+
+      const res = await app.inject({
+        method: 'GET',
+        url: '/scheduling/exceptions',
+      });
+
+      expect(res.statusCode).toBe(HttpStatus.UNAUTHORIZED);
+    });
+  });
+
+  // ─── DELETE /scheduling/exceptions/:id ───
+
+  describe('DELETE /scheduling/exceptions/:id', () => {
+    const mockException = {
+      id: 5,
+      doctorId: 1,
+      date: new Date('2026-08-15'),
+      isBlocked: true,
+      startTime: null,
+      endTime: null,
+      reason: 'Vacation',
+    };
+
+    it('should delete exception as doctor', async () => {
+      sessionUser = doctorUser;
+      prisma.doctorProfile.findUnique.mockResolvedValue(mockDoctorProfile);
+      prisma.availabilityException.findUnique.mockResolvedValue(mockException);
+      prisma.availabilityException.delete.mockResolvedValue(mockException);
+
+      const res = await app.inject({
+        method: 'DELETE',
+        url: '/scheduling/exceptions/5',
+      });
+
+      expect(res.statusCode).toBe(HttpStatus.OK);
+    });
+
+    it('should return 404 for non-existent exception', async () => {
+      sessionUser = doctorUser;
+      prisma.doctorProfile.findUnique.mockResolvedValue(mockDoctorProfile);
+      prisma.availabilityException.findUnique.mockResolvedValue(null);
+
+      const res = await app.inject({
+        method: 'DELETE',
+        url: '/scheduling/exceptions/999',
+      });
+
+      expect(res.statusCode).toBe(HttpStatus.NOT_FOUND);
+    });
+
+    it('should reject when doctor does not own the exception', async () => {
+      sessionUser = doctorUser;
+      prisma.doctorProfile.findUnique.mockResolvedValue(mockDoctorProfile);
+      prisma.availabilityException.findUnique.mockResolvedValue({
+        ...mockException,
+        doctorId: 999,
+      });
+
+      const res = await app.inject({
+        method: 'DELETE',
+        url: '/scheduling/exceptions/5',
+      });
+
+      expect(res.statusCode).toBe(HttpStatus.FORBIDDEN);
+    });
+
+    it('should reject unauthenticated', async () => {
+      sessionUser = null;
+
+      const res = await app.inject({
+        method: 'DELETE',
+        url: '/scheduling/exceptions/5',
+      });
+
+      expect(res.statusCode).toBe(HttpStatus.UNAUTHORIZED);
+    });
+  });
 });
