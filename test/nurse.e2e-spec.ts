@@ -569,4 +569,83 @@ describe('Nurse (e2e)', () => {
       expect(res.statusCode).toBe(HttpStatus.BAD_REQUEST);
     });
   });
+
+  // ─── GET /nurse/dashboard ───────────────────────────────────────
+
+  describe('GET /nurse/dashboard', () => {
+    it('should return dashboard with assignments and stats for nurse', async () => {
+      sessionUser = nurseUser;
+
+      const assignment = buildAssignment();
+      prisma.doctorNurseAssignment.findMany.mockResolvedValue([assignment]);
+      prisma.appointment.count.mockResolvedValue(3);
+      prisma.consultation.count.mockResolvedValue(1);
+
+      const res = await app.inject({
+        method: 'GET',
+        url: '/nurse/dashboard',
+      });
+
+      expect(res.statusCode).toBe(HttpStatus.OK);
+      const body = JSON.parse(res.body);
+      expect(body.contents).toBeDefined();
+      expect(body.contents.assignments).toHaveLength(1);
+      expect(body.contents.assignments[0].nurseId).toBe(nurseUser.id);
+      expect(body.contents.stats).toBeDefined();
+      expect(body.contents.stats.upcomingAppointments).toBe(3);
+      expect(body.contents.stats.activeConsultations).toBe(1);
+      expect(body.contents.stats.assignedDoctors).toBe(1);
+    });
+
+    it('should return empty dashboard when nurse has no assignments', async () => {
+      sessionUser = nurseUser;
+
+      prisma.doctorNurseAssignment.findMany.mockResolvedValue([]);
+
+      const res = await app.inject({
+        method: 'GET',
+        url: '/nurse/dashboard',
+      });
+
+      expect(res.statusCode).toBe(HttpStatus.OK);
+      const body = JSON.parse(res.body);
+      expect(body.contents.assignments).toHaveLength(0);
+      expect(body.contents.stats.upcomingAppointments).toBe(0);
+      expect(body.contents.stats.activeConsultations).toBe(0);
+      expect(body.contents.stats.assignedDoctors).toBe(0);
+    });
+
+    it('should return 403 when doctor tries to access nurse dashboard', async () => {
+      sessionUser = doctorUser;
+
+      const res = await app.inject({
+        method: 'GET',
+        url: '/nurse/dashboard',
+      });
+
+      expect(res.statusCode).toBe(HttpStatus.FORBIDDEN);
+    });
+
+    it('should return 403 when patient tries to access nurse dashboard', async () => {
+      sessionUser = patientUser;
+
+      const res = await app.inject({
+        method: 'GET',
+        url: '/nurse/dashboard',
+      });
+
+      expect(res.statusCode).toBe(HttpStatus.FORBIDDEN);
+    });
+
+    it('should return 401 when not authenticated', async () => {
+      sessionUser = null;
+
+      const res = await app.inject({
+        method: 'GET',
+        url: '/nurse/dashboard',
+      });
+
+      expect(res.statusCode).toBe(HttpStatus.UNAUTHORIZED);
+    });
+  });
 });
