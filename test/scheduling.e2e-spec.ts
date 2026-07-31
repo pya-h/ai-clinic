@@ -148,6 +148,12 @@ describe('Scheduling (e2e)', () => {
       });
 
       expect(res.statusCode).toBe(HttpStatus.CREATED);
+      const body = res.json();
+      expect(body.contents).toBeDefined();
+      expect(body.contents.dayOfWeek).toBe(1);
+      expect(body.contents.startTime).toBe('09:00');
+      expect(body.contents.endTime).toBe('17:00');
+      expect(body.contents.doctorId).toBe(1);
     });
 
     it('should reject patient role', async () => {
@@ -189,6 +195,10 @@ describe('Scheduling (e2e)', () => {
       });
 
       expect(res.statusCode).toBe(HttpStatus.OK);
+      const body = res.json();
+      expect(body.contents).toBeDefined();
+      expect(Array.isArray(body.contents)).toBe(true);
+      expect(body.contents).toHaveLength(0);
     });
   });
 
@@ -208,6 +218,9 @@ describe('Scheduling (e2e)', () => {
       });
 
       expect(res.statusCode).toBe(HttpStatus.OK);
+      const body = res.json();
+      expect(body.contents).toBeDefined();
+      expect(Array.isArray(body.contents)).toBe(true);
     });
 
     it('should return 400 for non-integer doctorId', async () => {
@@ -234,6 +247,11 @@ describe('Scheduling (e2e)', () => {
       });
 
       expect(res.statusCode).toBe(HttpStatus.OK);
+      const body = res.json();
+      expect(body.contents).toBeDefined();
+      expect(body.contents).toHaveLength(1);
+      expect(body.contents[0].minutes).toBe(30);
+      expect(body.contents[0].label).toBe('30 min');
     });
   });
 
@@ -289,6 +307,10 @@ describe('Scheduling (e2e)', () => {
       });
 
       expect(res.statusCode).toBe(HttpStatus.OK);
+      const body = res.json();
+      expect(body.contents).toBeDefined();
+      expect(body.contents.data).toHaveLength(0);
+      expect(body.contents.total).toBe(0);
     });
 
     it('should reject unauthenticated', async () => {
@@ -321,6 +343,11 @@ describe('Scheduling (e2e)', () => {
       });
 
       expect(res.statusCode).toBe(HttpStatus.OK);
+      const body = res.json();
+      expect(body.contents).toBeDefined();
+      expect(body.contents.id).toBe(1);
+      expect(body.contents.status).toBe(AppointmentStatusEnum.CONFIRMED);
+      expect(body.contents.patientId).toBe(patientUser.id);
     });
 
     it('should return 400 for non-integer id', async () => {
@@ -357,6 +384,10 @@ describe('Scheduling (e2e)', () => {
       });
 
       expect(res.statusCode).toBe(HttpStatus.OK);
+      const body = res.json();
+      expect(body.contents).toBeDefined();
+      expect(body.contents.id).toBe(1);
+      expect(body.contents.status).toBe(AppointmentStatusEnum.CANCELLED);
     });
 
     it('should reject unauthenticated', async () => {
@@ -484,6 +515,9 @@ describe('Scheduling (e2e)', () => {
       });
 
       expect(res.statusCode).toBe(HttpStatus.OK);
+      const body = res.json();
+      expect(body.status).toBe(200);
+      expect(prisma.doctorAvailability.delete).toHaveBeenCalled();
     });
 
     it('should return 404 for non-existent availability', async () => {
@@ -802,6 +836,9 @@ describe('Scheduling (e2e)', () => {
       });
 
       expect(res.statusCode).toBe(HttpStatus.OK);
+      const body = res.json();
+      expect(body.status).toBe(200);
+      expect(prisma.availabilityException.delete).toHaveBeenCalled();
     });
 
     it('should return 404 for non-existent exception', async () => {

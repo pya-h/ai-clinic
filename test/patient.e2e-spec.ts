@@ -172,6 +172,11 @@ describe('Patient (e2e)', () => {
       });
 
       expect(res.statusCode).toBe(HttpStatus.CREATED);
+      const body = JSON.parse(res.body);
+      expect(body.contents).toBeDefined();
+      expect(body.contents.userId).toBe(sessionUser.id);
+      expect(body.contents.location).toBeNull();
+      expect(body.contents.bio).toBeNull();
     });
 
     it('should reject duplicate profile', async () => {

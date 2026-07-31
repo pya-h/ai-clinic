@@ -164,6 +164,12 @@ describe('Review (e2e)', () => {
       });
 
       expect(res.statusCode).toBe(HttpStatus.CREATED);
+      const body = JSON.parse(res.body);
+      expect(body.contents).toBeDefined();
+      expect(body.contents.rating).toBe(5);
+      expect(body.contents.title).toBe('Great doctor');
+      expect(body.contents.reviewerId).toBe(patientUser.id);
+      expect(body.contents.doctorId).toBe(1);
     });
 
     it('should reject unauthenticated request', async () => {
@@ -219,6 +225,9 @@ describe('Review (e2e)', () => {
       });
 
       expect(res.statusCode).toBe(HttpStatus.OK);
+      const body = JSON.parse(res.body);
+      expect(body.contents).toBeDefined();
+      expect(body.contents.rating).toBe(4);
     });
 
     it('should reject non-integer id', async () => {
@@ -274,6 +283,12 @@ describe('Review (e2e)', () => {
       });
 
       expect(res.statusCode).toBe(HttpStatus.OK);
+      const body = JSON.parse(res.body);
+      expect(body.contents).toBeDefined();
+      expect(body.contents.data).toHaveLength(1);
+      expect(body.contents.total).toBe(1);
+      expect(body.contents.data[0].rating).toBe(5);
+      expect(body.contents.data[0].title).toBe('Great doctor');
     });
 
     it('should reject non-admin', async () => {
@@ -301,6 +316,11 @@ describe('Review (e2e)', () => {
       });
 
       expect(res.statusCode).toBe(HttpStatus.OK);
+      const body = JSON.parse(res.body);
+      expect(body.contents).toBeDefined();
+      expect(body.contents.data).toHaveLength(1);
+      expect(body.contents.total).toBe(1);
+      expect(body.contents.data[0].doctorId).toBe(1);
     });
 
     it('should return 400 for non-integer doctorId', async () => {
@@ -332,6 +352,11 @@ describe('Review (e2e)', () => {
       });
 
       expect(res.statusCode).toBe(HttpStatus.OK);
+      const body = JSON.parse(res.body);
+      expect(body.contents).toBeDefined();
+      expect(body.contents.averageRating).toBe(4.5);
+      expect(body.contents.totalReviews).toBe(10);
+      expect(body.contents.distribution).toBeDefined();
     });
   });
 });

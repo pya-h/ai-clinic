@@ -137,6 +137,10 @@ describe('Notification (e2e)', () => {
       expect(res.statusCode).toBe(HttpStatus.OK);
       const body = JSON.parse(res.body);
       expect(body.contents).toBeDefined();
+      expect(body.contents.data).toHaveLength(1);
+      expect(body.contents.total).toBe(1);
+      expect(body.contents.data[0].title).toBe('Consultation updated');
+      expect(body.contents.data[0].isRead).toBe(false);
     });
 
     it('should return 401 for unauthenticated', async () => {
@@ -161,6 +165,9 @@ describe('Notification (e2e)', () => {
       });
 
       expect(res.statusCode).toBe(HttpStatus.OK);
+      const body = JSON.parse(res.body);
+      expect(body.contents).toBeDefined();
+      expect(body.contents.count).toBe(5);
     });
   });
 
@@ -182,6 +189,10 @@ describe('Notification (e2e)', () => {
       });
 
       expect(res.statusCode).toBe(HttpStatus.OK);
+      const body = JSON.parse(res.body);
+      expect(body.contents).toBeDefined();
+      expect(body.contents.isRead).toBe(true);
+      expect(body.contents.id).toBe(1);
     });
 
     it('should return 400 for non-integer id', async () => {
@@ -220,6 +231,9 @@ describe('Notification (e2e)', () => {
       });
 
       expect(res.statusCode).toBe(HttpStatus.OK);
+      const body = JSON.parse(res.body);
+      expect(body.contents).toBeDefined();
+      expect(body.contents.count).toBe(3);
     });
   });
 
@@ -244,6 +258,9 @@ describe('Notification (e2e)', () => {
       });
 
       expect(res.statusCode).toBe(HttpStatus.CREATED);
+      const body = JSON.parse(res.body);
+      expect(body.contents).toBeDefined();
+      expect(body.contents.endpoint).toBe('https://push.example.com/sub1');
     });
 
     it('should reject missing endpoint', async () => {

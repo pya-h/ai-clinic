@@ -339,6 +339,8 @@ describe('Auth (e2e)', () => {
       });
 
       expect(res.statusCode).toBe(HttpStatus.OK);
+      const body = JSON.parse(res.body);
+      expect(body.message).toBeDefined();
     });
 
     it('should reject logout when unauthenticated', async () => {
