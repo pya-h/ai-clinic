@@ -2,12 +2,15 @@
  * Consultation E2E Tests
  *
  * Tests:
- *   POST   /consultation            — create (patient only)
- *   GET    /consultation            — list (role-based)
- *   GET    /consultation/:id        — get by ID (ownership check)
- *   PATCH  /consultation/:id/decide — doctor decision
- *   PATCH  /consultation/:id/complete — doctor completes
- *   PATCH  /consultation/:id/cancel — cancel (patient/doctor/admin)
+ *   POST   /consultation                    — create (patient only)
+ *   GET    /consultation                    — list (role-based)
+ *   GET    /consultation/:id                — get by ID (ownership check)
+ *   PATCH  /consultation/:id/decide         — doctor decision
+ *   PATCH  /consultation/:id/advance-payment — advance to pending payment
+ *   PATCH  /consultation/:id/confirm-payment — confirm payment
+ *   PATCH  /consultation/:id/start          — doctor starts consultation
+ *   PATCH  /consultation/:id/complete       — doctor completes
+ *   PATCH  /consultation/:id/cancel         — cancel (patient/doctor/admin)
  */
 import { Test, TestingModule } from '@nestjs/testing';
 import {
@@ -300,6 +303,13 @@ describe('Consultation (e2e)', () => {
       expect(body.contents).toBeDefined();
       expect(body.contents.data).toHaveLength(1);
       expect(body.contents.total).toBe(1);
+      const first = body.contents.data[0];
+      expect(first.id).toBe(consultationId);
+      expect(first.patientId).toBe(patientUser.id);
+      expect(first.doctorId).toBe(doctorProfileId);
+      expect(first.status).toBe(ConsultationStatusEnum.PENDING_DOCTOR_REVIEW);
+      expect(first.doctor).toBeDefined();
+      expect(first.doctor.user.firstname).toBe(doctorUser.firstname);
     });
 
     it('should list doctor assigned consultations', async () => {
@@ -319,6 +329,7 @@ describe('Consultation (e2e)', () => {
       const body = JSON.parse(res.body);
       expect(body.contents).toBeDefined();
       expect(body.contents.data).toHaveLength(1);
+      expect(body.contents.data[0].doctorId).toBe(doctorProfileId);
     });
 
     it('should reject unauthenticated request', async () => {
@@ -472,6 +483,296 @@ describe('Consultation (e2e)', () => {
       });
 
       expect(res.statusCode).toBe(HttpStatus.FORBIDDEN);
+    });
+  });
+
+  // ─── PATCH /consultation/:id/advance-payment ────────────────────
+
+  describe('PATCH /consultation/:id/advance-payment', () => {
+    it('should advance DOCTOR_DECIDED to PENDING_PAYMENT (patient)', async () => {
+      sessionUser = patientUser;
+
+      const consultation = buildConsultation({
+        status: ConsultationStatusEnum.DOCTOR_DECIDED,
+        doctorDecision: ConsultationModeEnum.ONLINE,
+      });
+      prisma.consultation.findUnique.mockResolvedValueOnce(consultation);
+
+      const updated = buildConsultation({
+        status: ConsultationStatusEnum.PENDING_PAYMENT,
+        doctorDecision: ConsultationModeEnum.ONLINE,
+      });
+      prisma.consultation.updateMany.mockResolvedValue({ count: 1 });
+      prisma.consultation.findUniqueOrThrow.mockResolvedValue(updated);
+
+      const res = await app.inject({
+        method: 'PATCH',
+        url: `/consultation/${consultationId}/advance-payment`,
+      });
+
+      expect(res.statusCode).toBe(HttpStatus.OK);
+      const body = JSON.parse(res.body);
+      expect(body.contents).toBeDefined();
+      expect(body.contents.id).toBe(consultationId);
+      expect(body.contents.status).toBe(ConsultationStatusEnum.PENDING_PAYMENT);
+      expect(body.contents.doctorDecision).toBe(ConsultationModeEnum.ONLINE);
+    });
+
+    it('should advance DOCTOR_DECIDED to PENDING_PAYMENT (doctor)', async () => {
+      sessionUser = doctorUser;
+
+      const consultation = buildConsultation({
+        status: ConsultationStatusEnum.DOCTOR_DECIDED,
+      });
+      prisma.consultation.findUnique.mockResolvedValueOnce(consultation);
+      prisma.doctorProfile.findUnique.mockResolvedValue(doctorProfile);
+
+      const updated = buildConsultation({
+        status: ConsultationStatusEnum.PENDING_PAYMENT,
+      });
+      prisma.consultation.updateMany.mockResolvedValue({ count: 1 });
+      prisma.consultation.findUniqueOrThrow.mockResolvedValue(updated);
+
+      const res = await app.inject({
+        method: 'PATCH',
+        url: `/consultation/${consultationId}/advance-payment`,
+      });
+
+      expect(res.statusCode).toBe(HttpStatus.OK);
+      const body = JSON.parse(res.body);
+      expect(body.contents.status).toBe(ConsultationStatusEnum.PENDING_PAYMENT);
+    });
+
+    it('should reject from wrong status (PENDING_DOCTOR_REVIEW)', async () => {
+      sessionUser = patientUser;
+
+      const consultation = buildConsultation({
+        status: ConsultationStatusEnum.PENDING_DOCTOR_REVIEW,
+      });
+      prisma.consultation.findUnique.mockResolvedValueOnce(consultation);
+
+      const res = await app.inject({
+        method: 'PATCH',
+        url: `/consultation/${consultationId}/advance-payment`,
+      });
+
+      expect(res.statusCode).toBe(HttpStatus.BAD_REQUEST);
+      const body = JSON.parse(res.body);
+      expect(body.message).toContain('Cannot transition');
+    });
+
+    it('should reject non-participant patient', async () => {
+      sessionUser = otherPatientUser;
+
+      const consultation = buildConsultation({
+        status: ConsultationStatusEnum.DOCTOR_DECIDED,
+      });
+      prisma.consultation.findUnique.mockResolvedValueOnce(consultation);
+
+      const res = await app.inject({
+        method: 'PATCH',
+        url: `/consultation/${consultationId}/advance-payment`,
+      });
+
+      expect(res.statusCode).toBe(HttpStatus.FORBIDDEN);
+    });
+
+    it('should reject unauthenticated request', async () => {
+      sessionUser = null;
+
+      const res = await app.inject({
+        method: 'PATCH',
+        url: `/consultation/${consultationId}/advance-payment`,
+      });
+
+      expect(res.statusCode).toBe(HttpStatus.UNAUTHORIZED);
+    });
+  });
+
+  // ─── PATCH /consultation/:id/confirm-payment ───────────────────
+
+  describe('PATCH /consultation/:id/confirm-payment', () => {
+    it('should confirm payment (PENDING_PAYMENT → PAYMENT_CONFIRMED)', async () => {
+      sessionUser = patientUser;
+
+      const consultation = buildConsultation({
+        status: ConsultationStatusEnum.PENDING_PAYMENT,
+      });
+      prisma.consultation.findUnique.mockResolvedValueOnce(consultation);
+
+      const updated = buildConsultation({
+        status: ConsultationStatusEnum.PAYMENT_CONFIRMED,
+      });
+      prisma.consultation.updateMany.mockResolvedValue({ count: 1 });
+      prisma.consultation.findUniqueOrThrow.mockResolvedValue(updated);
+
+      const res = await app.inject({
+        method: 'PATCH',
+        url: `/consultation/${consultationId}/confirm-payment`,
+      });
+
+      expect(res.statusCode).toBe(HttpStatus.OK);
+      const body = JSON.parse(res.body);
+      expect(body.contents).toBeDefined();
+      expect(body.contents.id).toBe(consultationId);
+      expect(body.contents.status).toBe(ConsultationStatusEnum.PAYMENT_CONFIRMED);
+    });
+
+    it('should reject from wrong status (DOCTOR_DECIDED)', async () => {
+      sessionUser = patientUser;
+
+      const consultation = buildConsultation({
+        status: ConsultationStatusEnum.DOCTOR_DECIDED,
+      });
+      prisma.consultation.findUnique.mockResolvedValueOnce(consultation);
+
+      const res = await app.inject({
+        method: 'PATCH',
+        url: `/consultation/${consultationId}/confirm-payment`,
+      });
+
+      expect(res.statusCode).toBe(HttpStatus.BAD_REQUEST);
+      const body = JSON.parse(res.body);
+      expect(body.message).toContain('Cannot transition');
+    });
+
+    it('should reject from terminal status (COMPLETED)', async () => {
+      sessionUser = patientUser;
+
+      const consultation = buildConsultation({
+        status: ConsultationStatusEnum.COMPLETED,
+      });
+      prisma.consultation.findUnique.mockResolvedValueOnce(consultation);
+
+      const res = await app.inject({
+        method: 'PATCH',
+        url: `/consultation/${consultationId}/confirm-payment`,
+      });
+
+      expect(res.statusCode).toBe(HttpStatus.BAD_REQUEST);
+    });
+
+    it('should reject non-participant patient', async () => {
+      sessionUser = otherPatientUser;
+
+      const consultation = buildConsultation({
+        status: ConsultationStatusEnum.PENDING_PAYMENT,
+      });
+      prisma.consultation.findUnique.mockResolvedValueOnce(consultation);
+
+      const res = await app.inject({
+        method: 'PATCH',
+        url: `/consultation/${consultationId}/confirm-payment`,
+      });
+
+      expect(res.statusCode).toBe(HttpStatus.FORBIDDEN);
+    });
+
+    it('should reject unauthenticated request', async () => {
+      sessionUser = null;
+
+      const res = await app.inject({
+        method: 'PATCH',
+        url: `/consultation/${consultationId}/confirm-payment`,
+      });
+
+      expect(res.statusCode).toBe(HttpStatus.UNAUTHORIZED);
+    });
+  });
+
+  // ─── PATCH /consultation/:id/start ─────────────────────────────
+
+  describe('PATCH /consultation/:id/start', () => {
+    it('should start consultation (PAYMENT_CONFIRMED → IN_PROGRESS)', async () => {
+      sessionUser = doctorUser;
+
+      const consultation = buildConsultation({
+        status: ConsultationStatusEnum.PAYMENT_CONFIRMED,
+      });
+      prisma.consultation.findUnique.mockResolvedValueOnce(consultation);
+      prisma.doctorProfile.findUnique.mockResolvedValue(doctorProfile);
+
+      const updated = buildConsultation({
+        status: ConsultationStatusEnum.IN_PROGRESS,
+      });
+      prisma.consultation.updateMany.mockResolvedValue({ count: 1 });
+      prisma.consultation.findUniqueOrThrow.mockResolvedValue(updated);
+
+      const res = await app.inject({
+        method: 'PATCH',
+        url: `/consultation/${consultationId}/start`,
+      });
+
+      expect(res.statusCode).toBe(HttpStatus.OK);
+      const body = JSON.parse(res.body);
+      expect(body.contents).toBeDefined();
+      expect(body.contents.id).toBe(consultationId);
+      expect(body.contents.status).toBe(ConsultationStatusEnum.IN_PROGRESS);
+    });
+
+    it('should reject from wrong status (DOCTOR_DECIDED)', async () => {
+      sessionUser = doctorUser;
+
+      const consultation = buildConsultation({
+        status: ConsultationStatusEnum.DOCTOR_DECIDED,
+      });
+      prisma.consultation.findUnique.mockResolvedValueOnce(consultation);
+      prisma.doctorProfile.findUnique.mockResolvedValue(doctorProfile);
+
+      const res = await app.inject({
+        method: 'PATCH',
+        url: `/consultation/${consultationId}/start`,
+      });
+
+      expect(res.statusCode).toBe(HttpStatus.BAD_REQUEST);
+      const body = JSON.parse(res.body);
+      expect(body.message).toContain('Cannot transition');
+    });
+
+    it('should reject non-doctor user (patient)', async () => {
+      sessionUser = patientUser;
+
+      const res = await app.inject({
+        method: 'PATCH',
+        url: `/consultation/${consultationId}/start`,
+      });
+
+      expect(res.statusCode).toBe(HttpStatus.FORBIDDEN);
+    });
+
+    it('should reject wrong doctor', async () => {
+      const otherDoctor = createMockDoctorUser();
+      sessionUser = otherDoctor;
+
+      const consultation = buildConsultation({
+        status: ConsultationStatusEnum.PAYMENT_CONFIRMED,
+      });
+      prisma.consultation.findUnique.mockResolvedValueOnce(consultation);
+
+      const otherProfile = buildDoctorProfile({
+        id: doctorProfileId + 200,
+        userId: otherDoctor.id,
+        verified: true,
+      });
+      prisma.doctorProfile.findUnique.mockResolvedValue(otherProfile);
+
+      const res = await app.inject({
+        method: 'PATCH',
+        url: `/consultation/${consultationId}/start`,
+      });
+
+      expect(res.statusCode).toBe(HttpStatus.FORBIDDEN);
+    });
+
+    it('should reject unauthenticated request', async () => {
+      sessionUser = null;
+
+      const res = await app.inject({
+        method: 'PATCH',
+        url: `/consultation/${consultationId}/start`,
+      });
+
+      expect(res.statusCode).toBe(HttpStatus.UNAUTHORIZED);
     });
   });
 
