@@ -8,6 +8,8 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import {
+  AppointmentStatusEnum,
+  ConsultationStatusEnum,
   DoctorNurseAssignment,
   NursePermissionEnum,
   User,
@@ -215,7 +217,7 @@ export class NurseService {
         ? this.prisma.appointment.count({
             where: {
               doctorId: { in: doctorIds },
-              status: 'CONFIRMED',
+              status: AppointmentStatusEnum.CONFIRMED,
               dateTime: { gte: new Date() },
             },
           })
@@ -224,7 +226,7 @@ export class NurseService {
         ? this.prisma.consultation.count({
             where: {
               doctorId: { in: doctorIds },
-              status: 'IN_PROGRESS',
+              status: ConsultationStatusEnum.IN_PROGRESS,
             },
           })
         : 0,
