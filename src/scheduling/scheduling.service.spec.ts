@@ -552,9 +552,12 @@ describe('SchedulingService', () => {
 
   describe('bookAppointment', () => {
     const patient = createMockUser();
+    const tomorrow10am = new Date();
+    tomorrow10am.setUTCDate(tomorrow10am.getUTCDate() + 1);
+    tomorrow10am.setUTCHours(10, 0, 0, 0);
     const bookDto = {
       doctorId: 42,
-      dateTime: new Date(Date.now() + 86400000).toISOString(), // tomorrow
+      dateTime: tomorrow10am.toISOString(),
       durationMinutes: 30,
       price: 50,
       method: 'CHAT' as any,
