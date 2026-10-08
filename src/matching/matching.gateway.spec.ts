@@ -5,6 +5,7 @@ import { ConfigService } from '@nestjs/config';
 import { NotificationService } from '../notification/notification.service';
 import { WsException } from '@nestjs/websockets';
 import { DoctorSpecialtiesEnum, MatchStatusEnum } from '@prisma/client';
+import { randomInt, randomUUID } from 'crypto';
 
 describe('MatchingGateway', () => {
   let gateway: MatchingGateway;
@@ -361,6 +362,216 @@ describe('MatchingGateway', () => {
       expect(client.emit).toHaveBeenCalledWith('match:error', {
         message: 'not found',
       });
+    });
+  });
+
+  // ─── dispatchMatchRequest (shared WS + REST) ───
+
+  describe('dispatchMatchRequest', () => {
+    const MATCH_TIMEOUT_MS = 5 * 60 * 1000;
+
+    const buildRequest = () => ({
+      id: randomUUID(),
+      patientId: randomUUID(),
+      status: MatchStatusEnum.SEARCHING,
+      matchedDoctorId: null,
+    });
+
+    const buildCandidate = () => ({
+      doctorId: randomInt(1, 100_000),
+      userId: randomUUID(),
+      firstname: 'Dr',
+      lastname: 'Candidate',
+    });
+
+    beforeEach(() => {
+      jest.useFakeTimers();
+    });
+
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
+    it('should offer to the top doctor and return the MATCHED request', async () => {
+      const request = buildRequest();
+      const [top, next] = [buildCandidate(), buildCandidate()];
+      const matched = { ...request, status: MatchStatusEnum.MATCHED, matchedDoctorId: top.doctorId };
+      matchingService.matchDoctor.mockResolvedValue(matched);
+
+      const result = await gateway.dispatchMatchRequest(request as any, [top, next]);
+
+      expect(result).toBe(matched);
+      expect(matchingService.matchDoctor).toHaveBeenCalledTimes(1);
+      expect(matchingService.matchDoctor).toHaveBeenCalledWith(request.id, top.doctorId);
+      expect(gateway.server.to).toHaveBeenCalledWith(`user:${top.userId}`);
+      expect((gateway.server as any)._toEmit).toHaveBeenCalledWith('match:request', {
+        matchRequestId: request.id,
+        doctorId: top.doctorId,
+      });
+      expect(notificationService.onMatchFound).toHaveBeenCalledWith(top.userId, request.id);
+    });
+
+    it('should return the request unchanged when there are no candidates', async () => {
+      const request = buildRequest();
+
+      const result = await gateway.dispatchMatchRequest(request as any, []);
+
+      expect(result).toBe(request);
+      expect(matchingService.matchDoctor).not.toHaveBeenCalled();
+      expect(gateway.server.to).not.toHaveBeenCalled();
+    });
+
+    it('should time the request out after 5 minutes and notify the patient', async () => {
+      const request = buildRequest();
+      matchingService.timeoutRequest.mockResolvedValue({
+        ...request,
+        status: MatchStatusEnum.TIMEOUT,
+      });
+
+      await gateway.dispatchMatchRequest(request as any, []);
+
+      await jest.advanceTimersByTimeAsync(MATCH_TIMEOUT_MS - 1);
+      expect(matchingService.timeoutRequest).not.toHaveBeenCalled();
+
+      await jest.advanceTimersByTimeAsync(1);
+      expect(matchingService.timeoutRequest).toHaveBeenCalledWith(request.id);
+      expect(gateway.server.to).toHaveBeenCalledWith(`user:${request.patientId}`);
+      expect((gateway.server as any)._toEmit).toHaveBeenCalledWith('match:timeout', {
+        matchRequestId: request.id,
+      });
+    });
+
+    it('should not notify the patient when the request was already resolved at timeout', async () => {
+      const request = buildRequest();
+      matchingService.timeoutRequest.mockResolvedValue({
+        ...request,
+        status: MatchStatusEnum.CONSULTATION_CREATED,
+      });
+
+      await gateway.dispatchMatchRequest(request as any, []);
+      await jest.advanceTimersByTimeAsync(MATCH_TIMEOUT_MS);
+
+      expect(matchingService.timeoutRequest).toHaveBeenCalledWith(request.id);
+      expect(gateway.server.to).not.toHaveBeenCalled();
+    });
+
+    it('should still start the timeout when the offer fails', async () => {
+      const request = buildRequest();
+      matchingService.matchDoctor.mockRejectedValue(new Error('status changed concurrently'));
+      matchingService.timeoutRequest.mockResolvedValue({ ...request, status: MatchStatusEnum.TIMEOUT });
+
+      await expect(
+        gateway.dispatchMatchRequest(request as any, [buildCandidate()]),
+      ).rejects.toThrow('status changed concurrently');
+
+      await jest.advanceTimersByTimeAsync(MATCH_TIMEOUT_MS);
+      expect(matchingService.timeoutRequest).toHaveBeenCalledWith(request.id);
+    });
+
+    it('should replace (not orphan) a running timeout when dispatched again for the same request', async () => {
+      const request = buildRequest();
+      matchingService.timeoutRequest.mockResolvedValue({ ...request, status: MatchStatusEnum.TIMEOUT });
+
+      await gateway.dispatchMatchRequest(request as any, []);
+      await gateway.dispatchMatchRequest(request as any, []);
+      await jest.advanceTimersByTimeAsync(MATCH_TIMEOUT_MS);
+
+      expect(matchingService.timeoutRequest).toHaveBeenCalledTimes(1);
+      expect(jest.getTimerCount()).toBe(0);
+    });
+
+    it('should forget the timer once it has fired', async () => {
+      const request = buildRequest();
+      matchingService.timeoutRequest.mockResolvedValue({ ...request, status: MatchStatusEnum.TIMEOUT });
+
+      await gateway.dispatchMatchRequest(request as any, []);
+      expect((gateway as any).patientTimers.size).toBe(1);
+
+      await jest.advanceTimersByTimeAsync(MATCH_TIMEOUT_MS);
+      expect((gateway as any).patientTimers.size).toBe(0);
+    });
+
+    it('should be used by the match:request WS handler (timeout armed with no candidates)', async () => {
+      const client = createMockSocket();
+      const request = { ...buildRequest(), patientId: mockPatient.id };
+      matchingService.createMatchRequest.mockResolvedValue({ matchRequest: request, doctors: [] });
+      matchingService.timeoutRequest.mockResolvedValue({ ...request, status: MatchStatusEnum.TIMEOUT });
+
+      await gateway.handleMatchRequest(client as any, {});
+      await jest.advanceTimersByTimeAsync(MATCH_TIMEOUT_MS);
+
+      expect(matchingService.timeoutRequest).toHaveBeenCalledWith(request.id);
+      expect(gateway.server.to).toHaveBeenCalledWith(`user:${mockPatient.id}`);
+    });
+  });
+
+  // ─── notifyMatchCancelled (shared WS + REST) ───
+
+  describe('notifyMatchCancelled', () => {
+    beforeEach(() => {
+      jest.useFakeTimers();
+    });
+
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
+    it('should clear the pending timeout of the request', async () => {
+      const request = {
+        id: randomUUID(),
+        patientId: randomUUID(),
+        status: MatchStatusEnum.SEARCHING,
+        matchedDoctorId: null,
+      };
+      await gateway.dispatchMatchRequest(request as any, []);
+
+      await gateway.notifyMatchCancelled({ ...request, status: MatchStatusEnum.CANCELLED } as any);
+      await jest.advanceTimersByTimeAsync(5 * 60 * 1000);
+
+      expect(matchingService.timeoutRequest).not.toHaveBeenCalled();
+    });
+
+    it('should notify the offered doctor', async () => {
+      const doctorProfileId = randomInt(1, 100_000);
+      const doctorUserId = randomUUID();
+      const matchRequestId = randomUUID();
+      matchingService.getDoctorUserId.mockResolvedValue(doctorUserId);
+
+      await gateway.notifyMatchCancelled({
+        id: matchRequestId,
+        status: MatchStatusEnum.CANCELLED,
+        matchedDoctorId: doctorProfileId,
+      } as any);
+
+      expect(matchingService.getDoctorUserId).toHaveBeenCalledWith(doctorProfileId);
+      expect(gateway.server.to).toHaveBeenCalledWith(`user:${doctorUserId}`);
+      expect((gateway.server as any)._toEmit).toHaveBeenCalledWith('match:cancelled', {
+        matchRequestId,
+      });
+    });
+
+    it('should not emit when no doctor was offered', async () => {
+      await gateway.notifyMatchCancelled({
+        id: randomUUID(),
+        status: MatchStatusEnum.CANCELLED,
+        matchedDoctorId: null,
+      } as any);
+
+      expect(matchingService.getDoctorUserId).not.toHaveBeenCalled();
+      expect(gateway.server.to).not.toHaveBeenCalled();
+    });
+
+    it('should not throw when the doctor lookup fails', async () => {
+      matchingService.getDoctorUserId.mockRejectedValue(new Error('db down'));
+
+      await expect(
+        gateway.notifyMatchCancelled({
+          id: randomUUID(),
+          status: MatchStatusEnum.CANCELLED,
+          matchedDoctorId: randomInt(1, 100_000),
+        } as any),
+      ).resolves.toBeUndefined();
+      expect(gateway.server.to).not.toHaveBeenCalled();
     });
   });
 

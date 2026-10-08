@@ -14,7 +14,7 @@ import { Server, Socket } from 'socket.io';
 import { ConfigService } from '@nestjs/config';
 import { createHash } from 'crypto';
 import { MatchingService } from './matching.service';
-import { DoctorSpecialtiesEnum, MatchStatusEnum } from '@prisma/client';
+import { DoctorSpecialtiesEnum, MatchRequest, MatchStatusEnum } from '@prisma/client';
 import { NotificationService } from '../notification/notification.service';
 import { WsRateLimiter } from '../common/tools/ws-rate-limiter';
 
@@ -110,11 +110,7 @@ export class MatchingGateway
         candidates: doctors.length,
       });
 
-      if (doctors.length > 0) {
-        await this.offerToTopDoctor(matchRequest.id, doctors);
-      }
-
-      this.startTimeout(matchRequest.id, user.id);
+      await this.dispatchMatchRequest(matchRequest, doctors);
     } catch (err) {
       this.logger.error(`match:request error: ${err instanceof Error ? err.message : 'Unknown error'}`);
       client.emit('match:error', { message: err instanceof Error ? err.message : 'Unknown error' });
@@ -220,20 +216,52 @@ export class MatchingGateway
         user,
       );
 
-      this.clearTimeout(payload.matchRequestId);
       client.emit('match:cancelled', { matchRequestId: matchRequest.id });
 
-      if (matchRequest.matchedDoctorId) {
-        const doctor = await this.getDoctorUserId(matchRequest.matchedDoctorId);
-        if (doctor) {
-          this.server
-            .to(`user:${doctor}`)
-            .emit('match:cancelled', { matchRequestId: matchRequest.id });
-        }
-      }
+      await this.notifyMatchCancelled(matchRequest);
     } catch (err) {
       this.logger.error(`match:cancel error: ${err instanceof Error ? err.message : 'Unknown error'}`);
       client.emit('match:error', { message: err instanceof Error ? err.message : 'Unknown error' });
+    }
+  }
+
+  // ─────────────── Shared Flow (WS + REST) ───────────────
+
+  /**
+   * Starts the patient timeout for a newly created match request and offers it
+   * to the top-scored doctor. Used by both the `match:request` WS handler and
+   * `POST /matching/request`, so both paths actually reach a doctor.
+   * Returns the latest state of the request (MATCHED once offered).
+   */
+  async dispatchMatchRequest(
+    matchRequest: MatchRequest,
+    doctors: { doctorId: number; userId: string; firstname: string; lastname: string }[],
+  ): Promise<MatchRequest> {
+    this.startTimeout(matchRequest.id, matchRequest.patientId);
+
+    if (doctors.length === 0) return matchRequest;
+    return this.offerToTopDoctor(matchRequest.id, doctors);
+  }
+
+  /**
+   * Clears the timeout of a cancelled match request and tells the offered
+   * doctor (if any) that it was withdrawn. Used by both the `match:cancel` WS
+   * handler and `PATCH /matching/:id/cancel`. Never throws: the cancellation
+   * itself has already succeeded.
+   */
+  async notifyMatchCancelled(matchRequest: MatchRequest): Promise<void> {
+    this.clearTimeout(matchRequest.id);
+
+    if (!matchRequest.matchedDoctorId) return;
+    try {
+      const doctorUserId = await this.getDoctorUserId(matchRequest.matchedDoctorId);
+      if (doctorUserId) {
+        this.server
+          .to(`user:${doctorUserId}`)
+          .emit('match:cancelled', { matchRequestId: matchRequest.id });
+      }
+    } catch (err) {
+      this.logger.error(`Cancel notification failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
     }
   }
 
@@ -242,10 +270,10 @@ export class MatchingGateway
   private async offerToTopDoctor(
     matchRequestId: string,
     doctors: { doctorId: number; userId: string; firstname: string; lastname: string }[],
-  ): Promise<void> {
+  ): Promise<MatchRequest> {
     const topDoctor = doctors[0];
 
-    await this.matchingService.matchDoctor(matchRequestId, topDoctor.doctorId);
+    const matchRequest = await this.matchingService.matchDoctor(matchRequestId, topDoctor.doctorId);
 
     this.server.to(`user:${topDoctor.userId}`).emit('match:request', {
       matchRequestId,
@@ -255,10 +283,16 @@ export class MatchingGateway
     this.notificationService
       .onMatchFound(topDoctor.userId, matchRequestId)
       .catch((e) => this.logger.error(`Notification failed: ${e.message}`));
+
+    return matchRequest;
   }
 
   private startTimeout(matchRequestId: string, patientId: string): void {
+    // Never orphan a running timer for the same request (it could not be cleared anymore)
+    this.clearTimeout(matchRequestId);
+
     const timer = setTimeout(async () => {
+      this.patientTimers.delete(matchRequestId);
       try {
         const request = await this.matchingService.timeoutRequest(matchRequestId);
         if (

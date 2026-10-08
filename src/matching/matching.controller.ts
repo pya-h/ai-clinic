@@ -12,6 +12,7 @@ import {
 } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { MatchingService } from './matching.service';
+import { MatchingGateway } from './matching.gateway';
 import { CookieAuthGuard } from '../auth/guards/cookie-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
@@ -23,7 +24,10 @@ import { CreateMatchRequestDto } from './dto/create-match-request.dto';
 @Controller('matching')
 @UseGuards(CookieAuthGuard)
 export class MatchingController {
-  constructor(private readonly matchingService: MatchingService) {}
+  constructor(
+    private readonly matchingService: MatchingService,
+    private readonly matchingGateway: MatchingGateway,
+  ) {}
 
   @ApiOperation({ description: 'Create a match request (patient only). Optionally provide soapId for auto-specialty.' })
   @UseGuards(RolesGuard)
@@ -34,11 +38,17 @@ export class MatchingController {
     @CurrentUser() user: User,
     @Body() dto: CreateMatchRequestDto,
   ) {
-    return this.matchingService.createMatchRequest(
-      user,
-      dto.soapId,
-      dto.specialty,
-    );
+    const { matchRequest, doctors } =
+      await this.matchingService.createMatchRequest(
+        user,
+        dto.soapId,
+        dto.specialty,
+      );
+
+    return {
+      matchRequest: await this.matchingGateway.dispatchMatchRequest(matchRequest, doctors),
+      doctors,
+    };
   }
 
   @ApiOperation({ description: 'Get the status of a match request.' })
@@ -76,7 +86,9 @@ export class MatchingController {
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: User,
   ) {
-    return this.matchingService.cancelRequest(id, user);
+    const matchRequest = await this.matchingService.cancelRequest(id, user);
+    await this.matchingGateway.notifyMatchCancelled(matchRequest);
+    return matchRequest;
   }
 
   @ApiOperation({ description: 'Transition a timed-out match to manual browse.' })

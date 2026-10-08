@@ -45,7 +45,12 @@ import {
   createMockAdminUser,
   MockUser,
 } from './helpers/mock-session.helper';
-import { randomUuid } from './helpers/test-data.factory';
+import {
+  buildDoctorProfile,
+  randomSpecialty,
+  randomUuid,
+} from './helpers/test-data.factory';
+import { MatchingGateway } from '../src/matching/matching.gateway';
 import { MatchStatusEnum, DoctorSpecialtiesEnum } from '@prisma/client';
 import authConfigs from '../src/configs/auth';
 import generalConfigs from '../src/configs/general';
@@ -71,6 +76,7 @@ class TestAppModule {}
 describe('Matching (e2e)', () => {
   let app: NestFastifyApplication;
   let prisma: MockPrismaService;
+  let gateway: MatchingGateway;
   let sessionUser: MockUser | null = null;
   let sessionStore: Record<string, any> = {};
 
@@ -114,10 +120,12 @@ describe('Matching (e2e)', () => {
           totalReviews: 10,
           distribution: { 1: 0, 2: 0, 3: 2, 4: 5, 5: 3 },
         }),
+        getAggregateRatingsForDoctors: jest.fn().mockResolvedValue(new Map()),
       })
       .overrideProvider(SchedulingService)
       .useValue({
         getAvailableSlots: jest.fn().mockResolvedValue([]),
+        countAvailableSlotsForDoctors: jest.fn().mockResolvedValue(new Map()),
       })
       .overrideProvider(CalendlyService)
       .useValue({
@@ -165,6 +173,7 @@ describe('Matching (e2e)', () => {
 
     await app.init();
     await app.getHttpAdapter().getInstance().ready();
+    gateway = app.get(MatchingGateway);
   });
 
   afterAll(async () => {
@@ -203,6 +212,67 @@ describe('Matching (e2e)', () => {
       expect(body.contents.matchRequest.id).toBe(matchRequestId);
       expect(body.contents.matchRequest.status).toBe(MatchStatusEnum.SEARCHING);
       expect(body.contents.doctors).toEqual([]);
+    });
+
+    it('should offer the request to the top-scored doctor and return it MATCHED', async () => {
+      sessionUser = patientUser;
+      const specialty = randomSpecialty();
+      const doctorProfile = {
+        ...buildDoctorProfile({ userId: doctorUser.id, specialty, verified: true }),
+        user: {
+          id: doctorUser.id,
+          firstname: doctorUser.firstname,
+          lastname: doctorUser.lastname,
+          avatar: null as null,
+        },
+        _count: { consultations: 0 },
+      };
+      const searching = { ...mockMatchRequest, specialty };
+      const matched = {
+        ...searching,
+        status: MatchStatusEnum.MATCHED,
+        matchedDoctorId: doctorProfile.id,
+      };
+      const toSpy = jest.spyOn(gateway.server, 'to');
+
+      prisma.matchRequest.findFirst.mockResolvedValue(null);
+      prisma.matchRequest.create.mockResolvedValue({ ...searching });
+      prisma.doctorProfile.findMany.mockResolvedValue([doctorProfile]);
+      // matchDoctor: read → compare-and-swap → re-read
+      prisma.matchRequest.findUnique.mockResolvedValue({ ...searching });
+      prisma.matchRequest.updateMany.mockResolvedValue({ count: 1 });
+      prisma.matchRequest.findUniqueOrThrow.mockResolvedValue({ ...matched });
+
+      try {
+        const res = await app.inject({
+          method: 'POST',
+          url: '/matching/request',
+          payload: { specialty },
+        });
+
+        expect(res.statusCode).toBe(HttpStatus.CREATED);
+        const body = JSON.parse(res.body);
+        expect(body.contents.matchRequest.status).toBe(MatchStatusEnum.MATCHED);
+        expect(body.contents.matchRequest.matchedDoctorId).toBe(doctorProfile.id);
+        expect(body.contents.doctors).toHaveLength(1);
+        expect(body.contents.doctors[0].doctorId).toBe(doctorProfile.id);
+
+        expect(prisma.matchRequest.updateMany).toHaveBeenCalledWith({
+          where: { id: matchRequestId, status: MatchStatusEnum.SEARCHING },
+          data: {
+            status: MatchStatusEnum.MATCHED,
+            matchedDoctorId: doctorProfile.id,
+          },
+        });
+        expect(toSpy).toHaveBeenCalledWith(`user:${doctorUser.id}`);
+        const notificationService = app.get(NotificationService);
+        expect(notificationService.onMatchFound).toHaveBeenCalledWith(
+          doctorUser.id,
+          matchRequestId,
+        );
+      } finally {
+        toSpy.mockRestore();
+      }
     });
 
     it('should create a match request with optional specialty', async () => {
@@ -486,6 +556,43 @@ describe('Matching (e2e)', () => {
       const body = JSON.parse(res.body);
       expect(body.contents).toBeDefined();
       expect(body.contents.status).toBe(MatchStatusEnum.CANCELLED);
+    });
+
+    it('should withdraw the offer from the matched doctor', async () => {
+      sessionUser = patientUser;
+      const doctorProfileId = buildDoctorProfile().id;
+      const toSpy = jest.spyOn(gateway.server, 'to');
+
+      prisma.matchRequest.findUnique.mockResolvedValue({
+        ...mockMatchRequest,
+        status: MatchStatusEnum.MATCHED,
+        matchedDoctorId: doctorProfileId,
+      });
+      prisma.matchRequest.updateMany.mockResolvedValue({ count: 1 });
+      prisma.matchRequest.findUniqueOrThrow.mockResolvedValue({
+        ...mockMatchRequest,
+        status: MatchStatusEnum.CANCELLED,
+        matchedDoctorId: doctorProfileId,
+        resolvedAt: new Date(),
+      });
+      prisma.doctorProfile.findUnique.mockResolvedValue({ userId: doctorUser.id });
+
+      try {
+        const res = await app.inject({
+          method: 'PATCH',
+          url: `/matching/${matchRequestId}/cancel`,
+        });
+
+        expect(res.statusCode).toBe(HttpStatus.OK);
+        expect(JSON.parse(res.body).contents.status).toBe(MatchStatusEnum.CANCELLED);
+        expect(prisma.doctorProfile.findUnique).toHaveBeenCalledWith({
+          where: { id: doctorProfileId },
+          select: { userId: true },
+        });
+        expect(toSpy).toHaveBeenCalledWith(`user:${doctorUser.id}`);
+      } finally {
+        toSpy.mockRestore();
+      }
     });
 
     it('should allow admin to cancel another patient request', async () => {
