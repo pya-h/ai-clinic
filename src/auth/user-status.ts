@@ -69,6 +69,24 @@ export class UserStatusCache {
   }
 }
 
+/**
+ * The session's login-time user with role and admin flags taken from the DB status,
+ * or the same object when they already match.
+ */
+export function withCurrentRole<T extends Pick<UserStatus, 'role' | 'isAdmin' | 'isSuperAdmin'>>(
+  user: T,
+  status: UserStatus,
+): T {
+  if (
+    user.role === status.role &&
+    user.isAdmin === status.isAdmin &&
+    user.isSuperAdmin === status.isSuperAdmin
+  ) {
+    return user;
+  }
+  return { ...user, role: status.role, isAdmin: status.isAdmin, isSuperAdmin: status.isSuperAdmin };
+}
+
 /** Why the account may not be used, or null when it may. */
 export function accountBlockReason(
   status: Pick<UserStatus, 'isActive' | 'isBanned' | 'banReason'>,

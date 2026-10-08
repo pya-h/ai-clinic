@@ -463,20 +463,21 @@ describe('SuperAdminGuard', () => {
 describe('OptionalAuthGuard', () => {
   let guard: OptionalAuthGuard;
 
+  const requestOf = (ctx: ExecutionContext) => ctx.switchToHttp().getRequest() as any;
+
   beforeEach(() => {
     guard = new OptionalAuthGuard();
   });
 
-  it('should set request.user to null and return true when no session user', () => {
+  it('should set request.user to null and return true when no session user', async () => {
     const ctx = createMockContext(null);
-    const result = guard.canActivate(ctx);
+    const result = await guard.canActivate(ctx);
 
     expect(result).toBe(true);
-    const req = ctx.switchToHttp().getRequest() as any;
-    expect(req.user).toBeNull();
+    expect(requestOf(ctx).user).toBeNull();
   });
 
-  it('should set request.user to null when session is undefined', () => {
+  it('should set request.user to null when session is undefined', async () => {
     const request: Record<string, any> = {};
     const ctx = {
       switchToHttp: () => ({
@@ -484,18 +485,135 @@ describe('OptionalAuthGuard', () => {
       }),
     } as unknown as ExecutionContext;
 
-    const result = guard.canActivate(ctx);
+    const result = await guard.canActivate(ctx);
     expect(result).toBe(true);
     expect(request.user).toBeNull();
   });
 
-  it('should set request.user to session user when valid session exists', () => {
+  it('should set request.user to session user when valid session exists', async () => {
     const user = { id: randomUuid(), role: 'PATIENT', isActive: true };
     const ctx = createMockContext(user);
-    const result = guard.canActivate(ctx);
+    const result = await guard.canActivate(ctx);
 
     expect(result).toBe(true);
-    const req = ctx.switchToHttp().getRequest() as any;
-    expect(req.user).toEqual(user);
+    expect(requestOf(ctx).user).toEqual(user);
+  });
+
+  it.each([
+    ['deactivated', { isActive: false }],
+    ['banned', { isBanned: true }],
+  ])('should treat a session that already says %s as a guest and clear it', async (_case, flags) => {
+    const ctx = createMockContext({ id: randomUuid(), role: 'PATIENT', ...flags });
+
+    await expect(guard.canActivate(ctx)).resolves.toBe(true);
+
+    expect(requestOf(ctx).user).toBeNull();
+    expect(requestOf(ctx).session.delete).toHaveBeenCalled();
+  });
+
+  describe('with PrismaService (DB verification)', () => {
+    let mockPrisma: { user: { findFirst: jest.Mock } };
+
+    const dbStatus = (overrides: Record<string, unknown> = {}) => ({
+      isActive: true,
+      isBanned: false,
+      banReason: null,
+      role: 'PATIENT',
+      isAdmin: false,
+      isSuperAdmin: false,
+      ...overrides,
+    });
+
+    const sessionUser = (overrides: Record<string, unknown> = {}) => ({
+      id: randomUuid(),
+      isActive: true,
+      role: 'PATIENT',
+      isAdmin: false,
+      isSuperAdmin: false,
+      ...overrides,
+    });
+
+    beforeEach(() => {
+      mockPrisma = { user: { findFirst: jest.fn().mockResolvedValue(dbStatus()) } };
+      guard = new OptionalAuthGuard(mockPrisma as any);
+      (UserStatusCache as any).entries.clear();
+    });
+
+    it('should keep an active user whose role matches the DB, without touching the session', async () => {
+      const user = sessionUser();
+      const ctx = createMockContext(user);
+
+      await expect(guard.canActivate(ctx)).resolves.toBe(true);
+
+      expect(requestOf(ctx).user).toBe(user);
+      expect(mockPrisma.user.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: user.id } }),
+      );
+      expect(requestOf(ctx).session.set).not.toHaveBeenCalled();
+      expect(requestOf(ctx).session.delete).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['banned', { isBanned: true, banReason: 'abuse' }],
+      ['deactivated', { isActive: false }],
+    ])('should treat a user %s since login as a guest and clear the session', async (_case, flags) => {
+      mockPrisma.user.findFirst.mockResolvedValue(dbStatus(flags));
+      const ctx = createMockContext(sessionUser());
+
+      await expect(guard.canActivate(ctx)).resolves.toBe(true);
+
+      expect(requestOf(ctx).user).toBeNull();
+      expect(requestOf(ctx).session.delete).toHaveBeenCalled();
+    });
+
+    it('should apply role and admin changes made since login and save them in the session', async () => {
+      const user = sessionUser({ role: 'PATIENT', isAdmin: true });
+      mockPrisma.user.findFirst.mockResolvedValue(dbStatus({ role: 'NURSE', isAdmin: false }));
+      const ctx = createMockContext(user);
+
+      await guard.canActivate(ctx);
+
+      const refreshed = { ...user, role: 'NURSE', isAdmin: false };
+      expect(requestOf(ctx).user).toEqual(refreshed);
+      expect(requestOf(ctx).session.set).toHaveBeenCalledWith('user', refreshed);
+    });
+
+    it('should treat a user missing from the DB as a guest', async () => {
+      mockPrisma.user.findFirst.mockResolvedValue(null);
+      const ctx = createMockContext(sessionUser());
+
+      await guard.canActivate(ctx);
+
+      expect(requestOf(ctx).user).toBeNull();
+    });
+
+    it('should fall back to a guest, keeping the session, when the DB is unreachable', async () => {
+      mockPrisma.user.findFirst.mockRejectedValue(new Error('DB connection lost'));
+      const ctx = createMockContext(sessionUser());
+
+      await expect(guard.canActivate(ctx)).resolves.toBe(true);
+
+      expect(requestOf(ctx).user).toBeNull();
+      expect(requestOf(ctx).session.delete).not.toHaveBeenCalled();
+    });
+
+    it('should see a ban right after UserStatusCache.invalidate', async () => {
+      const user = sessionUser();
+      await guard.canActivate(createMockContext(user));
+
+      mockPrisma.user.findFirst.mockResolvedValue(dbStatus({ isBanned: true }));
+      UserStatusCache.invalidate(user.id);
+      const ctx = createMockContext(user);
+      await guard.canActivate(ctx);
+
+      expect(mockPrisma.user.findFirst).toHaveBeenCalledTimes(2);
+      expect(requestOf(ctx).user).toBeNull();
+    });
+
+    it('should not query the DB for a guest', async () => {
+      await guard.canActivate(createMockContext(null));
+
+      expect(mockPrisma.user.findFirst).not.toHaveBeenCalled();
+    });
   });
 });

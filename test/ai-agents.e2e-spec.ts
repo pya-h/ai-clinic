@@ -129,6 +129,17 @@ describe('AI Agents (e2e)', () => {
     bpClient.getConversation.mockResolvedValue({ id: 'any' });
     bpClient.listMessages.mockResolvedValue({ messages: [] });
     prisma.user.update.mockResolvedValue({});
+    prisma.user.findFirst.mockImplementation(async () => activeStatus());
+  });
+
+  const activeStatus = (overrides: Record<string, unknown> = {}) => ({
+    isActive: true,
+    isBanned: false,
+    banReason: null,
+    role: 'PATIENT',
+    isAdmin: false,
+    isSuperAdmin: false,
+    ...overrides,
   });
 
   // ─── POST /ai-agents/start ───
@@ -178,6 +189,26 @@ describe('AI Agents (e2e)', () => {
       expect(body.contents.guest).toBe(true);
       expect(body.contents.id).toBeDefined();
     });
+
+    it.each([
+      ['banned', { isBanned: true, banReason: 'abuse' }],
+      ['deactivated', { isActive: false }],
+    ])('should start a guest conversation for a user %s since their session began', async (_case, flags) => {
+      sessionUser = createMockUser();
+      prisma.user.findFirst.mockImplementation(async () => activeStatus(flags));
+      bpClient.createConversation.mockResolvedValue({
+        conversation: { id: randomUuid() },
+      });
+
+      const res = await app.inject({ method: 'POST', url: '/ai-agents/start' });
+
+      expect(res.statusCode).toBe(HttpStatus.OK);
+      expect(JSON.parse(res.body).contents.guest).toBe(true);
+      expect(prisma.user.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: sessionUser.id } }),
+      );
+      expect(prisma.aiConversation.create).not.toHaveBeenCalled();
+    });
   });
 
   // ─── POST /ai-agents/message ───
@@ -223,6 +254,21 @@ describe('AI Agents (e2e)', () => {
       });
 
       expect(res.statusCode).toBe(HttpStatus.BAD_REQUEST);
+    });
+
+    it('should treat a user banned since their session began as a guest', async () => {
+      sessionUser = createMockUser();
+      prisma.user.findFirst.mockImplementation(async () => activeStatus({ isBanned: true }));
+
+      const res = await app.inject({
+        method: 'POST',
+        url: '/ai-agents/message',
+        payload: { text: 'Hello' },
+      });
+
+      expect(res.statusCode).toBe(HttpStatus.BAD_REQUEST);
+      expect(JSON.parse(res.body).message).toContain('conversationId is required for guest messages');
+      expect(bpClient.createMessage).not.toHaveBeenCalled();
     });
 
     it('should reject guest message without conversationId', async () => {

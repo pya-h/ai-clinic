@@ -1,7 +1,7 @@
 import { CanActivate, ExecutionContext, ForbiddenException, Injectable, Logger, Optional, UnauthorizedException } from '@nestjs/common';
 import { FastifyRequest } from 'fastify';
 import { PrismaService } from '../../prisma/prisma.service';
-import { UserStatus, UserStatusCache, accountBlockReason } from '../user-status';
+import { UserStatus, UserStatusCache, accountBlockReason, withCurrentRole } from '../user-status';
 
 @Injectable()
 export class CookieAuthGuard implements CanActivate {
@@ -58,19 +58,10 @@ export class CookieAuthGuard implements CanActivate {
     }
 
     // The session holds a login-time copy of the user; role and admin checks must follow the DB.
-    if (
-      user.role !== status.role ||
-      user.isAdmin !== status.isAdmin ||
-      user.isSuperAdmin !== status.isSuperAdmin
-    ) {
-      const refreshed = {
-        ...user,
-        role: status.role,
-        isAdmin: status.isAdmin,
-        isSuperAdmin: status.isSuperAdmin,
-      };
-      session.set('user', refreshed);
-      request.user = refreshed;
+    const current = withCurrentRole(user, status);
+    if (current !== user) {
+      session.set('user', current);
+      request.user = current;
     }
 
     return true;
