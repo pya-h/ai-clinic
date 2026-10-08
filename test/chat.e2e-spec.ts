@@ -3,6 +3,8 @@
  *
  * Tests:
  *   POST /chat          — create/reopen chat (happy, existing, self-chat, patient-patient, unauth, not-found)
+ *   POST /chat          — who may start a chat (doctor→patient relationship, doctor→nurse, nurse→assigned
+ *                         doctor, nurse reopening a doctor's chat, blocked pairs, admin exemption)
  *   GET  /chat          — list user chats (happy, unauth)
  *   GET  /chat/:id      — get single chat (happy, non-participant, not-found)
  *   GET  /chat/:id/messages  — get paginated messages (happy, non-participant)
@@ -33,6 +35,8 @@ import {
 import {
   createMockUser,
   createMockDoctorUser,
+  createMockNurseUser,
+  createMockAdminUser,
   MockUser,
 } from './helpers/mock-session.helper';
 import { randomUuid } from './helpers/test-data.factory';
@@ -335,6 +339,117 @@ describe('Chat (e2e)', () => {
       });
 
       expect(res.statusCode).toBe(HttpStatus.BAD_REQUEST);
+    });
+  });
+
+  // ─── POST /chat — who may start a chat ───
+
+  describe('POST /chat — who may start a chat', () => {
+    const randomId = () => 1 + Math.floor(Math.random() * 100_000);
+
+    beforeEach(() => {
+      for (const mock of [
+        prisma.user.findUnique,
+        prisma.chat.findFirst,
+        prisma.chat.create,
+        prisma.doctorProfile.findUnique,
+        prisma.consultation.findFirst,
+        prisma.appointment.findFirst,
+        prisma.doctorNurseAssignment.findFirst,
+        prisma.doctorNurseAssignment.findMany,
+      ]) {
+        mock.mockReset();
+      }
+      prisma.chat.findFirst.mockResolvedValue(null);
+      prisma.chat.create.mockResolvedValue(buildChatData());
+    });
+
+    const startChat = async (initiator: MockUser, participant: MockUser) => {
+      sessionUser = initiator;
+      prisma.user.findUnique
+        .mockResolvedValueOnce({ ...initiator })
+        .mockResolvedValueOnce({ ...participant });
+      return app.inject({
+        method: 'POST',
+        url: '/chat',
+        payload: { participantId: participant.id },
+      });
+    };
+
+    it('should let a doctor start a chat with their own patient', async () => {
+      prisma.doctorProfile.findUnique.mockResolvedValue({ id: randomId() });
+      prisma.consultation.findFirst.mockResolvedValue({ id: randomUuid() });
+
+      const res = await startChat(createMockDoctorUser(), createMockUser());
+
+      expect(res.statusCode).toBe(HttpStatus.CREATED);
+      expect(prisma.chat.create).toHaveBeenCalled();
+    });
+
+    it('should return 403 when a doctor starts a chat with an unrelated patient', async () => {
+      prisma.doctorProfile.findUnique.mockResolvedValue({ id: randomId() });
+      prisma.consultation.findFirst.mockResolvedValue(null);
+      prisma.appointment.findFirst.mockResolvedValue(null);
+
+      const res = await startChat(createMockDoctorUser(), createMockUser());
+
+      expect(res.statusCode).toBe(HttpStatus.FORBIDDEN);
+      expect(JSON.parse(res.body).message).toContain('your own patients');
+      expect(prisma.chat.create).not.toHaveBeenCalled();
+    });
+
+    it('should let a doctor start a chat with any nurse', async () => {
+      const res = await startChat(createMockDoctorUser(), createMockNurseUser());
+
+      expect(res.statusCode).toBe(HttpStatus.CREATED);
+      expect(prisma.chat.create).toHaveBeenCalled();
+    });
+
+    it('should let a nurse start a chat with their assigned doctor', async () => {
+      prisma.doctorNurseAssignment.findFirst.mockResolvedValue({ id: randomId() });
+
+      const res = await startChat(createMockNurseUser(), createMockDoctorUser());
+
+      expect(res.statusCode).toBe(HttpStatus.CREATED);
+    });
+
+    it('should return 403 when a nurse starts a chat with an unassigned doctor', async () => {
+      prisma.doctorNurseAssignment.findFirst.mockResolvedValue(null);
+
+      const res = await startChat(createMockNurseUser(), createMockDoctorUser());
+
+      expect(res.statusCode).toBe(HttpStatus.FORBIDDEN);
+      expect(prisma.chat.create).not.toHaveBeenCalled();
+    });
+
+    it('should let a nurse reopen a chat an unassigned doctor started', async () => {
+      const existing = buildChatData();
+      prisma.chat.findFirst.mockResolvedValue(existing);
+
+      const res = await startChat(createMockNurseUser(), createMockDoctorUser());
+
+      expect(res.statusCode).toBe(HttpStatus.CREATED);
+      expect(JSON.parse(res.body).contents.id).toBe(existing.id);
+      expect(prisma.doctorNurseAssignment.findFirst).not.toHaveBeenCalled();
+      expect(prisma.chat.create).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['doctor', 'doctor', createMockDoctorUser, createMockDoctorUser],
+      ['nurse', 'nurse', createMockNurseUser, createMockNurseUser],
+      ['doctor', 'site admin', createMockDoctorUser, createMockAdminUser],
+      ['role-less user', 'doctor', () => createMockUser({ role: UserRolesEnum.NONE }), createMockDoctorUser],
+    ])('should return 403 when a %s starts a chat with a %s', async (_from, _to, makeFrom, makeTo) => {
+      const res = await startChat(makeFrom(), makeTo());
+
+      expect(res.statusCode).toBe(HttpStatus.FORBIDDEN);
+      expect(prisma.chat.create).not.toHaveBeenCalled();
+    });
+
+    it('should let an admin start a chat with a doctor', async () => {
+      const res = await startChat(createMockAdminUser(), createMockDoctorUser());
+
+      expect(res.statusCode).toBe(HttpStatus.CREATED);
     });
   });
 

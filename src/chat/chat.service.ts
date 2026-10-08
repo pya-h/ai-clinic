@@ -29,11 +29,10 @@ export class ChatService {
   // ─────────────────────────── Chat Management ───────────────────────────
 
   /**
-   * Create a new chat between two users, enforcing business rules:
-   * - No patient↔patient chats
-   * - Admin/SuperAdmin can chat with anyone
-   * - Patient can only chat with doctor/nurse
-   * - If chat already exists between these users, return the existing one
+   * Create a new chat between two users, or return the open one they already
+   * share. Only starting a chat is restricted (see validateChatRules); either
+   * party may reopen an existing chat, so a nurse can answer a doctor who
+   * contacted them first. Admin/SuperAdmin initiators may chat with anyone.
    */
   async createChat(
     initiatorId: string,
@@ -70,11 +69,6 @@ export class ChatService {
       throw new BadRequestException('Participant account is banned');
     }
 
-    // Enforce chat rules (admins bypass)
-    if (!initiator.isAdmin && !initiator.isSuperAdmin) {
-      await this.validateChatRules(initiator, participant);
-    }
-
     // Check if chat already exists between these two users
     const existingChat = await this.findExistingChat(
       initiatorId,
@@ -90,6 +84,11 @@ export class ChatService {
           lastSeenAt: p.lastSeenAt,
         })),
       };
+    }
+
+    // Enforce chat rules (admins bypass)
+    if (!initiator.isAdmin && !initiator.isSuperAdmin) {
+      await this.validateChatRules(initiator, participant);
     }
 
     // If consultationId is given, verify it exists and either party is involved
@@ -560,51 +559,21 @@ export class ChatService {
 
   // ─────────────────────────── Private Helpers ───────────────────────────
 
+  /** Who may start a new chat; admin initiators are exempt (see createChat). */
   private async validateChatRules(initiator: User, participant: User): Promise<void> {
-    // No patient ↔ patient chats
-    if (
-      initiator.role === UserRolesEnum.PATIENT &&
-      participant.role === UserRolesEnum.PATIENT
-    ) {
+    const { PATIENT, DOCTOR, NURSE } = UserRolesEnum;
+    const from = initiator.role;
+    const to = participant.role;
+
+    if (from === PATIENT && to === PATIENT) {
       throw new BadRequestException(
         'Patients cannot start chats with other patients',
       );
     }
 
-    // Patients can only chat with DOCTOR or NURSE
-    if (initiator.role === UserRolesEnum.PATIENT) {
-      if (
-        participant.role !== UserRolesEnum.DOCTOR &&
-        participant.role !== UserRolesEnum.NURSE
-      ) {
-        throw new BadRequestException(
-          'Patients can only chat with doctors or nurses',
-        );
-      }
-    }
+    if (from === PATIENT && to === DOCTOR) return;
 
-    // Nurses need CHAT_WITH_PATIENTS permission to chat with patients
-    if (
-      initiator.role === UserRolesEnum.NURSE &&
-      participant.role === UserRolesEnum.PATIENT
-    ) {
-      const doctorIds = await this.nurseService.getDoctorIdsForNurse(
-        initiator.id,
-        NursePermissionEnum.CHAT_WITH_PATIENTS,
-      );
-      if (doctorIds.length === 0) {
-        throw new ForbiddenException(
-          'You do not have the Chat with Patients permission',
-        );
-      }
-      await this.assertPatientBelongsToDoctor(participant.id, doctorIds);
-    }
-
-    // Patient initiating chat with a nurse — verify the nurse has CHAT_WITH_PATIENTS
-    if (
-      initiator.role === UserRolesEnum.PATIENT &&
-      participant.role === UserRolesEnum.NURSE
-    ) {
+    if (from === PATIENT && to === NURSE) {
       const doctorIds = await this.nurseService.getDoctorIdsForNurse(
         participant.id,
         NursePermissionEnum.CHAT_WITH_PATIENTS,
@@ -615,13 +584,87 @@ export class ChatService {
         );
       }
       await this.assertPatientBelongsToDoctor(initiator.id, doctorIds);
+      return;
     }
+
+    if (from === PATIENT) {
+      throw new BadRequestException(
+        'Patients can only chat with doctors or nurses',
+      );
+    }
+
+    if (from === DOCTOR && to === PATIENT) {
+      const profile = await this.prisma.doctorProfile.findUnique({
+        where: { userId: initiator.id },
+        select: { id: true },
+      });
+      if (
+        !profile ||
+        !(await this.patientBelongsToDoctor(participant.id, [profile.id]))
+      ) {
+        throw new ForbiddenException(
+          'You can only start chats with your own patients',
+        );
+      }
+      return;
+    }
+
+    // Lets a doctor approach any nurse (e.g. to hire one); a nurse may only
+    // start chats with doctors they are assigned to.
+    if (from === DOCTOR && to === NURSE) return;
+
+    if (from === NURSE && to === PATIENT) {
+      const doctorIds = await this.nurseService.getDoctorIdsForNurse(
+        initiator.id,
+        NursePermissionEnum.CHAT_WITH_PATIENTS,
+      );
+      if (doctorIds.length === 0) {
+        throw new ForbiddenException(
+          'You do not have the Chat with Patients permission',
+        );
+      }
+      await this.assertPatientBelongsToDoctor(participant.id, doctorIds);
+      return;
+    }
+
+    if (from === NURSE && to === DOCTOR) {
+      const assignment = await this.prisma.doctorNurseAssignment.findFirst({
+        where: {
+          nurseId: initiator.id,
+          isActive: true,
+          doctor: { userId: participant.id },
+        },
+        select: { id: true },
+      });
+      if (!assignment) {
+        throw new ForbiddenException(
+          'You can only start chats with doctors you are assigned to',
+        );
+      }
+      return;
+    }
+
+    // Doctor↔doctor waits for the friend system (Phase 17); nurse↔nurse and
+    // users without a role (NONE, which includes admin accounts) are out too.
+    throw new ForbiddenException('You cannot start a chat with this user');
   }
 
   private async assertPatientBelongsToDoctor(
     patientUserId: string,
     doctorIds: number[],
   ): Promise<void> {
+    if (!(await this.patientBelongsToDoctor(patientUserId, doctorIds))) {
+      throw new ForbiddenException(
+        'This patient does not belong to your assigned doctor(s)',
+      );
+    }
+  }
+
+  /** Accepting a match creates its consultation, so matches need no lookup of their own. */
+  private async patientBelongsToDoctor(
+    patientUserId: string,
+    doctorIds: number[],
+  ): Promise<boolean> {
     const relation = await this.prisma.consultation.findFirst({
       where: {
         patientId: patientUserId,
@@ -629,20 +672,16 @@ export class ChatService {
       },
       select: { id: true },
     });
-    if (!relation) {
-      const appointment = await this.prisma.appointment.findFirst({
-        where: {
-          patientId: patientUserId,
-          doctorId: { in: doctorIds },
-        },
-        select: { id: true },
-      });
-      if (!appointment) {
-        throw new ForbiddenException(
-          'This patient does not belong to your assigned doctor(s)',
-        );
-      }
-    }
+    if (relation) return true;
+
+    const appointment = await this.prisma.appointment.findFirst({
+      where: {
+        patientId: patientUserId,
+        doctorId: { in: doctorIds },
+      },
+      select: { id: true },
+    });
+    return !!appointment;
   }
 
   private async findExistingChat(
