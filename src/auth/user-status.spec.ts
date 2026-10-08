@@ -103,6 +103,36 @@ describe('UserStatusCache', () => {
       await expect(UserStatusCache.get(prisma as any, userId)).resolves.toMatchObject({ isAdmin: true });
     });
 
+    it('should not cache a read that was in flight when the user was invalidated', async () => {
+      const userId = randomUUID();
+      let finishRead!: (value: unknown) => void;
+      prisma.user.findFirst.mockReturnValueOnce(new Promise((resolve) => (finishRead = resolve)));
+
+      const inFlight = UserStatusCache.get(prisma as any, userId);
+      UserStatusCache.invalidate(userId);
+      finishRead(status({ isAdmin: true }));
+      await expect(inFlight).resolves.toMatchObject({ isAdmin: true });
+
+      prisma.user.findFirst.mockResolvedValue(status({ isAdmin: false }));
+      await expect(UserStatusCache.get(prisma as any, userId)).resolves.toMatchObject({ isAdmin: false });
+      expect(prisma.user.findFirst).toHaveBeenCalledTimes(2);
+    });
+
+    it('should cache again once a read no longer overlaps an invalidation', async () => {
+      const [userId, other] = [randomUUID(), randomUUID()];
+      let finishRead!: (value: unknown) => void;
+      prisma.user.findFirst.mockReturnValueOnce(new Promise((resolve) => (finishRead = resolve)));
+
+      const inFlight = UserStatusCache.get(prisma as any, userId);
+      UserStatusCache.invalidate(other);
+      finishRead(status());
+      await inFlight;
+
+      await UserStatusCache.get(prisma as any, userId);
+      await UserStatusCache.get(prisma as any, userId);
+      expect(prisma.user.findFirst).toHaveBeenCalledTimes(2);
+    });
+
     it('should notify every listener, even when one throws', () => {
       const userId = randomUUID();
       const failing = jest.fn(() => {

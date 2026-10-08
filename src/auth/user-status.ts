@@ -24,6 +24,7 @@ export class UserStatusCache {
   private static readonly TTL = 60_000;
   private static readonly entries = new Map<string, { status: UserStatus; checkedAt: number }>();
   private static readonly listeners = new Set<(userId: string) => void>();
+  private static invalidations = 0;
   private static readonly logger = new Logger(UserStatusCache.name);
 
   /** Resolves to null when the user does not exist; DB errors are left to the caller. */
@@ -34,11 +35,13 @@ export class UserStatusCache {
       return cached.status;
     }
 
+    const invalidationsBefore = UserStatusCache.invalidations;
     const status = await prisma.user.findFirst({
       where: { id: userId },
       select: STATUS_SELECT,
     });
-    if (status) {
+    // A read that overlapped an invalidate() may predate the change, so it must not be cached.
+    if (status && UserStatusCache.invalidations === invalidationsBefore) {
       UserStatusCache.entries.set(userId, { status, checkedAt: now });
     }
     return status;
@@ -46,6 +49,7 @@ export class UserStatusCache {
 
   /** Call after changing a user's role, admin flags, ban or active state, so it applies on their next request. */
   static invalidate(userId: string): void {
+    UserStatusCache.invalidations++;
     UserStatusCache.entries.delete(userId);
     for (const listener of UserStatusCache.listeners) {
       try {

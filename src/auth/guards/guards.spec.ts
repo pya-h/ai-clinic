@@ -278,6 +278,24 @@ describe('CookieAuthGuard', () => {
       expect(requestOf(ctx).user.isAdmin).toBe(false);
     });
 
+    it('should not let a request that read before a demotion keep admin rights for later requests', async () => {
+      const user = sessionUser({ role: 'NONE', isAdmin: true });
+      let finishRead!: (value: unknown) => void;
+      mockPrisma.user.findFirst.mockReturnValueOnce(new Promise((resolve) => (finishRead = resolve)));
+
+      const inFlight = guardWithPrisma.canActivate(createMockContext(user));
+      UserStatusCache.invalidate(user.id);
+      finishRead(dbStatus({ role: 'NONE', isAdmin: true }));
+      await inFlight;
+
+      mockPrisma.user.findFirst.mockResolvedValueOnce(dbStatus({ role: 'NONE', isAdmin: false }));
+      const ctx = createMockContext(user);
+      await guardWithPrisma.canActivate(ctx);
+
+      expect(requestOf(ctx).user.isAdmin).toBe(false);
+      expect(() => new AdminGuard().canActivate(ctx)).toThrow(ForbiddenException);
+    });
+
     it('should apply a ban right after UserStatusCache.invalidate', async () => {
       const user = sessionUser();
       mockPrisma.user.findFirst.mockResolvedValueOnce(dbStatus());
