@@ -21,14 +21,14 @@ A telemedicine platform backend built with **NestJS 11** on **Fastify**, providi
 
 - **Node.js** >= 20
 - **PostgreSQL** >= 15
-- **npm** >= 10
+- **pnpm** >= 10 (`corepack enable` provides it)
 
 ## Getting Started
 
 ### 1. Install dependencies
 
 ```bash
-npm install
+pnpm install
 ```
 
 ### 2. Configure environment
