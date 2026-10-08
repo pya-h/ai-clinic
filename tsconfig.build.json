@@ -1,4 +1,11 @@
 {
   "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "rootDir": "./src",
+    // Kept inside dist so `nest build` clears it with the output; left outside,
+    // the next incremental build would see no changes and emit nothing.
+    "tsBuildInfoFile": "./dist/tsconfig.build.tsbuildinfo"
+  },
+  "include": ["src"],
   "exclude": ["node_modules", "test", "dist", "**/*spec.ts"]
 }

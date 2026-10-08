@@ -3,7 +3,7 @@ FROM node:22-alpine AS build
 
 WORKDIR /app
 
-COPY package.json pnpm-lock.yaml ./
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 RUN corepack enable && pnpm install --frozen-lockfile
 
 COPY prisma ./prisma
@@ -20,7 +20,7 @@ RUN apk add --no-cache dumb-init
 
 WORKDIR /app
 
-COPY package.json pnpm-lock.yaml ./
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 RUN corepack enable && pnpm install --frozen-lockfile --prod
 
 COPY prisma ./prisma
