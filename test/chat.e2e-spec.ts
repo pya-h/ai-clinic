@@ -427,11 +427,26 @@ describe('Chat (e2e)', () => {
       expect(prisma.chat.create).not.toHaveBeenCalled();
     });
 
-    it('should let a doctor start a chat with any nurse', async () => {
+    it('should let a verified doctor start a chat with any nurse', async () => {
+      prisma.doctorProfile.findUnique.mockResolvedValue({ verified: true });
+
       const res = await startChat(createMockDoctorUser(), createMockNurseUser());
 
       expect(res.statusCode).toBe(HttpStatus.CREATED);
       expect(prisma.chat.create).toHaveBeenCalled();
+    });
+
+    it.each([
+      ['an unverified profile', { verified: false }],
+      ['no profile', null],
+    ])('should return 403 when a doctor with %s starts a chat with a nurse', async (_case, profile) => {
+      prisma.doctorProfile.findUnique.mockResolvedValue(profile);
+
+      const res = await startChat(createMockDoctorUser(), createMockNurseUser());
+
+      expect(res.statusCode).toBe(HttpStatus.FORBIDDEN);
+      expect(JSON.parse(res.body).message).toBe('Only verified doctors can start chats with nurses');
+      expect(prisma.chat.create).not.toHaveBeenCalled();
     });
 
     it('should let a nurse start a chat with their assigned doctor', async () => {

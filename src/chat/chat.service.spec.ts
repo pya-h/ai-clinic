@@ -433,12 +433,43 @@ describe('ChatService', () => {
       expect(prisma.chat.create).not.toHaveBeenCalled();
     });
 
-    it('should let a doctor start a chat with any nurse', async () => {
-      await expect(startChat(userWith(DOCTOR), userWith(NURSE))).resolves.toBeDefined();
+    it('should let a verified doctor start a chat with any nurse', async () => {
+      const doctor = userWith(DOCTOR);
+      prisma.doctorProfile.findUnique.mockResolvedValue({ verified: true });
 
+      await expect(startChat(doctor, userWith(NURSE))).resolves.toBeDefined();
+
+      expect(prisma.doctorProfile.findUnique).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { userId: doctor.id } }),
+      );
       expect(prisma.doctorNurseAssignment.findFirst).not.toHaveBeenCalled();
       expect(nurseService.getDoctorIdsForNurse).not.toHaveBeenCalled();
       expect(prisma.chat.create).toHaveBeenCalled();
+    });
+
+    it.each([
+      ['an unverified profile', { verified: false }],
+      ['no profile', null],
+    ])('should reject a doctor with %s starting a chat with a nurse', async (_case, profile) => {
+      prisma.doctorProfile.findUnique.mockResolvedValue(profile);
+
+      await expect(startChat(userWith(DOCTOR), userWith(NURSE))).rejects.toThrow(
+        new ForbiddenException('Only verified doctors can start chats with nurses'),
+      );
+      expect(prisma.chat.create).not.toHaveBeenCalled();
+    });
+
+    it('should let a doctor no longer verified reopen their existing chat with a nurse', async () => {
+      prisma.user.findUnique
+        .mockResolvedValueOnce(userWith(DOCTOR))
+        .mockResolvedValueOnce(userWith(NURSE));
+      prisma.chat.findFirst.mockResolvedValue(mockChat);
+      prisma.doctorProfile.findUnique.mockResolvedValue({ verified: false });
+
+      const result = await service.createChat(uuid(), { participantId: uuid() });
+
+      expect(result.id).toBe(chatId);
+      expect(prisma.doctorProfile.findUnique).not.toHaveBeenCalled();
     });
 
     it('should let a nurse start a chat with a doctor they are actively assigned to', async () => {

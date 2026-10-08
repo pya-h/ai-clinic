@@ -609,9 +609,20 @@ export class ChatService {
       return;
     }
 
-    // Lets a doctor approach any nurse (e.g. to hire one); a nurse may only
-    // start chats with doctors they are assigned to.
-    if (from === DOCTOR && to === NURSE) return;
+    // Lets a verified doctor approach any nurse (e.g. to hire one); a nurse may
+    // only start chats with doctors they are assigned to.
+    if (from === DOCTOR && to === NURSE) {
+      const profile = await this.prisma.doctorProfile.findUnique({
+        where: { userId: initiator.id },
+        select: { verified: true },
+      });
+      if (!profile?.verified) {
+        throw new ForbiddenException(
+          'Only verified doctors can start chats with nurses',
+        );
+      }
+      return;
+    }
 
     if (from === NURSE && to === PATIENT) {
       const doctorIds = await this.nurseService.getDoctorIdsForNurse(
