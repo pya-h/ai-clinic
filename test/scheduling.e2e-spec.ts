@@ -223,6 +223,72 @@ describe('Scheduling (e2e)', () => {
       expect(Array.isArray(body.contents)).toBe(true);
     });
 
+    it('should exclude a slot booked later on a single-day range', async () => {
+      const day = new Date();
+      day.setUTCDate(day.getUTCDate() + 1 + Math.floor(Math.random() * 30));
+      const date = day.toISOString().slice(0, 10);
+      const bookedHour = 9 + Math.floor(Math.random() * 7);
+      const booked = `${String(bookedHour).padStart(2, '0')}:00`;
+
+      prisma.doctorProfile.findUnique.mockResolvedValue(mockDoctorProfile);
+      prisma.doctorAvailability.findMany.mockResolvedValue([
+        { dayOfWeek: day.getUTCDay(), startTime: '09:00', endTime: '16:00', isActive: true },
+      ]);
+      prisma.slotDuration.findMany.mockResolvedValue([{ minutes: 60, isActive: true }]);
+      prisma.availabilityException.findMany.mockResolvedValue([]);
+      prisma.appointment.findMany.mockResolvedValue([
+        {
+          dateTime: new Date(`${date}T${booked}:00.000Z`),
+          durationMinutes: 60,
+          status: AppointmentStatusEnum.CONFIRMED,
+        },
+      ]);
+
+      const res = await app.inject({
+        method: 'GET',
+        url: `/scheduling/doctor/1/slots?start=${date}&end=${date}`,
+      });
+
+      expect(res.statusCode).toBe(HttpStatus.OK);
+      const startTimes = res.json().contents.map((s: { startTime: string }) => s.startTime);
+      expect(startTimes).toHaveLength(6);
+      expect(startTimes).not.toContain(booked);
+
+      const nextDay = new Date(`${date}T00:00:00.000Z`);
+      nextDay.setUTCDate(nextDay.getUTCDate() + 1);
+      expect(prisma.appointment.findMany).toHaveBeenCalledWith({
+        where: expect.objectContaining({
+          dateTime: { gte: new Date(`${date}T00:00:00.000Z`), lt: nextDay },
+        }),
+      });
+    });
+
+    it('should return 404 for an unverified doctor', async () => {
+      prisma.doctorProfile.findUnique.mockResolvedValue({ ...mockDoctorProfile, verified: false });
+
+      const res = await app.inject({
+        method: 'GET',
+        url: '/scheduling/doctor/1/slots?start=2026-07-01&end=2026-07-07',
+      });
+
+      expect(res.statusCode).toBe(HttpStatus.NOT_FOUND);
+    });
+
+    it.each([
+      ['end before start', 'start=2026-07-07&end=2026-07-01'],
+      ['range over 31 days', 'start=2026-07-01&end=2026-08-15'],
+      ['invalid date', 'start=not-a-date&end=2026-07-07'],
+      ['missing end', 'start=2026-07-01'],
+    ])('should return 400 for %s', async (_case, query) => {
+      const res = await app.inject({
+        method: 'GET',
+        url: `/scheduling/doctor/1/slots?${query}`,
+      });
+
+      expect(res.statusCode).toBe(HttpStatus.BAD_REQUEST);
+      expect(prisma.appointment.findMany).not.toHaveBeenCalled();
+    });
+
     it('should return 400 for non-integer doctorId', async () => {
       const res = await app.inject({
         method: 'GET',

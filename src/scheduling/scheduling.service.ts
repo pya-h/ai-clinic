@@ -347,11 +347,13 @@ export class SchedulingService {
       }
     }
 
+    const { from, until } = this.utcDayRange(startDate, endDate);
+
     // 3. Get exceptions in date range
     const exceptions = await this.prisma.availabilityException.findMany({
       where: {
         doctorId,
-        date: { gte: startDate, lte: endDate },
+        date: { gte: from, lt: until },
       },
     });
     const exceptionMap = new Map<string, AvailabilityException>();
@@ -363,7 +365,7 @@ export class SchedulingService {
     const appointments = await this.prisma.appointment.findMany({
       where: {
         doctorId,
-        dateTime: { gte: startDate, lte: endDate },
+        dateTime: { gte: from, lt: until },
         status: { notIn: [AppointmentStatusEnum.CANCELLED, AppointmentStatusEnum.NO_SHOW] },
       },
     });
@@ -385,13 +387,12 @@ export class SchedulingService {
 
     // 5. For each day in range, generate available slots
     const slots: AvailableSlot[] = [];
-    const current = new Date(startDate);
-    const end = new Date(endDate);
+    const current = new Date(from);
     const now = new Date();
     const todayStr = this.dateToString(now);
     const nowMinutes = now.getUTCHours() * 60 + now.getUTCMinutes();
 
-    while (current <= end) {
+    while (current < until) {
       const dateStr = this.dateToString(current);
       const dayOfWeek = current.getUTCDay(); // 0 = Sun
 
@@ -826,6 +827,11 @@ export class SchedulingService {
 
     for (const id of doctorIds) result.set(id, 0);
 
+    const { from, until } = this.utcDayRange(startDate, endDate);
+    const now = new Date();
+    const todayStr = this.dateToString(now);
+    const nowMinutes = now.getUTCHours() * 60 + now.getUTCMinutes();
+
     const [allAvailability, allDurations, allExceptions, allAppointments] =
       await Promise.all([
         this.prisma.doctorAvailability.findMany({
@@ -837,13 +843,13 @@ export class SchedulingService {
         this.prisma.availabilityException.findMany({
           where: {
             doctorId: { in: doctorIds },
-            date: { gte: startDate, lte: endDate },
+            date: { gte: from, lt: until },
           },
         }),
         this.prisma.appointment.findMany({
           where: {
             doctorId: { in: doctorIds },
-            dateTime: { gte: startDate, lte: endDate },
+            dateTime: { gte: from, lt: until },
             status: { notIn: [AppointmentStatusEnum.CANCELLED, AppointmentStatusEnum.NO_SHOW] },
           },
         }),
@@ -905,11 +911,11 @@ export class SchedulingService {
       }
 
       let count = 0;
-      const current = new Date(startDate);
-      const end = new Date(endDate);
+      const current = new Date(from);
 
-      while (current <= end) {
+      while (current < until) {
         const dateStr = this.dateToString(current);
+        const isToday = dateStr === todayStr;
         const dayOfWeek = current.getUTCDay();
         const exception = exceptionMap.get(dateStr);
 
@@ -944,7 +950,7 @@ export class SchedulingService {
               const overlaps = dayAppointments.some(
                 (apt) => slotStart < apt.endMin && slotEnd > apt.startMin,
               );
-              if (!overlaps) count++;
+              if (!overlaps && !(isToday && slotStart < nowMinutes)) count++;
               slotStart += duration.minutes;
             }
           }
@@ -957,6 +963,14 @@ export class SchedulingService {
     }
 
     return result;
+  }
+
+  /** Whole UTC days covering both dates; `until` is exclusive (midnight after `end`'s day). */
+  private utcDayRange(start: Date, end: Date): { from: Date; until: Date } {
+    return {
+      from: new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), start.getUTCDate())),
+      until: new Date(Date.UTC(end.getUTCFullYear(), end.getUTCMonth(), end.getUTCDate() + 1)),
+    };
   }
 
   /** Convert a Date to "YYYY-MM-DD" string using UTC. */
