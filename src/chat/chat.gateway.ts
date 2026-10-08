@@ -14,11 +14,13 @@ import { Server, Socket } from 'socket.io';
 import { ChatService } from './chat.service';
 import { MessageTypeEnum } from '@prisma/client';
 import { ConfigService } from '@nestjs/config';
-import { createHash } from 'crypto';
+import { HttpAdapterHost } from '@nestjs/core';
+import type { FastifyInstance } from 'fastify';
 import { NotificationService } from '../notification/notification.service';
 import { WsRateLimiter } from '../common/tools/ws-rate-limiter';
 import { PrismaService } from '../prisma/prisma.service';
 import { UserStatusCache, accountBlockReason } from '../auth/user-status';
+import { sessionUserFromCookieHeader } from '../auth/socket-session';
 
 /**
  * Chat WebSocket Gateway
@@ -53,6 +55,7 @@ export class ChatGateway
     @Inject(forwardRef(() => NotificationService))
     private readonly notificationService: NotificationService,
     private readonly prisma: PrismaService,
+    private readonly adapterHost: HttpAdapterHost,
   ) {}
 
   onModuleDestroy(): void {
@@ -439,59 +442,18 @@ export class ChatGateway
   }
 
   private extractUserFromSocket(socket: Socket): any | null {
+    const cookieHeader = socket.handshake.headers.cookie;
+    if (!cookieHeader) return null;
+
     try {
-      const cookieHeader = socket.handshake.headers.cookie;
-      if (!cookieHeader) return null;
-
-      const cookieName =
-        this.configService.get<string>('auth.sessionCookieName') || 'sid';
-
-      const cookies = this.parseCookies(cookieHeader);
-      const sessionCookie = cookies[cookieName];
-      if (!sessionCookie) return null;
-
-      const sessionSecret = this.configService.getOrThrow<string>(
-        'auth.sessionSecret',
+      return sessionUserFromCookieHeader(
+        this.adapterHost.httpAdapter.getInstance<FastifyInstance>(),
+        cookieHeader,
+        this.configService.get<string>('auth.sessionCookieName') || 'sid',
       );
-      const key = createHash('sha256').update(sessionSecret).digest();
-      const sodium = require('sodium-native');
-
-      // @fastify/secure-session encodes as "cipher_b64;nonce_b64"
-      const parts = sessionCookie.split(';');
-      if (parts.length < 2) return null;
-
-      const cipher = Buffer.from(parts[0], 'base64');
-      const nonce = Buffer.from(parts[1], 'base64');
-
-      if (nonce.length !== sodium.crypto_secretbox_NONCEBYTES) return null;
-      if (cipher.length < sodium.crypto_secretbox_MACBYTES) return null;
-
-      const plaintext = Buffer.alloc(cipher.length - sodium.crypto_secretbox_MACBYTES);
-      const opened = sodium.crypto_secretbox_open_easy(
-        plaintext,
-        cipher,
-        nonce,
-        key,
-      );
-
-      if (!opened) return null;
-
-      const session = JSON.parse(plaintext.toString('utf-8'));
-      return session?.user || null;
     } catch (err) {
       this.logger.warn(`Session extraction failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
       return null;
     }
-  }
-
-  private parseCookies(cookieHeader: string): Record<string, string> {
-    const cookies: Record<string, string> = {};
-    cookieHeader.split(';').forEach((cookie) => {
-      const [name, ...rest] = cookie.trim().split('=');
-      if (name) {
-        cookies[name.trim()] = decodeURIComponent(rest.join('='));
-      }
-    });
-    return cookies;
   }
 }

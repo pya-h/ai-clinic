@@ -7,10 +7,10 @@ export function captureHandshake(gateway: { afterInit(server: any): void }) {
   gateway.afterInit(server);
   const middleware = server.use.mock.calls[0][0];
 
-  return async () => {
+  return async (headers: Record<string, string> = {}) => {
     const socket: { data: Record<string, any>; handshake: { headers: Record<string, string> } } = {
       data: {},
-      handshake: { headers: {} },
+      handshake: { headers },
     };
     const next = jest.fn();
     await middleware(socket, next);

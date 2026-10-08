@@ -8,6 +8,8 @@ import { MessageTypeEnum } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { UserStatusCache } from '../auth/user-status';
 import { captureHandshake, flushPromises } from '../../test/helpers/ws-handshake.helper';
+import { createSessionApp, loginCookie } from '../../test/helpers/session-cookie.helper';
+import type { FastifyInstance } from 'fastify';
 import { randomUUID } from 'crypto';
 
 describe('ChatGateway', () => {
@@ -575,6 +577,69 @@ describe('ChatGateway', () => {
   });
 
   // ─── Account status (bans, deactivation) ───
+
+  describe('handshake session cookie', () => {
+    // The ConfigService mock answers 'sid' for the session cookie name.
+    const cookieName = 'sid';
+    let sessionApp: FastifyInstance;
+    let connect: ReturnType<typeof captureHandshake>;
+
+    beforeAll(async () => {
+      sessionApp = await createSessionApp(cookieName, `secret-${randomUUID()}`);
+    });
+
+    afterAll(async () => {
+      await sessionApp.close();
+    });
+
+    beforeEach(() => {
+      (gateway as any).adapterHost = { httpAdapter: { getInstance: () => sessionApp } };
+      connect = captureHandshake(gateway);
+    });
+
+    it('should admit the user of a session issued by an HTTP login', async () => {
+      const user = { ...mockUser, id: randomUUID() };
+      prisma.user.findFirst.mockResolvedValue(activeStatus());
+      const cookie = await loginCookie(sessionApp, cookieName, user);
+
+      const { socket, next } = await connect({ cookie: `csrf-token=abc; ${cookie}` });
+
+      expect(next).toHaveBeenCalledWith();
+      expect(socket.data.user.id).toBe(user.id);
+      expect(prisma.user.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: user.id } }),
+      );
+    });
+
+    it('should reject a tampered session cookie without querying the DB', async () => {
+      const cookie = await loginCookie(sessionApp, cookieName, { ...mockUser, id: randomUUID() });
+      const tampered = cookie.slice(0, -4) + (cookie.endsWith('AAAA') ? 'BBBB' : 'AAAA');
+
+      const { socket, next } = await connect({ cookie: tampered });
+
+      expect(next).toHaveBeenCalledWith(new Error('Unauthorized: No valid session'));
+      expect(socket.data.user).toBeUndefined();
+      expect(prisma.user.findFirst).not.toHaveBeenCalled();
+    });
+
+    it('should reject a session cookie under another name', async () => {
+      const cookie = await loginCookie(sessionApp, cookieName, { ...mockUser, id: randomUUID() });
+
+      const { next } = await connect({ cookie: cookie.replace(/^sid=/, 'other=') });
+
+      expect(next).toHaveBeenCalledWith(new Error('Unauthorized: No valid session'));
+    });
+
+    it('should reject, and log, when the session cannot be decoded at all', async () => {
+      (gateway as any).adapterHost = { httpAdapter: undefined };
+      const warn = jest.spyOn((gateway as any).logger, 'warn').mockImplementation(() => undefined);
+
+      const { next } = await connect({ cookie: 'sid=whatever' });
+
+      expect(next).toHaveBeenCalledWith(new Error('Unauthorized: No valid session'));
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('Session extraction failed'));
+    });
+  });
 
   describe('handshake account check', () => {
     let connect: ReturnType<typeof captureHandshake>;
