@@ -26,14 +26,19 @@ async function bootstrap() {
   );
 
   const corsOrigin = process.env.CORS_ORIGIN || 'http://localhost:5173';
-  if (!process.env.CORS_ORIGIN) {
-    logger.warn('CORS_ORIGIN not set — defaulting to http://localhost:5173');
+  if(corsOrigin.trim() !== "*") {
+
+    if (!process.env.CORS_ORIGIN) {
+      logger.warn('CORS_ORIGIN not set — defaulting to http://localhost:5173');
+    }
+    app.enableCors({
+      origin: corsOrigin.split(',').map((o) => o.trim()),
+      methods: ['GET', 'HEAD', 'PUT', 'POST', 'DELETE', 'PATCH', 'OPTIONS'],
+      credentials: true,
+    });
+  } else {
+    app.enableCors();
   }
-  app.enableCors({
-    origin: corsOrigin.split(',').map((o) => o.trim()),
-    methods: ['GET', 'HEAD', 'PUT', 'POST', 'DELETE', 'PATCH', 'OPTIONS'],
-    credentials: true,
-  });
 
   app.useGlobalFilters(new ExceptionTemplateFilter());
   app.useGlobalInterceptors(

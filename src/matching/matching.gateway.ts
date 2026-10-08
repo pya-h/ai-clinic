@@ -60,7 +60,7 @@ export class MatchingGateway
         socket.data.user = user;
         next();
       } catch (err) {
-        this.logger.warn(`WS auth failed: ${err.message}`);
+        this.logger.warn(`WS auth failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
         next(new Error('Unauthorized'));
       }
     });
@@ -116,8 +116,8 @@ export class MatchingGateway
 
       this.startTimeout(matchRequest.id, user.id);
     } catch (err) {
-      this.logger.error(`match:request error: ${err.message}`);
-      client.emit('match:error', { message: err.message });
+      this.logger.error(`match:request error: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      client.emit('match:error', { message: err instanceof Error ? err.message : 'Unknown error' });
     }
   }
 
@@ -162,8 +162,8 @@ export class MatchingGateway
         )
         .catch((e) => this.logger.error(`Notification failed: ${e.message}`));
     } catch (err) {
-      this.logger.error(`match:accept error: ${err.message}`);
-      client.emit('match:error', { message: err.message });
+      this.logger.error(`match:accept error: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      client.emit('match:error', { message: err instanceof Error ? err.message : 'Unknown error' });
     }
   }
 
@@ -197,8 +197,8 @@ export class MatchingGateway
           .emit('match:timeout', { matchRequestId: matchRequest.id });
       }
     } catch (err) {
-      this.logger.error(`match:reject error: ${err.message}`);
-      client.emit('match:error', { message: err.message });
+      this.logger.error(`match:reject error: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      client.emit('match:error', { message: err instanceof Error ? err instanceof Error ? err.message : 'Unknown error' : 'Unknown error' });
     }
   }
 
@@ -232,8 +232,8 @@ export class MatchingGateway
         }
       }
     } catch (err) {
-      this.logger.error(`match:cancel error: ${err.message}`);
-      client.emit('match:error', { message: err.message });
+      this.logger.error(`match:cancel error: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      client.emit('match:error', { message: err instanceof Error ? err.message : 'Unknown error' });
     }
   }
 
@@ -269,7 +269,7 @@ export class MatchingGateway
             .emit('match:timeout', { matchRequestId });
         }
       } catch (err) {
-        this.logger.error(`Timeout handler error: ${err.message}`);
+        this.logger.error(`Timeout handler error: ${err instanceof Error ? err.message : 'Unknown error'}`);
       }
     }, 5 * 60 * 1000);
 
@@ -337,7 +337,7 @@ export class MatchingGateway
       const session = JSON.parse(plaintext.toString('utf-8'));
       return session?.user || null;
     } catch (err) {
-      this.logger.warn(`Session extraction failed: ${err.message}`);
+      this.logger.warn(`Session extraction failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
       return null;
     }
   }

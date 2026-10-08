@@ -58,7 +58,7 @@ export class NotificationService {
       });
     } catch (err) {
       this.logger.error(
-        `Notification dispatch failed for user ${userId}: ${err.message}`,
+        `Notification dispatch failed for user ${userId}: ${err instanceof Error ? err.message : 'Unknown error'}`,
       );
       return notification;
     }

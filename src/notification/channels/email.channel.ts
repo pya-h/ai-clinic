@@ -48,7 +48,7 @@ export class EmailChannel {
       });
     } catch (err) {
       this.logger.error(
-        `Failed to send email to ${user.email}: ${err.message}`,
+        `Failed to send email to ${user.email}: ${err instanceof Error ? err.message : 'Unknown error'}`,
       );
     }
   }

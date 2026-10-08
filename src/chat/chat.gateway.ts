@@ -79,7 +79,7 @@ export class ChatGateway
         socket.data.user = user;
         next();
       } catch (err) {
-        this.logger.warn(`WS auth failed: ${err.message}`);
+        this.logger.warn(`WS auth failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
         next(new Error('Unauthorized'));
       }
     });
@@ -113,7 +113,7 @@ export class ChatGateway
         client.join(`chat:${chatId}`);
       }
     } catch (err) {
-      this.logger.error(`Failed to join chat rooms for ${user.id}: ${err.message}`);
+      this.logger.error(`Failed to join chat rooms for ${user.id}: ${err instanceof Error ? err.message : 'Unknown error'}`);
     }
 
     if (!wasOnline && chatIds.length > 0) {
@@ -147,7 +147,7 @@ export class ChatGateway
           });
         }
       } catch (err) {
-        this.logger.error(`Failed to broadcast offline for ${user.id}: ${err.message}`);
+        this.logger.error(`Failed to broadcast offline for ${user.id}: ${err instanceof Error ? err.message : 'Unknown error'}`);
       }
     }
   }
@@ -208,10 +208,10 @@ export class ChatGateway
         this.logger.error(`Chat notification failed: ${e.message}`),
       );
     } catch (err) {
-      this.logger.error(`chat:message error: ${err.message}`);
+      this.logger.error(`chat:message error: ${err instanceof Error ? err.message : 'Unknown error'}`);
       client.emit('chat:error', {
         event: 'chat:message',
-        message: err.message,
+        message: err instanceof Error ? err.message : 'Unknown error',
       });
     }
   }
@@ -264,10 +264,10 @@ export class ChatGateway
         chatId: payload.chatId,
       });
     } catch (err) {
-      this.logger.error(`chat:read error: ${err.message}`);
+      this.logger.error(`chat:read error: ${err instanceof Error ? err.message : 'Unknown error'}`);
       client.emit('chat:error', {
         event: 'chat:read',
-        message: err.message,
+        message: err instanceof Error ? err.message : 'Unknown error',
       });
     }
   }
@@ -303,10 +303,10 @@ export class ChatGateway
         message: serialized,
       });
     } catch (err) {
-      this.logger.error(`chat:edit error: ${err.message}`);
+      this.logger.error(`chat:edit error: ${err instanceof Error ? err.message : 'Unknown error'}`);
       client.emit('chat:error', {
         event: 'chat:edit',
-        message: err.message,
+        message: err instanceof Error ? err.message : 'Unknown error',
       });
     }
   }
@@ -338,10 +338,10 @@ export class ChatGateway
         message: serialized,
       });
     } catch (err) {
-      this.logger.error(`chat:delete error: ${err.message}`);
+      this.logger.error(`chat:delete error: ${err instanceof Error ? err.message : 'Unknown error'}`);
       client.emit('chat:error', {
         event: 'chat:delete',
-        message: err.message,
+        message: err instanceof Error ? err.message : 'Unknown error',
       });
     }
   }
@@ -467,7 +467,7 @@ export class ChatGateway
       const session = JSON.parse(plaintext.toString('utf-8'));
       return session?.user || null;
     } catch (err) {
-      this.logger.warn(`Session extraction failed: ${err.message}`);
+      this.logger.warn(`Session extraction failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
       return null;
     }
   }

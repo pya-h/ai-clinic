@@ -65,7 +65,7 @@ export class WebPushChannel {
           );
         } else {
           this.logger.error(
-            `Push notification failed for subscription ${sub.id}: ${err.message}`,
+            `Push notification failed for subscription ${sub.id}: ${err instanceof Error ? err.message : 'Unknown error'}`,
           );
         }
       }
