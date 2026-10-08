@@ -34,7 +34,7 @@ export class ChatController {
     @Body() dto: CreateChatDto,
   ) {
     const chat = await this.chatService.createChat(user.id, dto);
-    // Clients join a chat's room only when they open it; without this, someone
+    // Sockets join their chats' rooms when they connect; without this, someone
     // already online would miss the first messages of a chat started with them.
     for (const participant of chat.participants) {
       this.chatGateway.addUserToRoom(participant.id, chat.id);
