@@ -1,5 +1,7 @@
 import * as fs from 'fs/promises';
+import { createReadStream } from 'fs';
 import * as path from 'path';
+import { Readable } from 'stream';
 import { BadRequestException } from '@nestjs/common';
 import { IStorageProvider } from '../interfaces/storage-provider.interface';
 
@@ -16,27 +18,27 @@ export class LocalStorageProvider implements IStorageProvider {
     _mimeType: string,
     folder: string,
   ): Promise<{ url: string; key: string }> {
-    const dir = path.join(this.basePath, folder);
-    await fs.mkdir(dir, { recursive: true });
-
-    const filePath = path.join(dir, fileName);
-    const resolvedPath = path.resolve(filePath);
-    if (!resolvedPath.startsWith(path.resolve(this.basePath))) {
-      throw new BadRequestException('Invalid file path.');
-    }
+    const key = `${folder}/${fileName}`;
+    const filePath = this.resolveKey(key);
+    await fs.mkdir(path.dirname(filePath), { recursive: true });
     await fs.writeFile(filePath, file);
 
-    const key = `${folder}/${fileName}`;
-    const url = `/uploads/${folder}/${fileName}`;
+    return { url: `/uploads/${key}`, key };
+  }
 
-    return { url, key };
+  async read(key: string): Promise<Readable | null> {
+    const filePath = this.resolveKey(key);
+    try {
+      if (!(await fs.stat(filePath)).isFile()) return null;
+    } catch (err: any) {
+      if (err.code === 'ENOENT' || err.code === 'ENOTDIR') return null;
+      throw err;
+    }
+    return createReadStream(filePath);
   }
 
   async delete(key: string): Promise<void> {
-    const filePath = path.resolve(this.basePath, key);
-    if (!filePath.startsWith(path.resolve(this.basePath))) {
-      throw new BadRequestException('Invalid file key.');
-    }
+    const filePath = this.resolveKey(key);
     try {
       await fs.unlink(filePath);
     } catch (err: any) {
@@ -45,10 +47,17 @@ export class LocalStorageProvider implements IStorageProvider {
   }
 
   async getSignedUrl(key: string, _expiresIn?: number): Promise<string> {
-    const filePath = path.resolve(this.basePath, key);
-    if (!filePath.startsWith(path.resolve(this.basePath))) {
+    this.resolveKey(key);
+    return `/uploads/${key}`;
+  }
+
+  // The trailing separator matters: without it "uploads-evil/x" would pass as inside "uploads".
+  private resolveKey(key: string): string {
+    const base = path.resolve(this.basePath);
+    const filePath = path.resolve(base, key);
+    if (!filePath.startsWith(base + path.sep)) {
       throw new BadRequestException('Invalid file key.');
     }
-    return `/uploads/${key}`;
+    return filePath;
   }
 }

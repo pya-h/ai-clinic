@@ -2,13 +2,17 @@
  * FileUploadService Unit Tests
  *
  * Tests:
- *   uploadFile  — successful upload, invalid MIME type, missing file, large file
+ *   uploadFile  — successful upload, invalid MIME type, missing file, large file,
+ *                 stored extension follows the MIME type
+ *   openFile    — content type from extension, rejects unsafe names and unknown types
  *   deleteFile  — delegates to provider
  *   getFileUrl  — delegates to provider
  */
 import { Test, TestingModule } from '@nestjs/testing';
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { randomUUID } from 'crypto';
+import { Readable } from 'stream';
 import { FileUploadService } from './file-upload.service';
 
 describe('FileUploadService', () => {
@@ -177,6 +181,71 @@ describe('FileUploadService', () => {
       // The fileName passed to provider should be a UUID + extension
       const calledFileName = providerSpy.mock.calls[0][1];
       expect(calledFileName).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.jpg$/);
+    });
+  });
+
+  describe('uploadFile stored extension', () => {
+    const UUID = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}';
+
+    it.each([
+      ['image/jpeg', 'photo.JPEG', '.jpg'],
+      ['image/png', 'avatar.html', '.png'],
+      ['image/webp', 'no-extension', '.webp'],
+      ['application/pdf', 'license.pdf.exe', '.pdf'],
+    ])('should store %s uploaded as "%s" with the %s extension', async (mimetype, filename, ext) => {
+      const providerSpy = jest
+        .spyOn((service as any).provider, 'upload')
+        .mockResolvedValue({ url: '/uploads/x', key: 'x' });
+
+      const result = await service.uploadFile(createMockFile({ filename, mimetype }), 'avatars');
+
+      expect(providerSpy.mock.calls[0][1]).toMatch(new RegExp(`^${UUID}\\${ext}$`));
+      expect(result.fileName).toBe(filename);
+    });
+  });
+
+  /* ── openFile ── */
+
+  describe('openFile', () => {
+    it.each([
+      ['png', 'image/png'],
+      ['jpg', 'image/jpeg'],
+      ['jpeg', 'image/jpeg'],
+      ['JPG', 'image/jpeg'],
+      ['webp', 'image/webp'],
+      ['pdf', 'application/pdf'],
+    ])('should open a stored .%s file as %s', async (ext, mimeType) => {
+      const stream = Readable.from(['data']);
+      const readSpy = jest.spyOn((service as any).provider, 'read').mockResolvedValue(stream);
+      const fileName = `${randomUUID()}.${ext}`;
+
+      const result = await service.openFile('avatars', fileName);
+
+      expect(result).toEqual({ stream, mimeType });
+      expect(readSpy).toHaveBeenCalledWith(`avatars/${fileName}`);
+    });
+
+    it('should throw NotFoundException when the file does not exist', async () => {
+      jest.spyOn((service as any).provider, 'read').mockResolvedValue(null);
+
+      await expect(service.openFile('avatars', `${randomUUID()}.png`)).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+
+    it.each([
+      `${randomUUID()}.html`,
+      `${randomUUID()}.svg`,
+      randomUUID(),
+      '../secret.png',
+      'nested/file.png',
+      '..png',
+      '',
+    ])('should not touch storage for the unsafe or unsupported name "%s"', async (fileName) => {
+      const readSpy = jest.spyOn((service as any).provider, 'read');
+
+      await expect(service.openFile('avatars', fileName)).rejects.toThrow(NotFoundException);
+      expect(readSpy).not.toHaveBeenCalled();
     });
   });
 

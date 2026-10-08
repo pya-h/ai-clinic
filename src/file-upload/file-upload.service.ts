@@ -3,19 +3,35 @@ import {
   Injectable,
   InternalServerErrorException,
   Logger,
+  NotFoundException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { randomUUID } from 'crypto';
+import * as path from 'path';
+import { Readable } from 'stream';
 import { IStorageProvider } from './interfaces/storage-provider.interface';
 import { LocalStorageProvider } from './providers/local-storage.provider';
 import { MultipartFile } from '@fastify/multipart';
 
-const ALLOWED_MIME_TYPES = [
-  'image/jpeg',
-  'image/png',
-  'image/webp',
-  'application/pdf',
-];
+const EXTENSION_BY_MIME_TYPE: Record<string, string> = {
+  'image/jpeg': '.jpg',
+  'image/png': '.png',
+  'image/webp': '.webp',
+  'application/pdf': '.pdf',
+};
+
+const ALLOWED_MIME_TYPES = Object.keys(EXTENSION_BY_MIME_TYPE);
+
+// Older uploads took their extension from the client's file name, hence '.jpeg' and any case.
+const MIME_TYPE_BY_EXTENSION: Record<string, string> = {
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.png': 'image/png',
+  '.webp': 'image/webp',
+  '.pdf': 'application/pdf',
+};
+
+const STORED_FILE_NAME = /^[A-Za-z0-9_-]+\.[A-Za-z0-9]+$/;
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
 
@@ -70,11 +86,7 @@ export class FileUploadService {
 
     this.verifyMagicBytes(buffer, file.mimetype);
 
-    const safeOriginalName = file.filename.replace(/[^a-zA-Z0-9._-]/g, '_');
-    const ext = safeOriginalName.includes('.')
-      ? '.' + safeOriginalName.split('.').pop()
-      : '';
-    const fileName = `${randomUUID()}${ext}`;
+    const fileName = `${randomUUID()}${EXTENSION_BY_MIME_TYPE[file.mimetype]}`;
 
     try {
       const { url, key } = await this.provider.upload(
@@ -89,6 +101,23 @@ export class FileUploadService {
       this.logger.error(`File upload failed: ${error}`);
       throw new InternalServerErrorException('File upload failed.');
     }
+  }
+
+  /** Serves only the allowed types; the content type is derived from the stored extension. */
+  async openFile(
+    folder: string,
+    fileName: string,
+  ): Promise<{ stream: Readable; mimeType: string }> {
+    const mimeType = MIME_TYPE_BY_EXTENSION[path.extname(fileName).toLowerCase()];
+    if (!STORED_FILE_NAME.test(fileName) || !mimeType) {
+      throw new NotFoundException('File not found.');
+    }
+
+    const stream = await this.provider.read(`${folder}/${fileName}`);
+    if (!stream) {
+      throw new NotFoundException('File not found.');
+    }
+    return { stream, mimeType };
   }
 
   /**
