@@ -287,6 +287,10 @@ export class ConsultationService {
       `Consultation ${consultationId} payment confirmed by user ${user.id}.`,
     );
 
+    this.notificationService
+      .onPaymentConfirmed(consultationId, updated.doctor.userId, consultation.patientId)
+      .catch((e) => this.logger.error(`Notification failed: ${e.message}`));
+
     return updated;
   }
 

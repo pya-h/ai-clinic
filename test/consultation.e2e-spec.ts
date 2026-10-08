@@ -57,6 +57,7 @@ import {
 const mockNotificationService = {
   onNewConsultation: jest.fn().mockResolvedValue(undefined),
   onDoctorDecision: jest.fn().mockResolvedValue(undefined),
+  onPaymentConfirmed: jest.fn().mockResolvedValue(undefined),
 };
 
 const mockNurseService = {
@@ -616,6 +617,36 @@ describe('Consultation (e2e)', () => {
       expect(body.contents).toBeDefined();
       expect(body.contents.id).toBe(consultationId);
       expect(body.contents.status).toBe(ConsultationStatusEnum.PAYMENT_CONFIRMED);
+      expect(mockNotificationService.onPaymentConfirmed).toHaveBeenCalledTimes(1);
+      expect(mockNotificationService.onPaymentConfirmed).toHaveBeenCalledWith(
+        consultationId,
+        doctorUser.id,
+        patientUser.id,
+      );
+    });
+
+    it('should still return 200 when the notification fails', async () => {
+      sessionUser = patientUser;
+      prisma.consultation.findUnique.mockResolvedValueOnce(
+        buildConsultation({ status: ConsultationStatusEnum.PENDING_PAYMENT }),
+      );
+      prisma.consultation.updateMany.mockResolvedValue({ count: 1 });
+      prisma.consultation.findUniqueOrThrow.mockResolvedValue(
+        buildConsultation({ status: ConsultationStatusEnum.PAYMENT_CONFIRMED }),
+      );
+      mockNotificationService.onPaymentConfirmed.mockRejectedValueOnce(
+        new Error('push down'),
+      );
+
+      const res = await app.inject({
+        method: 'PATCH',
+        url: `/consultation/${consultationId}/confirm-payment`,
+      });
+
+      expect(res.statusCode).toBe(HttpStatus.OK);
+      expect(JSON.parse(res.body).contents.status).toBe(
+        ConsultationStatusEnum.PAYMENT_CONFIRMED,
+      );
     });
 
     it('should reject from wrong status (DOCTOR_DECIDED)', async () => {
@@ -634,6 +665,7 @@ describe('Consultation (e2e)', () => {
       expect(res.statusCode).toBe(HttpStatus.BAD_REQUEST);
       const body = JSON.parse(res.body);
       expect(body.message).toContain('Cannot transition');
+      expect(mockNotificationService.onPaymentConfirmed).not.toHaveBeenCalled();
     });
 
     it('should reject from terminal status (COMPLETED)', async () => {
@@ -666,6 +698,7 @@ describe('Consultation (e2e)', () => {
       });
 
       expect(res.statusCode).toBe(HttpStatus.FORBIDDEN);
+      expect(mockNotificationService.onPaymentConfirmed).not.toHaveBeenCalled();
     });
 
     it('should reject unauthenticated request', async () => {

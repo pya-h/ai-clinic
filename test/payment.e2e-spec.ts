@@ -22,6 +22,7 @@ import { UtilsModule } from '../src/utils/utils.module';
 import { AuthModule } from '../src/auth/auth.module';
 import { UserModule } from '../src/user/user.module';
 import { PaymentModule } from '../src/payment/payment.module';
+import { NotificationService } from '../src/notification/notification.service';
 import { ExceptionTemplateFilter } from '../src/common/filters/exception-template.filter';
 import { ResponseTemplateInterceptor } from '../src/common/interceptors/response-template.interceptor';
 import {
@@ -57,6 +58,10 @@ import generalConfigs from '../src/configs/general';
   ],
 })
 class TestAppModule {}
+
+const mockNotificationService = {
+  onPaymentConfirmed: jest.fn().mockResolvedValue(undefined),
+};
 
 // ── Suite ────────────────────────────────────────────────────────────
 
@@ -104,6 +109,8 @@ describe('Payment (e2e)', () => {
     })
       .overrideProvider(PrismaService)
       .useValue(prisma)
+      .overrideProvider(NotificationService)
+      .useValue(mockNotificationService)
       .compile();
 
     app = moduleFixture.createNestApplication<NestFastifyApplication>(
@@ -384,6 +391,7 @@ describe('Payment (e2e)', () => {
       });
 
       expect(res.statusCode).toBe(HttpStatus.FORBIDDEN);
+      expect(mockNotificationService.onPaymentConfirmed).not.toHaveBeenCalled();
     });
 
     it('should return 404 when payment not found', async () => {
@@ -447,6 +455,8 @@ describe('Payment (e2e)', () => {
       const body = JSON.parse(res.body);
       expect(body.contents).toBeDefined();
       expect(body.contents.status).toBe(PaymentStatusEnum.COMPLETED);
+      expect(prisma.consultation.updateMany).not.toHaveBeenCalled();
+      expect(mockNotificationService.onPaymentConfirmed).not.toHaveBeenCalled();
     });
 
     it('should confirm a pending payment (admin)', async () => {
@@ -518,6 +528,106 @@ describe('Payment (e2e)', () => {
       });
 
       expect(res.statusCode).toBe(HttpStatus.BAD_REQUEST);
+    });
+
+    describe('with a linked consultation', () => {
+      function arrangeLinkedPayment(consultationMoved: boolean) {
+        prisma.payment.findUnique.mockResolvedValue(
+          buildPayment({ consultationId }),
+        );
+        prisma.payment.updateMany.mockResolvedValue({ count: 1 });
+        prisma.payment.findUniqueOrThrow.mockResolvedValue(
+          buildPayment({
+            consultationId,
+            status: PaymentStatusEnum.COMPLETED,
+            paidAt: new Date(),
+          }),
+        );
+        prisma.consultation.updateMany.mockResolvedValue({
+          count: consultationMoved ? 1 : 0,
+        });
+        prisma.consultation.findUniqueOrThrow.mockResolvedValue({
+          id: consultationId,
+          patientId: patientUser.id,
+          doctor: { userId: doctorUser.id },
+        });
+      }
+
+      it('should confirm the consultation and notify its doctor and patient', async () => {
+        sessionUser = patientUser;
+        arrangeLinkedPayment(true);
+
+        const res = await app.inject({
+          method: 'POST',
+          url: `/payment/${paymentId}/confirm`,
+        });
+
+        expect(res.statusCode).toBe(HttpStatus.OK);
+        expect(JSON.parse(res.body).contents.status).toBe(
+          PaymentStatusEnum.COMPLETED,
+        );
+        expect(prisma.consultation.updateMany).toHaveBeenCalledWith({
+          where: {
+            id: consultationId,
+            status: ConsultationStatusEnum.PENDING_PAYMENT,
+          },
+          data: { status: ConsultationStatusEnum.PAYMENT_CONFIRMED },
+        });
+        expect(mockNotificationService.onPaymentConfirmed).toHaveBeenCalledTimes(1);
+        expect(mockNotificationService.onPaymentConfirmed).toHaveBeenCalledWith(
+          consultationId,
+          doctorUser.id,
+          patientUser.id,
+        );
+      });
+
+      it('should not notify when the consultation was already past PENDING_PAYMENT', async () => {
+        sessionUser = patientUser;
+        arrangeLinkedPayment(false);
+
+        const res = await app.inject({
+          method: 'POST',
+          url: `/payment/${paymentId}/confirm`,
+        });
+
+        expect(res.statusCode).toBe(HttpStatus.OK);
+        expect(mockNotificationService.onPaymentConfirmed).not.toHaveBeenCalled();
+      });
+
+      it('should not notify when the payment is no longer PENDING', async () => {
+        sessionUser = patientUser;
+        arrangeLinkedPayment(true);
+        prisma.payment.findUnique.mockResolvedValue(
+          buildPayment({ consultationId, status: PaymentStatusEnum.COMPLETED }),
+        );
+
+        const res = await app.inject({
+          method: 'POST',
+          url: `/payment/${paymentId}/confirm`,
+        });
+
+        expect(res.statusCode).toBe(HttpStatus.CONFLICT);
+        expect(prisma.consultation.updateMany).not.toHaveBeenCalled();
+        expect(mockNotificationService.onPaymentConfirmed).not.toHaveBeenCalled();
+      });
+
+      it('should still return 200 when the notification fails', async () => {
+        sessionUser = patientUser;
+        arrangeLinkedPayment(true);
+        mockNotificationService.onPaymentConfirmed.mockRejectedValueOnce(
+          new Error('push down'),
+        );
+
+        const res = await app.inject({
+          method: 'POST',
+          url: `/payment/${paymentId}/confirm`,
+        });
+
+        expect(res.statusCode).toBe(HttpStatus.OK);
+        expect(JSON.parse(res.body).contents.status).toBe(
+          PaymentStatusEnum.COMPLETED,
+        );
+      });
     });
   });
 });

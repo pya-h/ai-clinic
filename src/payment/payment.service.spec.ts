@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { PaymentService } from './payment.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { NotificationService } from '../notification/notification.service';
 import {
   ConflictException,
   ForbiddenException,
@@ -16,6 +17,7 @@ import {
 describe('PaymentService', () => {
   let service: PaymentService;
   let prisma: Record<string, any>;
+  let notificationService: { onPaymentConfirmed: jest.Mock };
 
   const mockUser = buildUser();
   const mockAdminUser = buildAdminUser();
@@ -55,16 +57,21 @@ describe('PaymentService', () => {
       },
       consultation: {
         findUnique: jest.fn(),
+        findUniqueOrThrow: jest.fn(),
         update: jest.fn(),
         updateMany: jest.fn(),
       },
       $transaction: jest.fn((cb) => cb(prisma)),
+    };
+    notificationService = {
+      onPaymentConfirmed: jest.fn().mockResolvedValue(undefined),
     };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         PaymentService,
         { provide: PrismaService, useValue: prisma },
+        { provide: NotificationService, useValue: notificationService },
       ],
     }).compile();
 
@@ -316,6 +323,110 @@ describe('PaymentService', () => {
 
       const result = await service.confirmPayment(1, mockAdminUser as any);
       expect(result.status).toBe(PaymentStatusEnum.COMPLETED);
+    });
+
+    describe('payment-confirmed notification', () => {
+      const doctorUserId = randomUuid();
+      const linkedPayment = {
+        ...mockPayment,
+        consultationId: mockConsultation.id,
+      };
+
+      beforeEach(() => {
+        prisma.payment.findUnique.mockResolvedValue(linkedPayment);
+        prisma.payment.updateMany.mockResolvedValue({ count: 1 });
+        prisma.payment.findUniqueOrThrow.mockResolvedValue({
+          ...linkedPayment,
+          status: PaymentStatusEnum.COMPLETED,
+          paidAt: new Date(),
+        });
+        prisma.consultation.updateMany.mockResolvedValue({ count: 1 });
+        prisma.consultation.findUniqueOrThrow.mockResolvedValue({
+          id: mockConsultation.id,
+          patientId: mockUser.id,
+          doctor: { userId: doctorUserId },
+        });
+      });
+
+      it('should move the linked consultation and notify its doctor and patient', async () => {
+        await service.confirmPayment(1, mockUser as any);
+
+        expect(prisma.consultation.updateMany).toHaveBeenCalledWith({
+          where: { id: mockConsultation.id, status: 'PENDING_PAYMENT' },
+          data: { status: 'PAYMENT_CONFIRMED' },
+        });
+        expect(notificationService.onPaymentConfirmed).toHaveBeenCalledTimes(1);
+        expect(notificationService.onPaymentConfirmed).toHaveBeenCalledWith(
+          mockConsultation.id,
+          doctorUserId,
+          mockUser.id,
+        );
+      });
+
+      it('should notify the patient, not the admin, when an admin confirms', async () => {
+        await service.confirmPayment(1, mockAdminUser as any);
+
+        expect(notificationService.onPaymentConfirmed).toHaveBeenCalledWith(
+          mockConsultation.id,
+          doctorUserId,
+          mockUser.id,
+        );
+      });
+
+      it('should not notify for a payment without a consultation', async () => {
+        prisma.payment.findUnique.mockResolvedValue(mockPayment);
+
+        await service.confirmPayment(1, mockUser as any);
+
+        expect(prisma.consultation.updateMany).not.toHaveBeenCalled();
+        expect(notificationService.onPaymentConfirmed).not.toHaveBeenCalled();
+      });
+
+      it('should not notify when the consultation had already left PENDING_PAYMENT', async () => {
+        prisma.consultation.updateMany.mockResolvedValue({ count: 0 });
+
+        const result = await service.confirmPayment(1, mockUser as any);
+
+        expect(result.status).toBe(PaymentStatusEnum.COMPLETED);
+        expect(prisma.consultation.findUniqueOrThrow).not.toHaveBeenCalled();
+        expect(notificationService.onPaymentConfirmed).not.toHaveBeenCalled();
+      });
+
+      it('should not notify when the payment was confirmed concurrently', async () => {
+        prisma.payment.updateMany.mockResolvedValue({ count: 0 });
+
+        await expect(
+          service.confirmPayment(1, mockUser as any),
+        ).rejects.toThrow(ConflictException);
+        expect(prisma.consultation.updateMany).not.toHaveBeenCalled();
+        expect(notificationService.onPaymentConfirmed).not.toHaveBeenCalled();
+      });
+
+      it.each([
+        ['the payment is missing', () => prisma.payment.findUnique.mockResolvedValue(null), NotFoundException],
+        ['the user does not own the payment', () => prisma.payment.findUnique.mockResolvedValue({ ...linkedPayment, userId: randomUuid() }), ForbiddenException],
+        ['the payment is not PENDING', () => prisma.payment.findUnique.mockResolvedValue({ ...linkedPayment, status: PaymentStatusEnum.FAILED }), ConflictException],
+      ])('should not notify when %s', async (_case, arrange, error) => {
+        arrange();
+
+        await expect(
+          service.confirmPayment(1, mockUser as any),
+        ).rejects.toThrow(error);
+        expect(notificationService.onPaymentConfirmed).not.toHaveBeenCalled();
+      });
+
+      it('should still confirm when sending the notification fails', async () => {
+        notificationService.onPaymentConfirmed.mockRejectedValue(new Error('push down'));
+        const logError = jest
+          .spyOn((service as any).logger, 'error')
+          .mockImplementation(() => undefined);
+
+        const result = await service.confirmPayment(1, mockUser as any);
+        await new Promise((resolve) => setImmediate(resolve));
+
+        expect(result.status).toBe(PaymentStatusEnum.COMPLETED);
+        expect(logError).toHaveBeenCalledWith(expect.stringContaining('push down'));
+      });
     });
   });
 });

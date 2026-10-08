@@ -22,7 +22,7 @@ const STATUS_SELECT = {
  */
 export class UserStatusCache {
   private static readonly TTL = 60_000;
-  private static readonly entries = new Map<string, UserStatus & { checkedAt: number }>();
+  private static readonly entries = new Map<string, { status: UserStatus; checkedAt: number }>();
   private static readonly listeners = new Set<(userId: string) => void>();
   private static readonly logger = new Logger(UserStatusCache.name);
 
@@ -31,7 +31,7 @@ export class UserStatusCache {
     const now = Date.now();
     const cached = UserStatusCache.entries.get(userId);
     if (cached && now - cached.checkedAt < UserStatusCache.TTL) {
-      return cached;
+      return cached.status;
     }
 
     const status = await prisma.user.findFirst({
@@ -39,7 +39,7 @@ export class UserStatusCache {
       select: STATUS_SELECT,
     });
     if (status) {
-      UserStatusCache.entries.set(userId, { ...status, checkedAt: now });
+      UserStatusCache.entries.set(userId, { status, checkedAt: now });
     }
     return status;
   }

@@ -6,6 +6,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { NotificationService } from '../notification/notification.service';
 import {
   ConsultationStatusEnum,
   Payment,
@@ -19,7 +20,10 @@ import { PaymentFilterDto } from './dto/payment-filter.dto';
 export class PaymentService {
   private readonly logger = new Logger(PaymentService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notificationService: NotificationService,
+  ) {}
 
   async create(user: User, dto: CreatePaymentDto): Promise<Payment> {
     if (dto.consultationId) {
@@ -137,34 +141,59 @@ export class PaymentService {
       `Stub: confirming payment ${id} without real provider integration.`,
     );
 
-    const updated = await this.prisma.$transaction(async (tx) => {
-      const { count } = await tx.payment.updateMany({
-        where: { id, status: PaymentStatusEnum.PENDING },
-        data: {
-          status: PaymentStatusEnum.COMPLETED,
-          paidAt: new Date(),
-        },
-      });
-      if (count === 0) {
-        throw new ConflictException(
-          `Cannot confirm a payment with status ${payment.status}.`,
-        );
-      }
-      const paid = await tx.payment.findUniqueOrThrow({ where: { id } });
+    const { paid, confirmedConsultation } = await this.prisma.$transaction(
+      async (tx) => {
+        const { count } = await tx.payment.updateMany({
+          where: { id, status: PaymentStatusEnum.PENDING },
+          data: {
+            status: PaymentStatusEnum.COMPLETED,
+            paidAt: new Date(),
+          },
+        });
+        if (count === 0) {
+          throw new ConflictException(
+            `Cannot confirm a payment with status ${payment.status}.`,
+          );
+        }
+        const paid = await tx.payment.findUniqueOrThrow({ where: { id } });
 
-      if (payment.consultationId) {
-        await tx.consultation.updateMany({
+        if (!payment.consultationId) {
+          return { paid, confirmedConsultation: null };
+        }
+        const moved = await tx.consultation.updateMany({
           where: {
             id: payment.consultationId,
             status: ConsultationStatusEnum.PENDING_PAYMENT,
           },
           data: { status: ConsultationStatusEnum.PAYMENT_CONFIRMED },
         });
-      }
+        const confirmedConsultation =
+          moved.count === 0
+            ? null
+            : await tx.consultation.findUniqueOrThrow({
+                where: { id: payment.consultationId },
+                select: {
+                  id: true,
+                  patientId: true,
+                  doctor: { select: { userId: true } },
+                },
+              });
 
-      return paid;
-    });
+        return { paid, confirmedConsultation };
+      },
+    );
 
-    return updated;
+    // Only when this payment moved the consultation, so it is never announced twice.
+    if (confirmedConsultation) {
+      this.notificationService
+        .onPaymentConfirmed(
+          confirmedConsultation.id,
+          confirmedConsultation.doctor.userId,
+          confirmedConsultation.patientId,
+        )
+        .catch((e) => this.logger.error(`Notification failed: ${e.message}`));
+    }
+
+    return paid;
   }
 }

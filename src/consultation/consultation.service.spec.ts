@@ -322,6 +322,100 @@ describe('ConsultationService', () => {
     });
   });
 
+  // ──────────────── Confirm Payment ────────────────
+
+  describe('confirmPayment', () => {
+    const consultationId = 'consult-uuid';
+    let notificationService: { onPaymentConfirmed: jest.Mock };
+
+    const pendingPayment = (overrides: Record<string, unknown> = {}) => ({
+      id: consultationId,
+      patientId: patient.id,
+      doctorId: 1,
+      status: ConsultationStatusEnum.PENDING_PAYMENT,
+      ...overrides,
+    });
+
+    beforeEach(() => {
+      notificationService = (service as any).notificationService;
+      prisma.consultation.findUnique.mockResolvedValue(pendingPayment());
+      prisma.consultation.updateMany.mockResolvedValue({ count: 1 });
+      prisma.consultation.findUniqueOrThrow.mockResolvedValue({
+        ...pendingPayment({ status: ConsultationStatusEnum.PAYMENT_CONFIRMED }),
+        doctor: { id: 1, userId: doctor.id },
+      });
+    });
+
+    it('should confirm and notify the doctor and patient', async () => {
+      const result = await service.confirmPayment(consultationId, patient as any);
+
+      expect(result.status).toBe(ConsultationStatusEnum.PAYMENT_CONFIRMED);
+      expect(prisma.consultation.updateMany).toHaveBeenCalledWith({
+        where: { id: consultationId, status: ConsultationStatusEnum.PENDING_PAYMENT },
+        data: { status: ConsultationStatusEnum.PAYMENT_CONFIRMED },
+      });
+      expect(notificationService.onPaymentConfirmed).toHaveBeenCalledTimes(1);
+      expect(notificationService.onPaymentConfirmed).toHaveBeenCalledWith(
+        consultationId,
+        doctor.id,
+        patient.id,
+      );
+    });
+
+    it('should notify the patient, not the admin, when an admin confirms', async () => {
+      await service.confirmPayment(consultationId, admin as any);
+
+      expect(notificationService.onPaymentConfirmed).toHaveBeenCalledWith(
+        consultationId,
+        doctor.id,
+        patient.id,
+      );
+    });
+
+    it('should not notify when the user is not a participant', async () => {
+      await expect(
+        service.confirmPayment(consultationId, createMockUser() as any),
+      ).rejects.toThrow(ForbiddenException);
+      expect(notificationService.onPaymentConfirmed).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ConsultationStatusEnum.DOCTOR_DECIDED,
+      ConsultationStatusEnum.PAYMENT_CONFIRMED,
+      ConsultationStatusEnum.CANCELLED,
+    ])('should not notify when the consultation is %s', async (status) => {
+      prisma.consultation.findUnique.mockResolvedValue(pendingPayment({ status }));
+
+      await expect(
+        service.confirmPayment(consultationId, patient as any),
+      ).rejects.toThrow(BadRequestException);
+      expect(prisma.consultation.updateMany).not.toHaveBeenCalled();
+      expect(notificationService.onPaymentConfirmed).not.toHaveBeenCalled();
+    });
+
+    it('should not notify when the status changed concurrently', async () => {
+      prisma.consultation.updateMany.mockResolvedValue({ count: 0 });
+
+      await expect(
+        service.confirmPayment(consultationId, patient as any),
+      ).rejects.toThrow(ConflictException);
+      expect(notificationService.onPaymentConfirmed).not.toHaveBeenCalled();
+    });
+
+    it('should still confirm when sending the notification fails', async () => {
+      notificationService.onPaymentConfirmed.mockRejectedValue(new Error('push down'));
+      const logError = jest
+        .spyOn((service as any).logger, 'error')
+        .mockImplementation(() => undefined);
+
+      const result = await service.confirmPayment(consultationId, patient as any);
+      await new Promise((resolve) => setImmediate(resolve));
+
+      expect(result.status).toBe(ConsultationStatusEnum.PAYMENT_CONFIRMED);
+      expect(logError).toHaveBeenCalledWith(expect.stringContaining('push down'));
+    });
+  });
+
   // ──────────────── Complete ────────────────
 
   describe('complete', () => {

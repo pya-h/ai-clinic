@@ -51,6 +51,14 @@ describe('UserStatusCache', () => {
       expect(prisma.user.findFirst).toHaveBeenCalledTimes(2);
     });
 
+    it('should return only the status fields from the cache', async () => {
+      const userId = randomUUID();
+      await UserStatusCache.get(prisma as any, userId);
+
+      await expect(UserStatusCache.get(prisma as any, userId)).resolves.toStrictEqual(status());
+      expect(prisma.user.findFirst).toHaveBeenCalledTimes(1);
+    });
+
     it('should read the DB again once the entry is 60s old', async () => {
       jest.useFakeTimers({ now: new Date('2026-10-08T10:00:00Z') });
       const userId = randomUUID();
