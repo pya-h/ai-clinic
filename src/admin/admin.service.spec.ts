@@ -258,8 +258,23 @@ describe('AdminService', () => {
   /* ── listPendingDoctors ────────────────────────────────── */
 
   describe('listPendingDoctors', () => {
-    it('should return unverified doctors', async () => {
-      const pending = [mockDoctorProfile];
+    it('should return unverified doctors with their documents', async () => {
+      const pending = [
+        {
+          ...mockDoctorProfile,
+          documents: [
+            {
+              id: Math.floor(Math.random() * 10_000) + 1,
+              doctorId: mockDoctorProfile.id,
+              type: 'LICENSE',
+              fileUrl: `/uploads/doctor-documents/${Math.random().toString(36).slice(2)}.pdf`,
+              fileName: 'license.pdf',
+              mimeType: 'application/pdf',
+              status: 'PENDING',
+            },
+          ],
+        },
+      ];
       prisma.doctorProfile.findMany.mockResolvedValue(pending);
 
       const result = await service.listPendingDoctors();
@@ -277,8 +292,15 @@ describe('AdminService', () => {
               email: true,
             },
           },
+          documents: { orderBy: { createdAt: 'desc' } },
         },
       });
+    });
+
+    it('should return an empty list when no doctor is pending', async () => {
+      prisma.doctorProfile.findMany.mockResolvedValue([]);
+
+      await expect(service.listPendingDoctors()).resolves.toEqual([]);
     });
   });
 

@@ -377,8 +377,17 @@ describe('Admin (e2e)', () => {
   // ─── GET /admin/doctors/pending ──────────────────────────────────
 
   describe('GET /admin/doctors/pending', () => {
-    it('should list pending doctors (admin)', async () => {
+    it('should list pending doctors with profile id, user and documents (admin)', async () => {
       sessionUser = adminUser;
+      const document = {
+        id: Math.floor(Math.random() * 10_000) + 1,
+        doctorId: doctorProfileId,
+        type: 'LICENSE',
+        fileUrl: `/uploads/doctor-documents/${randomUuid()}.pdf`,
+        fileName: 'license.pdf',
+        mimeType: 'application/pdf',
+        status: 'PENDING',
+      };
 
       prisma.doctorProfile.findMany.mockResolvedValue([
         {
@@ -389,6 +398,7 @@ describe('Admin (e2e)', () => {
             lastname: doctorUser.lastname,
             email: doctorUser.email,
           },
+          documents: [document],
         },
       ]);
 
@@ -399,8 +409,32 @@ describe('Admin (e2e)', () => {
 
       expect(res.statusCode).toBe(HttpStatus.OK);
       const body = JSON.parse(res.body);
-      expect(body.contents).toBeDefined();
-      expect(Array.isArray(body.contents)).toBe(true);
+      expect(body.contents).toHaveLength(1);
+      const [pending] = body.contents;
+      expect(pending.id).toBe(doctorProfileId);
+      expect(pending.user.email).toBe(doctorUser.email);
+      expect(pending.documents).toEqual([document]);
+      expect(prisma.doctorProfile.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { verified: false },
+          include: expect.objectContaining({
+            documents: { orderBy: { createdAt: 'desc' } },
+          }),
+        }),
+      );
+    });
+
+    it('should return an empty list when no doctor is pending (admin)', async () => {
+      sessionUser = adminUser;
+      prisma.doctorProfile.findMany.mockResolvedValue([]);
+
+      const res = await app.inject({
+        method: 'GET',
+        url: '/admin/doctors/pending',
+      });
+
+      expect(res.statusCode).toBe(HttpStatus.OK);
+      expect(JSON.parse(res.body).contents).toEqual([]);
     });
 
     it('should return 401 when not authenticated', async () => {
@@ -514,6 +548,47 @@ describe('Admin (e2e)', () => {
       expect(res.statusCode).toBe(HttpStatus.OK);
       const body = JSON.parse(res.body);
       expect(body.contents).toBeDefined();
+    });
+
+    it('should return 400 when id is not an integer', async () => {
+      sessionUser = adminUser;
+
+      const res = await app.inject({
+        method: 'PATCH',
+        url: '/admin/doctors/undefined/verify',
+        payload: { approved: true },
+      });
+
+      expect(res.statusCode).toBe(HttpStatus.BAD_REQUEST);
+      expect(prisma.doctorProfile.update).not.toHaveBeenCalled();
+    });
+
+    it('should return 404 when the doctor does not exist', async () => {
+      sessionUser = adminUser;
+      prisma.doctorProfile.findUnique.mockResolvedValue(null);
+
+      const res = await app.inject({
+        method: 'PATCH',
+        url: `/admin/doctors/${doctorProfileId + 1}/verify`,
+        payload: { approved: true },
+      });
+
+      expect(res.statusCode).toBe(HttpStatus.NOT_FOUND);
+      expect(prisma.doctorProfile.update).not.toHaveBeenCalled();
+    });
+
+    it('should return 400 when rejecting without a reason', async () => {
+      sessionUser = adminUser;
+      prisma.doctorProfile.findUnique.mockResolvedValue(doctorProfile);
+
+      const res = await app.inject({
+        method: 'PATCH',
+        url: `/admin/doctors/${doctorProfileId}/verify`,
+        payload: { approved: false },
+      });
+
+      expect(res.statusCode).toBe(HttpStatus.BAD_REQUEST);
+      expect(prisma.doctorProfile.update).not.toHaveBeenCalled();
     });
 
     it('should return 400 when missing approved field', async () => {

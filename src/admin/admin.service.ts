@@ -218,6 +218,7 @@ export class AdminService {
             email: true,
           },
         },
+        documents: { orderBy: { createdAt: 'desc' } },
       },
     });
   }

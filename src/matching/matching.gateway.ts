@@ -227,12 +227,6 @@ export class MatchingGateway
 
   // ─────────────── Shared Flow (WS + REST) ───────────────
 
-  /**
-   * Starts the patient timeout for a newly created match request and offers it
-   * to the top-scored doctor. Used by both the `match:request` WS handler and
-   * `POST /matching/request`, so both paths actually reach a doctor.
-   * Returns the latest state of the request (MATCHED once offered).
-   */
   async dispatchMatchRequest(
     matchRequest: MatchRequest,
     doctors: { doctorId: number; userId: string; firstname: string; lastname: string }[],
@@ -243,12 +237,7 @@ export class MatchingGateway
     return this.offerToTopDoctor(matchRequest.id, doctors);
   }
 
-  /**
-   * Clears the timeout of a cancelled match request and tells the offered
-   * doctor (if any) that it was withdrawn. Used by both the `match:cancel` WS
-   * handler and `PATCH /matching/:id/cancel`. Never throws: the cancellation
-   * itself has already succeeded.
-   */
+  /** Never throws: the cancellation itself has already succeeded. */
   async notifyMatchCancelled(matchRequest: MatchRequest): Promise<void> {
     this.clearTimeout(matchRequest.id);
 
@@ -288,7 +277,7 @@ export class MatchingGateway
   }
 
   private startTimeout(matchRequestId: string, patientId: string): void {
-    // Never orphan a running timer for the same request (it could not be cleared anymore)
+    // A replaced timer would be orphaned and could never be cleared
     this.clearTimeout(matchRequestId);
 
     const timer = setTimeout(async () => {

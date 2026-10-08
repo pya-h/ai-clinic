@@ -78,7 +78,7 @@ export class AdminController {
 
   /* ── B-56  Doctor verification ─────────────────────────── */
 
-  @ApiOperation({ description: 'List doctors pending verification.' })
+  @ApiOperation({ description: 'List doctors pending verification, with their documents.' })
   @Get('doctors/pending')
   async listPendingDoctors() {
     return this.adminService.listPendingDoctors();
