@@ -331,8 +331,16 @@ describe('Nurse (e2e)', () => {
       expect(res.statusCode).toBe(HttpStatus.FORBIDDEN);
     });
 
-    it('should return 400 when permissions is empty array', async () => {
+    it('should revoke all permissions with an empty array', async () => {
       sessionUser = doctorUser;
+
+      prisma.doctorProfile.findUnique.mockResolvedValue(doctorProfile);
+      prisma.doctorNurseAssignment.findUnique.mockResolvedValue(
+        buildAssignment(),
+      );
+      prisma.doctorNurseAssignment.update.mockResolvedValue(
+        buildAssignment({ permissions: [] }),
+      );
 
       const res = await app.inject({
         method: 'PATCH',
@@ -340,7 +348,34 @@ describe('Nurse (e2e)', () => {
         payload: { permissions: [] },
       });
 
+      expect(res.statusCode).toBe(HttpStatus.OK);
+      const body = JSON.parse(res.body);
+      expect(body.contents.permissions).toEqual([]);
+      expect(body.contents.isActive).toBe(true);
+      expect(prisma.doctorNurseAssignment.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: assignmentId },
+          data: { permissions: [] },
+        }),
+      );
+    });
+
+    it.each([
+      ['an unknown permission', { permissions: ['VIEW_EVERYTHING'] }],
+      ['a non-array value', { permissions: NursePermissionEnum.VIEW_PATIENTS }],
+      ['a missing field', {}],
+      ['null', { permissions: null }],
+    ])('should return 400 for %s', async (_case, payload) => {
+      sessionUser = doctorUser;
+
+      const res = await app.inject({
+        method: 'PATCH',
+        url: `/nurse/assignment/${assignmentId}/permissions`,
+        payload,
+      });
+
       expect(res.statusCode).toBe(HttpStatus.BAD_REQUEST);
+      expect(prisma.doctorNurseAssignment.update).not.toHaveBeenCalled();
     });
 
     it('should return 400 when id is not an integer', async () => {

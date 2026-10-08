@@ -244,6 +244,22 @@ describe('NurseService', () => {
       expect(result).toEqual(updated);
     });
 
+    it('should revoke all permissions with an empty list, keeping the assignment active', async () => {
+      prisma.doctorProfile.findUnique.mockResolvedValue(doctorProfile);
+      prisma.doctorNurseAssignment.findUnique.mockResolvedValue({
+        ...assignment,
+        permissions: [NursePermissionEnum.VIEW_SOAPS, NursePermissionEnum.VIEW_PATIENTS],
+      });
+      prisma.doctorNurseAssignment.update.mockResolvedValue({ ...assignment, permissions: [] });
+
+      const result = await service.updatePermissions(doctorUser as any, 1, { permissions: [] });
+
+      expect(result.permissions).toEqual([]);
+      expect(prisma.doctorNurseAssignment.update).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: 1 }, data: { permissions: [] } }),
+      );
+    });
+
     it('should throw NotFoundException when assignment not found', async () => {
       prisma.doctorProfile.findUnique.mockResolvedValue(doctorProfile);
       prisma.doctorNurseAssignment.findUnique.mockResolvedValue(null);
