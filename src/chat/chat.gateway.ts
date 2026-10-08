@@ -12,7 +12,7 @@ import {
 import { Inject, Logger, OnModuleDestroy, forwardRef } from '@nestjs/common';
 import { Server, Socket } from 'socket.io';
 import { ChatService } from './chat.service';
-import { MessageTypeEnum } from '@prisma/client';
+import { Message, MessageTypeEnum } from '@prisma/client';
 import { ConfigService } from '@nestjs/config';
 import { HttpAdapterHost } from '@nestjs/core';
 import type { FastifyInstance } from 'fastify';
@@ -207,19 +207,7 @@ export class ChatGateway
         },
       );
 
-      const serialized = this.chatService.serializeMessage(message);
-
-      this.server.to(`chat:${payload.chatId}`).emit('chat:message', {
-        message: serialized,
-      });
-
-      this.notifyOfflineParticipants(
-        payload.chatId,
-        user.id,
-        `${user.firstname} ${user.lastname}`,
-      ).catch((e) =>
-        this.logger.error(`Chat notification failed: ${e.message}`),
-      );
+      this.announceNewMessage(message, `${user.firstname} ${user.lastname}`);
     } catch (err) {
       this.logger.error(`chat:message error: ${err instanceof Error ? err.message : 'Unknown error'}`);
       client.emit('chat:error', {
@@ -394,6 +382,24 @@ export class ChatGateway
   }
 
   // ─────────────────────────── Helpers ───────────────────────────
+
+  /**
+   * Delivers a saved message the same way whether it was sent over WebSocket
+   * or HTTP: pushed to the chat room, with offline participants notified.
+   */
+  announceNewMessage(message: Message, senderName: string): void {
+    this.server.to(`chat:${message.chatId}`).emit('chat:message', {
+      message: this.chatService.serializeMessage(message),
+    });
+
+    this.notifyOfflineParticipants(
+      message.chatId,
+      message.senderId,
+      senderName,
+    ).catch((e) =>
+      this.logger.error(`Chat notification failed: ${e.message}`),
+    );
+  }
 
   addUserToRoom(userId: string, chatId: string): void {
     const socketIds = this.chatService.getSocketIds(userId);

@@ -10,6 +10,7 @@ import {
 } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { ChatService } from './chat.service';
+import { ChatGateway } from './chat.gateway';
 import { CookieAuthGuard } from '../auth/guards/cookie-auth.guard';
 import { CurrentUser } from '../user/decorators/current-user.decorator';
 import { User } from '@prisma/client';
@@ -21,7 +22,10 @@ import { PaginationOptionsDto } from '../common/dtos/pagination-options.dto';
 @Controller('chat')
 @UseGuards(CookieAuthGuard)
 export class ChatController {
-  constructor(private readonly chatService: ChatService) {}
+  constructor(
+    private readonly chatService: ChatService,
+    private readonly chatGateway: ChatGateway,
+  ) {}
 
   @Post()
   @ApiOperation({ summary: 'Create or reopen a chat with another user' })
@@ -77,6 +81,10 @@ export class ChatController {
     @Body() dto: SendMessageDto,
   ) {
     const message = await this.chatService.sendMessage(chatId, user.id, dto);
+    this.chatGateway.announceNewMessage(
+      message,
+      `${user.firstname} ${user.lastname}`,
+    );
     return this.chatService.serializeMessage(message);
   }
 }

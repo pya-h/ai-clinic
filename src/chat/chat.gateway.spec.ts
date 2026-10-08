@@ -305,6 +305,7 @@ describe('ChatGateway', () => {
     it('should emit chat:error when service throws', async () => {
       const client = createMockSocket();
       chatService.sendMessage.mockRejectedValue(new Error('DB error'));
+      const announce = jest.spyOn(gateway, 'announceNewMessage');
 
       await gateway.handleMessage(client as any, {
         chatId: 'chat-1',
@@ -315,6 +316,108 @@ describe('ChatGateway', () => {
         event: 'chat:message',
         message: 'DB error',
       });
+      expect(announce).not.toHaveBeenCalled();
+    });
+
+    it('should announce the saved message with the sender name', async () => {
+      const client = createMockSocket();
+      const message = {
+        id: BigInt(Math.floor(Math.random() * 1e6) + 1),
+        chatId: randomUUID(),
+        content: `Hi ${randomUUID()}`,
+        type: MessageTypeEnum.TEXT,
+        senderId: mockUser.id,
+      };
+      chatService.sendMessage.mockResolvedValue(message);
+      const announce = jest.spyOn(gateway, 'announceNewMessage');
+
+      await gateway.handleMessage(client as any, {
+        chatId: message.chatId,
+        content: message.content,
+      });
+
+      expect(announce).toHaveBeenCalledWith(
+        message,
+        `${mockUser.firstname} ${mockUser.lastname}`,
+      );
+    });
+  });
+
+  // ─── announceNewMessage (shared by WS and HTTP sends) ───
+
+  describe('announceNewMessage', () => {
+    const buildMessage = (senderId = randomUUID()) => ({
+      id: BigInt(Math.floor(Math.random() * 1e6) + 1),
+      chatId: randomUUID(),
+      content: `Hello ${randomUUID()}`,
+      type: MessageTypeEnum.TEXT,
+      senderId,
+    });
+
+    /** Users in `online` have a socket in their personal room. */
+    const withOnlineUsers = (online: string[]) => {
+      (gateway.server.in as jest.Mock).mockImplementation((room: string) => ({
+        fetchSockets: jest
+          .fn()
+          .mockResolvedValue(
+            online.some((id) => room === `user:${id}`) ? [{ id: 'socket' }] : [],
+          ),
+      }));
+    };
+
+    it('should emit the serialized message to the chat room', () => {
+      const message = buildMessage();
+
+      gateway.announceNewMessage(message as any, 'Jane Roe');
+
+      expect(gateway.server.to).toHaveBeenCalledWith(`chat:${message.chatId}`);
+      expect((gateway.server as any)._toEmit).toHaveBeenCalledWith('chat:message', {
+        message: { ...message, id: String(message.id) },
+      });
+    });
+
+    it('should notify only the offline participants other than the sender', async () => {
+      const [sender, offline, online] = [randomUUID(), randomUUID(), randomUUID()];
+      const message = buildMessage(sender);
+      const senderName = `Name ${randomUUID().slice(0, 6)}`;
+      chatService.getChatParticipantUserIds.mockResolvedValue([sender, offline, online]);
+      withOnlineUsers([sender, online]);
+
+      gateway.announceNewMessage(message as any, senderName);
+      await flushPromises();
+
+      expect(chatService.getChatParticipantUserIds).toHaveBeenCalledWith(message.chatId);
+      expect(notificationService.onNewChatMessage).toHaveBeenCalledTimes(1);
+      expect(notificationService.onNewChatMessage).toHaveBeenCalledWith(
+        message.chatId,
+        sender,
+        offline,
+        senderName,
+      );
+    });
+
+    it('should notify nobody when every other participant is online', async () => {
+      const [sender, other] = [randomUUID(), randomUUID()];
+      chatService.getChatParticipantUserIds.mockResolvedValue([sender, other]);
+      withOnlineUsers([other]);
+
+      gateway.announceNewMessage(buildMessage(sender) as any, 'Jane Roe');
+      await flushPromises();
+
+      expect(notificationService.onNewChatMessage).not.toHaveBeenCalled();
+    });
+
+    it('should log, not throw, when notifying fails', async () => {
+      chatService.getChatParticipantUserIds.mockRejectedValue(new Error('DB down'));
+      const logError = jest
+        .spyOn((gateway as any).logger, 'error')
+        .mockImplementation(() => undefined);
+
+      expect(() => gateway.announceNewMessage(buildMessage() as any, 'Jane Roe')).not.toThrow();
+      await flushPromises();
+
+      expect(logError).toHaveBeenCalledWith('Chat notification failed: DB down');
+      expect((gateway.server as any)._toEmit).toHaveBeenCalled();
     });
   });
 

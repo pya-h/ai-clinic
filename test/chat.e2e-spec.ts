@@ -8,7 +8,8 @@
  *   GET  /chat          — list user chats (happy, unauth)
  *   GET  /chat/:id      — get single chat (happy, non-participant, not-found)
  *   GET  /chat/:id/messages  — get paginated messages (happy, non-participant)
- *   POST /chat/:id/message   — send message HTTP fallback (happy, closed chat, non-participant)
+ *   POST /chat/:id/message   — send message HTTP fallback (happy, closed chat, non-participant;
+ *                              broadcast to the room + offline notification, none when refused)
  */
 import { Test, TestingModule } from '@nestjs/testing';
 import {
@@ -19,6 +20,7 @@ import { ValidationPipe, HttpStatus, Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { ScheduleModule } from '@nestjs/schedule';
 import { ChatModule } from '../src/chat/chat.module';
+import { ChatGateway } from '../src/chat/chat.gateway';
 import { NotificationService } from '../src/notification/notification.service';
 import { AuthModule } from '../src/auth/auth.module';
 import { UserModule } from '../src/user/user.module';
@@ -40,6 +42,7 @@ import {
   MockUser,
 } from './helpers/mock-session.helper';
 import { randomUuid } from './helpers/test-data.factory';
+import { flushPromises } from './helpers/ws-handshake.helper';
 import { UserRolesEnum, MessageTypeEnum } from '@prisma/client';
 import authConfigs from '../src/configs/auth';
 import generalConfigs from '../src/configs/general';
@@ -663,6 +666,83 @@ describe('Chat (e2e)', () => {
       expect(typeof body.contents.id).toBe('string');
       expect(body.contents.content).toBe('Hello doctor!');
       expect(body.contents.senderId).toBe(patientUser.id);
+    });
+
+    it('should push the message to the chat room and notify the offline participant, like a WebSocket send', async () => {
+      sessionUser = patientUser;
+      const chatId = randomUuid();
+      const content = `Over HTTP ${randomUuid()}`;
+      const mockMessage = buildMessageData(chatId, { content });
+      prisma.chat.findUnique.mockResolvedValue(buildChatData({ id: chatId }));
+      prisma.user.findUnique.mockResolvedValue({ isActive: true, isBanned: false });
+      prisma.message.create.mockResolvedValue(mockMessage);
+      prisma.chat.update.mockResolvedValue({});
+      prisma.chatParticipant.findMany.mockResolvedValue([
+        { userId: patientUser.id },
+        { userId: doctorUser.id },
+      ]);
+      const gateway = app.get(ChatGateway);
+      const roomEmit = jest.fn();
+      const to = jest
+        .spyOn(gateway.server, 'to')
+        .mockReturnValue({ emit: roomEmit } as any);
+      const notifications = app.get(NotificationService) as unknown as {
+        onNewChatMessage: jest.Mock;
+      };
+
+      try {
+        const res = await app.inject({
+          method: 'POST',
+          url: `/chat/${chatId}/message`,
+          payload: { content },
+        });
+
+        expect(res.statusCode).toBe(HttpStatus.CREATED);
+        expect(to).toHaveBeenCalledWith(`chat:${chatId}`);
+        expect(roomEmit).toHaveBeenCalledWith('chat:message', {
+          message: expect.objectContaining({
+            id: mockMessage.id.toString(),
+            chatId,
+            content,
+            senderId: patientUser.id,
+          }),
+        });
+        // Nobody is connected, so the other participant counts as offline.
+        await flushPromises();
+        expect(notifications.onNewChatMessage).toHaveBeenCalledWith(
+          chatId,
+          patientUser.id,
+          doctorUser.id,
+          `${patientUser.firstname} ${patientUser.lastname}`,
+        );
+        expect(notifications.onNewChatMessage).toHaveBeenCalledTimes(1);
+      } finally {
+        to.mockRestore();
+      }
+    });
+
+    it('should neither broadcast nor notify when the send is refused', async () => {
+      sessionUser = createMockUser();
+      const chatId = randomUuid();
+      prisma.chat.findUnique.mockResolvedValue(buildChatData({ id: chatId }));
+      const to = jest.spyOn(app.get(ChatGateway).server, 'to');
+      const notifications = app.get(NotificationService) as unknown as {
+        onNewChatMessage: jest.Mock;
+      };
+
+      try {
+        const res = await app.inject({
+          method: 'POST',
+          url: `/chat/${chatId}/message`,
+          payload: { content: 'Not my chat' },
+        });
+
+        expect(res.statusCode).toBe(HttpStatus.FORBIDDEN);
+        expect(to).not.toHaveBeenCalled();
+        expect(notifications.onNewChatMessage).not.toHaveBeenCalled();
+      } finally {
+        to.mockRestore();
+      }
     });
 
     it('should reject when chat is closed', async () => {
