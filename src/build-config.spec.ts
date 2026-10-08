@@ -84,4 +84,24 @@ describe('build configuration', () => {
       expect(copiedBefore).toMatch(/\bpnpm-workspace\.yaml\b/);
     }
   });
+
+  it('should install the Prisma CLI in production, matching @prisma/client', () => {
+    const { dependencies, devDependencies } = JSON.parse(read('package.json'));
+
+    // The production image runs `prisma generate` and `prisma migrate deploy` after `pnpm install --prod`.
+    expect(dependencies.prisma).toBe(dependencies['@prisma/client']);
+    expect(devDependencies.prisma).toBeUndefined();
+  });
+
+  it('should run production on a glibc image with libssl', () => {
+    const dockerfile = read('Dockerfile');
+    const production = dockerfile.slice(
+      dockerfile.search(/^FROM .* AS production$/m),
+    );
+
+    // sodium-native has no musl prebuilds, and Prisma's engine needs libssl.
+    expect(production).toMatch(/^FROM node:\S+ AS production$/m);
+    expect(production.split('\n')[0]).not.toMatch(/alpine/);
+    expect(production).toMatch(/apt-get install[^\n]*\bopenssl\b/);
+  });
 });

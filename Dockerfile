@@ -14,9 +14,13 @@ COPY src ./src
 RUN pnpm run build
 
 # --- Production stage ---
-FROM node:22-alpine AS production
+# Not Alpine: sodium-native (used by @fastify/secure-session) ships no musl prebuilds.
+FROM node:22-slim AS production
 
-RUN apk add --no-cache dumb-init
+# openssl: Prisma's query engine needs libssl, which the slim image lacks.
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends dumb-init openssl \
+  && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
