@@ -20,7 +20,15 @@ const EXTENSION_BY_MIME_TYPE: Record<string, string> = {
   'application/pdf': '.pdf',
 };
 
-const ALLOWED_MIME_TYPES = Object.keys(EXTENSION_BY_MIME_TYPE);
+export type UploadFolder = 'avatars' | 'doctor-documents';
+
+const IMAGE_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+
+// Applies to serving as well, so files stored before a type was dropped aren't served either.
+const ALLOWED_MIME_TYPES: Record<UploadFolder, string[]> = {
+  avatars: IMAGE_MIME_TYPES,
+  'doctor-documents': [...IMAGE_MIME_TYPES, 'application/pdf'],
+};
 
 // Older uploads took their extension from the client's file name, hence '.jpeg' and any case.
 const MIME_TYPE_BY_EXTENSION: Record<string, string> = {
@@ -72,9 +80,9 @@ export class FileUploadService {
    */
   async uploadFile(
     file: MultipartFile,
-    folder: string,
+    folder: UploadFolder,
   ): Promise<{ url: string; fileName: string; mimeType: string; key: string }> {
-    this.validateFile(file);
+    this.validateFile(file, folder);
 
     const buffer = await file.toBuffer();
 
@@ -103,13 +111,13 @@ export class FileUploadService {
     }
   }
 
-  /** Serves only the allowed types; the content type is derived from the stored extension. */
+  /** Serves only the folder's allowed types; the content type is derived from the stored extension. */
   async openFile(
-    folder: string,
+    folder: UploadFolder,
     fileName: string,
   ): Promise<{ stream: Readable; mimeType: string }> {
     const mimeType = MIME_TYPE_BY_EXTENSION[path.extname(fileName).toLowerCase()];
-    if (!STORED_FILE_NAME.test(fileName) || !mimeType) {
+    if (!STORED_FILE_NAME.test(fileName) || !ALLOWED_MIME_TYPES[folder].includes(mimeType)) {
       throw new NotFoundException('File not found.');
     }
 
@@ -128,6 +136,18 @@ export class FileUploadService {
   }
 
   /**
+   * Delete a file that uploadFile stored in `folder`, given the URL it returned.
+   * Any other URL (external, another folder, malformed) is left alone.
+   */
+  async deleteUploadedFile(folder: UploadFolder, url: string): Promise<void> {
+    const prefix = `/uploads/${folder}/`;
+    const fileName = url.startsWith(prefix) ? url.slice(prefix.length) : '';
+    if (STORED_FILE_NAME.test(fileName)) {
+      await this.provider.delete(`${folder}/${fileName}`);
+    }
+  }
+
+  /**
    * Get a URL for accessing a file (signed if needed).
    */
   async getFileUrl(key: string, expiresIn?: number): Promise<string> {
@@ -137,14 +157,15 @@ export class FileUploadService {
   /**
    * Validate file MIME type before reading the full buffer.
    */
-  private validateFile(file: MultipartFile): void {
+  private validateFile(file: MultipartFile, folder: UploadFolder): void {
     if (!file || !file.mimetype || !file.filename) {
       throw new BadRequestException('No file provided.');
     }
 
-    if (!ALLOWED_MIME_TYPES.includes(file.mimetype)) {
+    const allowed = ALLOWED_MIME_TYPES[folder];
+    if (!allowed.includes(file.mimetype)) {
       throw new BadRequestException(
-        `Invalid file type '${file.mimetype}'. Allowed types: ${ALLOWED_MIME_TYPES.join(', ')}.`,
+        `Invalid file type '${file.mimetype}'. Allowed types: ${allowed.join(', ')}.`,
       );
     }
   }

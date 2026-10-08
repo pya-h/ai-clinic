@@ -18,6 +18,7 @@ import { UtilsModule } from '../src/utils/utils.module';
 import { AuthModule } from '../src/auth/auth.module';
 import { UserModule } from '../src/user/user.module';
 import { FileUploadModule } from '../src/file-upload/file-upload.module';
+import { DoctorModule } from '../src/doctor/doctor.module';
 import { ExceptionTemplateFilter } from '../src/common/filters/exception-template.filter';
 import { ResponseTemplateInterceptor } from '../src/common/interceptors/response-template.interceptor';
 import {
@@ -49,6 +50,7 @@ const storageDir = fs.mkdtempSync(path.join(os.tmpdir(), 'uploads-e2e-'));
     UtilsModule,
     AuthModule,
     UserModule,
+    DoctorModule,
     FileUploadModule,
     ScheduleModule.forRoot(),
   ],
@@ -73,10 +75,24 @@ function multipartBody(fileName: string, mimeType: string, content: Buffer) {
   return { payload, headers: { 'content-type': `multipart/form-data; boundary=${boundary}` } };
 }
 
+const SAMPLE_BY_MIME_TYPE: Record<string, () => Buffer> = {
+  'image/jpeg': () => Buffer.from([0xff, 0xd8, 0xff, 0xe0, ...randomBytes(32)]),
+  'image/png': () => Buffer.concat([PNG_BYTES.subarray(0, 8), randomBytes(32)]),
+  'image/webp': () =>
+    Buffer.concat([Buffer.from('RIFF'), randomBytes(4), Buffer.from('WEBP'), randomBytes(32)]),
+  'application/pdf': () => Buffer.concat([Buffer.from('%PDF-1.7 '), randomBytes(32)]),
+  'image/gif': () => Buffer.concat([Buffer.from('GIF89a'), randomBytes(32)]),
+};
+
 function writeStoredFile(folder: string, fileName: string, content: Buffer) {
   fs.mkdirSync(path.join(storageDir, folder), { recursive: true });
   fs.writeFileSync(path.join(storageDir, folder, fileName), content);
 }
+
+const storedPath = (url: string) => path.join(storageDir, url.replace(/^\/uploads\//, ''));
+
+const storedFiles = (folder: string) =>
+  fs.existsSync(path.join(storageDir, folder)) ? fs.readdirSync(path.join(storageDir, folder)).sort() : [];
 
 describe('Uploads (e2e)', () => {
   let app: NestFastifyApplication;
@@ -204,6 +220,176 @@ describe('Uploads (e2e)', () => {
       const res = await app.inject({ method: 'GET', url: '/uploads/other/x.png' });
 
       expect(res.statusCode).toBe(HttpStatus.NOT_FOUND);
+    });
+  });
+
+  // ─── Avatar uploads ───
+
+  describe('POST /user/avatar and PATCH /user/profile', () => {
+    const IMAGE_TYPES = 'image/jpeg, image/png, image/webp';
+    let user: MockUser;
+    let dbAvatar: string | null;
+
+    const uploadAvatar = (mimeType: string, content = SAMPLE_BY_MIME_TYPE[mimeType]()) =>
+      app.inject({
+        method: 'POST',
+        url: '/user/avatar',
+        ...multipartBody(`me-${randomUUID().slice(0, 6)}`, mimeType, content),
+      });
+
+    const uploadedAvatar = async (mimeType = 'image/png') => {
+      const res = await uploadAvatar(mimeType);
+      expect(res.statusCode).toBe(HttpStatus.CREATED);
+      return JSON.parse(res.body).contents.avatar as string;
+    };
+
+    beforeEach(() => {
+      user = createMockUser();
+      sessionUser = user;
+      dbAvatar = null;
+      prisma.user.findUnique.mockImplementation(async () => ({ ...user, avatar: dbAvatar }));
+      prisma.user.update.mockImplementation(async ({ data }: any) => {
+        if ('avatar' in data) dbAvatar = data.avatar;
+        return { ...user, ...data, avatar: dbAvatar };
+      });
+    });
+
+    it.each(['image/jpeg', 'image/png', 'image/webp'])('should accept a %s avatar and serve it', async (mimeType) => {
+      const content = SAMPLE_BY_MIME_TYPE[mimeType]();
+
+      const res = await uploadAvatar(mimeType, content);
+
+      expect(res.statusCode).toBe(HttpStatus.CREATED);
+      const url = JSON.parse(res.body).contents.avatar;
+      expect(dbAvatar).toBe(url);
+      const served = await app.inject({ method: 'GET', url });
+      expect(served.headers['content-type']).toBe(mimeType);
+      expect(served.rawPayload.equals(content)).toBe(true);
+    });
+
+    it.each(['application/pdf', 'image/gif'])('should refuse a %s avatar and store nothing', async (mimeType) => {
+      const before = storedFiles('avatars');
+
+      const res = await uploadAvatar(mimeType);
+
+      expect(res.statusCode).toBe(HttpStatus.BAD_REQUEST);
+      expect(JSON.parse(res.body).message).toBe(
+        `Invalid file type '${mimeType}'. Allowed types: ${IMAGE_TYPES}.`,
+      );
+      expect(storedFiles('avatars')).toEqual(before);
+      expect(prisma.user.update).not.toHaveBeenCalled();
+    });
+
+    it('should delete the replaced avatar file once the new one is saved', async () => {
+      const first = await uploadedAvatar('image/jpeg');
+      const second = await uploadedAvatar('image/webp');
+
+      expect(dbAvatar).toBe(second);
+      expect(fs.existsSync(storedPath(first))).toBe(false);
+      expect((await app.inject({ method: 'GET', url: first })).statusCode).toBe(HttpStatus.NOT_FOUND);
+      expect((await app.inject({ method: 'GET', url: second })).statusCode).toBe(HttpStatus.OK);
+    });
+
+    it('should keep the current avatar file when a replacement is refused', async () => {
+      const current = await uploadedAvatar();
+
+      expect((await uploadAvatar('application/pdf')).statusCode).toBe(HttpStatus.BAD_REQUEST);
+
+      expect(dbAvatar).toBe(current);
+      expect(fs.existsSync(storedPath(current))).toBe(true);
+    });
+
+    it.each([
+      ['an external URL', () => `https://cdn.example.com/${randomUUID()}.png`],
+      ['null', () => null],
+    ])('should delete the uploaded avatar file when the profile sets the avatar to %s', async (_case, next) => {
+      const uploaded = await uploadedAvatar();
+      const avatar = next();
+
+      const res = await app.inject({ method: 'PATCH', url: '/user/profile', payload: { avatar } });
+
+      expect(res.statusCode).toBe(HttpStatus.OK);
+      expect(dbAvatar).toBe(avatar);
+      expect(fs.existsSync(storedPath(uploaded))).toBe(false);
+    });
+
+    it('should keep the avatar file when a profile update leaves the avatar out', async () => {
+      const uploaded = await uploadedAvatar();
+
+      const res = await app.inject({
+        method: 'PATCH',
+        url: '/user/profile',
+        payload: { firstname: `F${randomUUID().slice(0, 6)}` },
+      });
+
+      expect(res.statusCode).toBe(HttpStatus.OK);
+      expect(fs.existsSync(storedPath(uploaded))).toBe(true);
+    });
+
+    it.each([
+      (doc: string) => `/uploads/doctor-documents/${doc}`,
+      (doc: string) => `/uploads/avatars/../doctor-documents/${doc}`,
+    ])('should never delete a file outside the avatars folder (previous avatar #%#)', async (previous) => {
+      const doc = `${randomUUID()}.pdf`;
+      writeStoredFile('doctor-documents', doc, SAMPLE_BY_MIME_TYPE['application/pdf']());
+      dbAvatar = previous(doc);
+
+      await uploadedAvatar();
+
+      expect(fs.existsSync(path.join(storageDir, 'doctor-documents', doc))).toBe(true);
+    });
+
+    it('should not serve a PDF stored among avatars before avatars were images only', async () => {
+      const fileName = `${randomUUID()}.pdf`;
+      writeStoredFile('avatars', fileName, SAMPLE_BY_MIME_TYPE['application/pdf']());
+
+      const res = await app.inject({ method: 'GET', url: `/uploads/avatars/${fileName}` });
+
+      expect(res.statusCode).toBe(HttpStatus.NOT_FOUND);
+      expect(res.body).not.toContain('%PDF');
+    });
+  });
+
+  // ─── Doctor document uploads ───
+
+  describe('POST /doctor/documents', () => {
+    beforeEach(() => {
+      sessionUser = createMockDoctorUser();
+      prisma.doctorProfile.findUnique.mockResolvedValue({ id: Math.floor(Math.random() * 1e6) + 1 });
+      prisma.doctorDocument.create.mockImplementation(async ({ data }: any) => ({ id: 1, ...data }));
+    });
+
+    it.each(['application/pdf', 'image/jpeg', 'image/png', 'image/webp'])(
+      'should accept a %s document and store it among doctor documents',
+      async (mimeType) => {
+        const content = SAMPLE_BY_MIME_TYPE[mimeType]();
+
+        const res = await app.inject({
+          method: 'POST',
+          url: '/doctor/documents',
+          ...multipartBody(`license-${randomUUID().slice(0, 6)}`, mimeType, content),
+        });
+
+        expect(res.statusCode).toBe(HttpStatus.CREATED);
+        const { fileUrl, mimeType: stored } = JSON.parse(res.body).contents;
+        expect(stored).toBe(mimeType);
+        expect(fileUrl).toMatch(/^\/uploads\/doctor-documents\/[0-9a-f-]{36}\.(pdf|jpg|png|webp)$/);
+        expect(fs.readFileSync(storedPath(fileUrl)).equals(content)).toBe(true);
+      },
+    );
+
+    it('should refuse a type documents don\'t allow', async () => {
+      const res = await app.inject({
+        method: 'POST',
+        url: '/doctor/documents',
+        ...multipartBody('license.gif', 'image/gif', SAMPLE_BY_MIME_TYPE['image/gif']()),
+      });
+
+      expect(res.statusCode).toBe(HttpStatus.BAD_REQUEST);
+      expect(JSON.parse(res.body).message).toBe(
+        "Invalid file type 'image/gif'. Allowed types: image/jpeg, image/png, image/webp, application/pdf.",
+      );
+      expect(prisma.doctorDocument.create).not.toHaveBeenCalled();
     });
   });
 

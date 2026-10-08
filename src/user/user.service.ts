@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
+  Logger,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { Prisma, User, UserRolesEnum } from '@prisma/client';
@@ -15,6 +16,8 @@ import { MultipartFile } from '@fastify/multipart';
 
 @Injectable()
 export class UserService {
+  private readonly logger = new Logger(UserService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly utilsService: UtilsService,
@@ -111,13 +114,18 @@ export class UserService {
       }
     }
 
-    return this.prisma.user.update({
+    const previousAvatar =
+      updateUserData.avatar !== undefined ? await this.currentAvatar(user.id) : null;
+
+    const updated = await this.prisma.user.update({
       where: { id: user.id },
       data: {
         ...updateUserData,
       },
       select: this.safeUserSelect(),
     });
+    await this.removeReplacedAvatar(previousAvatar, updated.avatar);
+    return updated;
   }
 
   async changePassword(user: User, dto: ChangePasswordDto) {
@@ -179,12 +187,36 @@ export class UserService {
    */
   async uploadAvatar(user: User, file: MultipartFile) {
     const uploaded = await this.fileUploadService.uploadFile(file, 'avatars');
+    const previousAvatar = await this.currentAvatar(user.id);
 
-    return this.prisma.user.update({
+    const updated = await this.prisma.user.update({
       where: { id: user.id },
       data: { avatar: uploaded.url },
       select: { id: true, avatar: true },
     });
+    await this.removeReplacedAvatar(previousAvatar, updated.avatar);
+    return updated;
+  }
+
+  // Read from the DB: the session's copy of the user may predate a change of avatar.
+  private async currentAvatar(userId: string): Promise<string | null> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { avatar: true },
+    });
+    return user?.avatar ?? null;
+  }
+
+  /** Deletes the file of an avatar this server stored once it's replaced; a failure only leaves the file behind. */
+  private async removeReplacedAvatar(previous: string | null, current: string | null): Promise<void> {
+    if (!previous || previous === current) return;
+    try {
+      await this.fileUploadService.deleteUploadedFile('avatars', previous);
+    } catch (err) {
+      this.logger.warn(
+        `Failed to delete replaced avatar ${previous}: ${err instanceof Error ? err.message : 'Unknown error'}`,
+      );
+    }
   }
 
   async searchUsers(query: string, excludeRoles: UserRolesEnum[] = []) {
