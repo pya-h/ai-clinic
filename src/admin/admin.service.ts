@@ -9,6 +9,7 @@ import {
   forwardRef,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { CookieAuthGuard } from '../auth/guards/cookie-auth.guard';
 import { ReviewService } from '../review/review.service';
 import { User } from '@prisma/client';
 import { AdminUserFilterDto } from './dto/admin-user-filter.dto';
@@ -108,11 +109,13 @@ export class AdminService {
       }
     }
 
-    return this.prisma.user.update({
+    const updated = await this.prisma.user.update({
       where: { id: userId },
       data: dto,
       select: this.safeAdminUserSelect(),
     });
+    CookieAuthGuard.invalidateUserStatus(userId);
+    return updated;
   }
 
   async deactivateUser(userId: string, currentUser: User) {
@@ -134,11 +137,13 @@ export class AdminService {
       throw new ForbiddenException('You cannot deactivate your own account.');
     }
 
-    return this.prisma.user.update({
+    const updated = await this.prisma.user.update({
       where: { id: userId },
       data: { isActive: false },
       select: this.safeAdminUserSelect(),
     });
+    CookieAuthGuard.invalidateUserStatus(userId);
+    return updated;
   }
 
   /* ── A-02  Ban / Unban ──────────────────────────────────── */
@@ -163,7 +168,7 @@ export class AdminService {
       throw new ForbiddenException('You cannot ban yourself.');
     }
 
-    return this.prisma.user.update({
+    const updated = await this.prisma.user.update({
       where: { id: userId },
       data: {
         isBanned: true,
@@ -173,6 +178,8 @@ export class AdminService {
       },
       select: this.safeAdminUserSelect(),
     });
+    CookieAuthGuard.invalidateUserStatus(userId);
+    return updated;
   }
 
   async unbanUser(userId: string, admin: User) {
@@ -191,7 +198,7 @@ export class AdminService {
       );
     }
 
-    return this.prisma.user.update({
+    const updated = await this.prisma.user.update({
       where: { id: userId },
       data: {
         isBanned: false,
@@ -201,6 +208,8 @@ export class AdminService {
       },
       select: this.safeAdminUserSelect(),
     });
+    CookieAuthGuard.invalidateUserStatus(userId);
+    return updated;
   }
 
   /* ── B-56  Doctor verification ─────────────────────────── */
@@ -283,11 +292,13 @@ export class AdminService {
       throw new BadRequestException('User is already an admin.');
     }
 
-    return this.prisma.user.update({
+    const updated = await this.prisma.user.update({
       where: { id: userId },
       data: { isAdmin: true },
       select: this.safeAdminUserSelect(),
     });
+    CookieAuthGuard.invalidateUserStatus(userId);
+    return updated;
   }
 
   async demoteAdmin(userId: string, currentUser: User) {
@@ -308,11 +319,13 @@ export class AdminService {
       throw new ForbiddenException('Cannot demote a superadmin.');
     }
 
-    return this.prisma.user.update({
+    const updated = await this.prisma.user.update({
       where: { id: userId },
       data: { isAdmin: false },
       select: this.safeAdminUserSelect(),
     });
+    CookieAuthGuard.invalidateUserStatus(userId);
+    return updated;
   }
 
   /* ── B-58  Platform stats ──────────────────────────────── */

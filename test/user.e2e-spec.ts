@@ -238,10 +238,10 @@ describe('User (e2e)', () => {
     it('should reject update with duplicate email', async () => {
       sessionUser = createMockUser();
       const takenEmail = randomEmail();
-      prisma.user.findFirst.mockResolvedValue({
-        id: randomUuid(),
-        email: takenEmail,
-      });
+      // Only the email lookup finds the other user; the auth guard's status lookup by id finds nothing.
+      prisma.user.findFirst.mockImplementation(async ({ where }: any) =>
+        where.email ? { id: randomUuid(), email: takenEmail } : null,
+      );
 
       const res = await app.inject({
         method: 'PATCH',

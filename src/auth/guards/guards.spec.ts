@@ -30,6 +30,7 @@ function createMockContext(
         if (key === 'user') return sessionUser;
         return undefined;
       }),
+      set: jest.fn(),
       delete: jest.fn(),
     },
   };
@@ -116,9 +117,30 @@ describe('CookieAuthGuard', () => {
       (CookieAuthGuard as any).statusCache.clear();
     });
 
+    const dbStatus = (overrides: Record<string, unknown> = {}) => ({
+      isActive: true,
+      isBanned: false,
+      banReason: null,
+      role: 'PATIENT',
+      isAdmin: false,
+      isSuperAdmin: false,
+      ...overrides,
+    });
+
+    const sessionUser = (overrides: Record<string, unknown> = {}) => ({
+      id: randomUuid(),
+      isActive: true,
+      role: 'PATIENT',
+      isAdmin: false,
+      isSuperAdmin: false,
+      ...overrides,
+    });
+
+    const requestOf = (ctx: ExecutionContext) => ctx.switchToHttp().getRequest() as any;
+
     it('should verify user status from DB and return true for active user', async () => {
-      const user = { id: randomUuid(), isActive: true, role: 'PATIENT' };
-      mockPrisma.user.findFirst.mockResolvedValue({ isActive: true, isBanned: false, banReason: null });
+      const user = sessionUser();
+      mockPrisma.user.findFirst.mockResolvedValue(dbStatus());
       const ctx = createMockContext(user);
 
       const result = await guardWithPrisma.canActivate(ctx);
@@ -165,9 +187,8 @@ describe('CookieAuthGuard', () => {
     });
 
     it('should use cached status within TTL and skip DB query', async () => {
-      const userId = randomUuid();
-      const user = { id: userId, isActive: true, role: 'PATIENT' };
-      mockPrisma.user.findFirst.mockResolvedValue({ isActive: true, isBanned: false, banReason: null });
+      const user = sessionUser();
+      mockPrisma.user.findFirst.mockResolvedValue(dbStatus());
 
       const ctx1 = createMockContext(user);
       await guardWithPrisma.canActivate(ctx1);
@@ -176,6 +197,108 @@ describe('CookieAuthGuard', () => {
       const ctx2 = createMockContext(user);
       await guardWithPrisma.canActivate(ctx2);
       expect(mockPrisma.user.findFirst).toHaveBeenCalledTimes(1);
+    });
+
+    it('should keep the session untouched when role and admin flags match the DB', async () => {
+      const user = sessionUser({ role: 'DOCTOR' });
+      mockPrisma.user.findFirst.mockResolvedValue(dbStatus({ role: 'DOCTOR' }));
+      const ctx = createMockContext(user);
+
+      await guardWithPrisma.canActivate(ctx);
+
+      expect(requestOf(ctx).user).toBe(user);
+      expect(requestOf(ctx).session.set).not.toHaveBeenCalled();
+    });
+
+    it('should strip admin rights from a demoted admin and save that in the session', async () => {
+      const user = sessionUser({ role: 'NONE', isAdmin: true });
+      mockPrisma.user.findFirst.mockResolvedValue(dbStatus({ role: 'NONE', isAdmin: false }));
+      const ctx = createMockContext(user);
+
+      await guardWithPrisma.canActivate(ctx);
+
+      const refreshed = { ...user, isAdmin: false };
+      expect(requestOf(ctx).user).toEqual(refreshed);
+      expect(requestOf(ctx).session.set).toHaveBeenCalledWith('user', refreshed);
+      expect(() => new AdminGuard().canActivate(ctx)).toThrow(ForbiddenException);
+    });
+
+    it('should apply a role change made after login', async () => {
+      const user = sessionUser({ role: 'PATIENT' });
+      mockPrisma.user.findFirst.mockResolvedValue(dbStatus({ role: 'NURSE' }));
+      const ctx = createMockContext(user);
+
+      await guardWithPrisma.canActivate(ctx);
+
+      expect(requestOf(ctx).user.role).toBe('NURSE');
+      expect(requestOf(ctx).user.id).toBe(user.id);
+    });
+
+    it.each([
+      ['isAdmin', { isAdmin: true }],
+      ['isSuperAdmin', { isAdmin: true, isSuperAdmin: true }],
+    ])('should grant %s gained after login', async (_flag, flags) => {
+      const user = sessionUser();
+      mockPrisma.user.findFirst.mockResolvedValue(dbStatus(flags));
+      const ctx = createMockContext(user);
+
+      await guardWithPrisma.canActivate(ctx);
+
+      expect(requestOf(ctx).user).toEqual({ ...user, ...flags });
+    });
+
+    it('should refresh from the cached status too', async () => {
+      const user = sessionUser({ isAdmin: true });
+      mockPrisma.user.findFirst.mockResolvedValue(dbStatus({ isAdmin: false }));
+
+      await guardWithPrisma.canActivate(createMockContext({ ...user, isAdmin: false }));
+      const ctx = createMockContext(user);
+      await guardWithPrisma.canActivate(ctx);
+
+      expect(mockPrisma.user.findFirst).toHaveBeenCalledTimes(1);
+      expect(requestOf(ctx).user.isAdmin).toBe(false);
+    });
+
+    it('should re-read the DB after invalidateUserStatus instead of waiting for the TTL', async () => {
+      const user = sessionUser({ role: 'NONE', isAdmin: true });
+      mockPrisma.user.findFirst.mockResolvedValueOnce(dbStatus({ role: 'NONE', isAdmin: true }));
+      await guardWithPrisma.canActivate(createMockContext(user));
+
+      mockPrisma.user.findFirst.mockResolvedValueOnce(dbStatus({ role: 'NONE', isAdmin: false }));
+      const staleCtx = createMockContext(user);
+      await guardWithPrisma.canActivate(staleCtx);
+      expect(requestOf(staleCtx).user.isAdmin).toBe(true);
+
+      CookieAuthGuard.invalidateUserStatus(user.id);
+      const ctx = createMockContext(user);
+      await guardWithPrisma.canActivate(ctx);
+
+      expect(mockPrisma.user.findFirst).toHaveBeenCalledTimes(2);
+      expect(requestOf(ctx).user.isAdmin).toBe(false);
+    });
+
+    it('should apply a ban right after invalidateUserStatus', async () => {
+      const user = sessionUser();
+      mockPrisma.user.findFirst.mockResolvedValueOnce(dbStatus());
+      await guardWithPrisma.canActivate(createMockContext(user));
+
+      mockPrisma.user.findFirst.mockResolvedValueOnce(dbStatus({ isBanned: true, banReason: 'abuse' }));
+      CookieAuthGuard.invalidateUserStatus(user.id);
+      const ctx = createMockContext(user);
+
+      await expect(guardWithPrisma.canActivate(ctx)).rejects.toThrow('Reason: abuse');
+      expect(requestOf(ctx).session.delete).toHaveBeenCalled();
+    });
+
+    it('should leave the session user in place when the DB is unreachable', async () => {
+      const user = sessionUser({ isAdmin: true });
+      mockPrisma.user.findFirst.mockRejectedValue(new Error('DB connection lost'));
+      const ctx = createMockContext(user);
+
+      await guardWithPrisma.canActivate(ctx);
+
+      expect(requestOf(ctx).user).toBe(user);
+      expect(requestOf(ctx).session.set).not.toHaveBeenCalled();
     });
   });
 });

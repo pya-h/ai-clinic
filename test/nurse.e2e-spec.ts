@@ -648,4 +648,52 @@ describe('Nurse (e2e)', () => {
       expect(res.statusCode).toBe(HttpStatus.UNAUTHORIZED);
     });
   });
+
+  // ─── Role upgrade after login ───────────────────────────────────
+
+  describe('role upgrade after login', () => {
+    afterEach(() => {
+      prisma.user.findFirst.mockReset();
+      prisma.user.findUnique.mockReset();
+      prisma.user.update.mockReset();
+    });
+
+    it('should let a patient use nurse routes right after a doctor assigns them, without re-login', async () => {
+      const patient = createMockUser();
+      const db = new Map<string, MockUser>([
+        [patient.id, patient],
+        [doctorUser.id, doctorUser],
+      ]);
+      prisma.user.findFirst.mockImplementation(async ({ where }: any) => db.get(where.id) ?? null);
+      prisma.user.findUnique.mockImplementation(async ({ where }: any) => db.get(where.id) ?? null);
+      prisma.user.update.mockImplementation(async ({ where, data }: any) => {
+        db.set(where.id, { ...db.get(where.id)!, ...data });
+        return db.get(where.id);
+      });
+      prisma.doctorProfile.findUnique.mockResolvedValue(doctorProfile);
+      prisma.doctorNurseAssignment.findUnique.mockResolvedValue(null);
+      prisma.doctorNurseAssignment.create.mockResolvedValue(buildAssignment({ nurseId: patient.id }));
+      prisma.doctorNurseAssignment.findMany.mockResolvedValue([]);
+
+      sessionUser = patient;
+      expect((await app.inject({ method: 'GET', url: '/nurse/dashboard' })).statusCode).toBe(
+        HttpStatus.FORBIDDEN,
+      );
+      const patientSession = sessionUser;
+
+      sessionUser = doctorUser;
+      const assign = await app.inject({
+        method: 'POST',
+        url: '/nurse/assign',
+        payload: { nurseId: patient.id, permissions: [NursePermissionEnum.VIEW_PATIENTS] },
+      });
+      expect(assign.statusCode).toBe(HttpStatus.CREATED);
+
+      sessionUser = patientSession;
+      const res = await app.inject({ method: 'GET', url: '/nurse/dashboard' });
+
+      expect(res.statusCode).toBe(HttpStatus.OK);
+      expect(sessionUser?.role).toBe('NURSE');
+    });
+  });
 });

@@ -1006,4 +1006,120 @@ describe('Admin (e2e)', () => {
       expect(res.statusCode).toBe(HttpStatus.FORBIDDEN);
     });
   });
+
+  // ─── Role/admin changes after login ──────────────────────────────
+
+  describe('session freshness', () => {
+    type DbUser = MockUser;
+    let db: Map<string, DbUser>;
+
+    const statusOf = (u: DbUser) => ({
+      isActive: u.isActive,
+      isBanned: u.isBanned,
+      banReason: u.banReason,
+      role: u.role,
+      isAdmin: u.isAdmin,
+      isSuperAdmin: u.isSuperAdmin,
+    });
+
+    const listUsers = () => app.inject({ method: 'GET', url: '/admin/users' });
+
+    beforeEach(() => {
+      db = new Map();
+      prisma.user.findFirst.mockImplementation(async ({ where }: any) => {
+        const u = db.get(where.id);
+        return u ? statusOf(u) : null;
+      });
+      prisma.user.findUnique.mockImplementation(async ({ where }: any) => db.get(where.id) ?? null);
+      prisma.user.update.mockImplementation(async ({ where, data }: any) => {
+        const updated = { ...db.get(where.id)!, ...data };
+        db.set(where.id, updated);
+        return updated;
+      });
+      prisma.user.findMany.mockResolvedValue([safeUserSelect]);
+      prisma.user.count.mockResolvedValue(1);
+    });
+
+    afterEach(() => {
+      prisma.user.findFirst.mockReset();
+      prisma.user.findUnique.mockReset();
+      prisma.user.update.mockReset();
+    });
+
+    it('should deny admin routes to an admin demoted after login and fix the session', async () => {
+      const demoted = createMockAdminUser();
+      db.set(demoted.id, { ...demoted, isAdmin: false });
+      sessionUser = demoted;
+
+      const res = await listUsers();
+
+      expect(res.statusCode).toBe(HttpStatus.FORBIDDEN);
+      expect(sessionUser?.isAdmin).toBe(false);
+      expect(sessionUser?.id).toBe(demoted.id);
+    });
+
+    it('should allow admin routes to a user promoted after login', async () => {
+      const promoted = createMockUser();
+      db.set(promoted.id, { ...promoted, isAdmin: true });
+      sessionUser = promoted;
+
+      const res = await listUsers();
+
+      expect(res.statusCode).toBe(HttpStatus.OK);
+      expect(sessionUser?.isAdmin).toBe(true);
+    });
+
+    it('should deny superadmin routes to a superadmin whose flag was removed', async () => {
+      const former = createMockSuperAdminUser();
+      db.set(former.id, { ...former, isSuperAdmin: false });
+      sessionUser = former;
+
+      const res = await app.inject({ method: 'PATCH', url: `/admin/users/${randomUuid()}/promote` });
+
+      expect(res.statusCode).toBe(HttpStatus.FORBIDDEN);
+      expect(prisma.user.update).not.toHaveBeenCalled();
+    });
+
+    it('should cut off a demoted admin on their very next request, even with a fresh cached status', async () => {
+      const superAdmin = createMockSuperAdminUser();
+      const admin = createMockAdminUser();
+      db.set(superAdmin.id, superAdmin);
+      db.set(admin.id, admin);
+
+      sessionUser = admin;
+      expect((await listUsers()).statusCode).toBe(HttpStatus.OK);
+      const adminSession = sessionUser;
+
+      sessionUser = superAdmin;
+      const demote = await app.inject({ method: 'PATCH', url: `/admin/users/${admin.id}/demote` });
+      expect(demote.statusCode).toBe(HttpStatus.OK);
+
+      sessionUser = adminSession;
+      expect((await listUsers()).statusCode).toBe(HttpStatus.FORBIDDEN);
+    });
+
+    it('should cut off a user banned by an admin on their very next request', async () => {
+      const admin = createMockAdminUser();
+      const doctor = createMockDoctorUser();
+      db.set(admin.id, admin);
+      db.set(doctor.id, doctor);
+
+      sessionUser = doctor;
+      expect((await app.inject({ method: 'GET', url: '/user' })).statusCode).toBe(HttpStatus.OK);
+      const doctorSession = sessionUser;
+
+      sessionUser = admin;
+      const ban = await app.inject({
+        method: 'PATCH',
+        url: `/admin/users/${doctor.id}/ban`,
+        payload: { reason: 'Fake license' },
+      });
+      expect(ban.statusCode).toBe(HttpStatus.OK);
+
+      sessionUser = doctorSession;
+      const res = await app.inject({ method: 'GET', url: '/user' });
+      expect(res.statusCode).toBe(HttpStatus.FORBIDDEN);
+      expect(sessionUser).toBeNull();
+    });
+  });
 });

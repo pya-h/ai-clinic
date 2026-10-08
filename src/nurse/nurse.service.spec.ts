@@ -19,6 +19,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { NursePermissionEnum, UserRolesEnum } from '@prisma/client';
+import { CookieAuthGuard } from '../auth/guards/cookie-auth.guard';
 
 describe('NurseService', () => {
   let service: NurseService;
@@ -125,6 +126,37 @@ describe('NurseService', () => {
         data: { role: UserRolesEnum.NURSE },
       });
       expect(result).toEqual(mockAssignment);
+    });
+
+    it('should make the NURSE upgrade apply to the user on their next request', async () => {
+      const invalidateSpy = jest.spyOn(CookieAuthGuard, 'invalidateUserStatus');
+      try {
+        const patientUser = createMockUser();
+        prisma.doctorProfile.findUnique.mockResolvedValue(doctorProfile);
+        prisma.user.findUnique.mockResolvedValue(patientUser);
+        prisma.doctorNurseAssignment.create.mockResolvedValue({ id: 1 });
+
+        await service.assignNurse(doctorUser as any, { nurseId: patientUser.id });
+
+        expect(invalidateSpy).toHaveBeenCalledWith(patientUser.id);
+      } finally {
+        invalidateSpy.mockRestore();
+      }
+    });
+
+    it('should not touch the session status of a user who already is a NURSE', async () => {
+      const invalidateSpy = jest.spyOn(CookieAuthGuard, 'invalidateUserStatus');
+      try {
+        prisma.doctorProfile.findUnique.mockResolvedValue(doctorProfile);
+        prisma.user.findUnique.mockResolvedValue(nurseUser);
+        prisma.doctorNurseAssignment.create.mockResolvedValue({ id: 1 });
+
+        await service.assignNurse(doctorUser as any, { nurseId: nurseUser.id });
+
+        expect(invalidateSpy).not.toHaveBeenCalled();
+      } finally {
+        invalidateSpy.mockRestore();
+      }
     });
 
     it('should throw BadRequestException when user is a doctor', async () => {

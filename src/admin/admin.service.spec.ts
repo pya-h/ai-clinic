@@ -9,6 +9,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { UserRolesEnum } from '@prisma/client';
+import { CookieAuthGuard } from '../auth/guards/cookie-auth.guard';
 import {
   buildAdminUser,
   buildSuperAdminUser,
@@ -657,6 +658,59 @@ describe('AdminService', () => {
 
       const result = await service.unbanUser(bannedAdmin.id, mockSuperAdmin as any);
       expect(result.isBanned).toBe(false);
+    });
+  });
+
+  /* ── auth status cache invalidation ─────────────────────── */
+
+  describe('session status invalidation', () => {
+    let invalidateSpy: jest.SpyInstance;
+
+    beforeEach(() => {
+      invalidateSpy = jest.spyOn(CookieAuthGuard, 'invalidateUserStatus');
+    });
+
+    afterEach(() => {
+      invalidateSpy.mockRestore();
+    });
+
+    const regular = () => ({ ...buildUser(), isActive: true, isBanned: false });
+
+    it.each([
+      ['updateUser (role change)', regular, (id: string) => service.updateUser(id, { role: UserRolesEnum.NURSE }, mockSuperAdmin as any)],
+      ['deactivateUser', regular, (id: string) => service.deactivateUser(id, mockSuperAdmin as any)],
+      ['banUser', regular, (id: string) => service.banUser(id, { reason: 'spam' }, mockSuperAdmin as any)],
+      ['unbanUser', () => ({ ...regular(), isBanned: true }), (id: string) => service.unbanUser(id, mockSuperAdmin as any)],
+      ['promoteToAdmin', regular, (id: string) => service.promoteToAdmin(id)],
+      ['demoteAdmin', () => buildAdminUser(), (id: string) => service.demoteAdmin(id, mockSuperAdmin as any)],
+    ])('%s should make the change apply to the target user on their next request', async (_name, buildTarget, act) => {
+      const target = buildTarget();
+      prisma.user.findUnique.mockResolvedValue(target);
+      prisma.user.update.mockResolvedValue(target);
+
+      await act(target.id);
+
+      expect(invalidateSpy).toHaveBeenCalledTimes(1);
+      expect(invalidateSpy).toHaveBeenCalledWith(target.id);
+      expect(invalidateSpy.mock.invocationCallOrder[0]).toBeGreaterThan(
+        prisma.user.update.mock.invocationCallOrder[0],
+      );
+    });
+
+    it('should not invalidate when the update fails', async () => {
+      const target = regular();
+      prisma.user.findUnique.mockResolvedValue(target);
+      prisma.user.update.mockRejectedValue(new Error('db down'));
+
+      await expect(service.banUser(target.id, { reason: 'spam' }, mockSuperAdmin as any)).rejects.toThrow('db down');
+      expect(invalidateSpy).not.toHaveBeenCalled();
+    });
+
+    it('should not invalidate when the action is rejected', async () => {
+      prisma.user.findUnique.mockResolvedValue(mockSuperAdmin);
+
+      await expect(service.demoteAdmin(mockSuperAdmin.id, mockAdminUser as any)).rejects.toThrow(ForbiddenException);
+      expect(invalidateSpy).not.toHaveBeenCalled();
     });
   });
 
