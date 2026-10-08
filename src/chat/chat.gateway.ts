@@ -388,9 +388,14 @@ export class ChatGateway
    * or HTTP: pushed to the chat room, with offline participants notified.
    */
   announceNewMessage(message: Message, senderName: string): void {
-    this.server.to(`chat:${message.chatId}`).emit('chat:message', {
-      message: this.chatService.serializeMessage(message),
-    });
+    // The message is already saved; a failed push must not fail the send.
+    try {
+      this.server.to(`chat:${message.chatId}`).emit('chat:message', {
+        message: this.chatService.serializeMessage(message),
+      });
+    } catch (err) {
+      this.logger.error(`Chat broadcast failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    }
 
     this.notifyOfflineParticipants(
       message.chatId,

@@ -407,6 +407,30 @@ describe('ChatGateway', () => {
       expect(notificationService.onNewChatMessage).not.toHaveBeenCalled();
     });
 
+    it('should log, not throw, and still notify when the room emit fails', async () => {
+      const [sender, offline] = [randomUUID(), randomUUID()];
+      const message = buildMessage(sender);
+      chatService.getChatParticipantUserIds.mockResolvedValue([sender, offline]);
+      withOnlineUsers([sender]);
+      (gateway.server.to as jest.Mock).mockImplementation(() => {
+        throw new Error('adapter down');
+      });
+      const logError = jest
+        .spyOn((gateway as any).logger, 'error')
+        .mockImplementation(() => undefined);
+
+      expect(() => gateway.announceNewMessage(message as any, 'Jane Roe')).not.toThrow();
+      await flushPromises();
+
+      expect(logError).toHaveBeenCalledWith('Chat broadcast failed: adapter down');
+      expect(notificationService.onNewChatMessage).toHaveBeenCalledWith(
+        message.chatId,
+        sender,
+        offline,
+        'Jane Roe',
+      );
+    });
+
     it('should log, not throw, when notifying fails', async () => {
       chatService.getChatParticipantUserIds.mockRejectedValue(new Error('DB down'));
       const logError = jest

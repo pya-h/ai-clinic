@@ -8,8 +8,12 @@ import { ChatGateway } from './chat.gateway';
 
 describe('ChatController', () => {
   let controller: ChatController;
-  let chatService: { sendMessage: jest.Mock; serializeMessage: jest.Mock };
-  let chatGateway: { announceNewMessage: jest.Mock };
+  let chatService: {
+    createChat: jest.Mock;
+    sendMessage: jest.Mock;
+    serializeMessage: jest.Mock;
+  };
+  let chatGateway: { announceNewMessage: jest.Mock; addUserToRoom: jest.Mock };
 
   const buildUser = () =>
     ({
@@ -20,10 +24,11 @@ describe('ChatController', () => {
 
   beforeEach(async () => {
     chatService = {
+      createChat: jest.fn(),
       sendMessage: jest.fn(),
       serializeMessage: jest.fn((m) => ({ ...m, id: String(m.id) })),
     };
-    chatGateway = { announceNewMessage: jest.fn() };
+    chatGateway = { announceNewMessage: jest.fn(), addUserToRoom: jest.fn() };
 
     const module: TestingModule = await Test.createTestingModule({
       controllers: [ChatController],
@@ -34,6 +39,37 @@ describe('ChatController', () => {
     }).compile();
 
     controller = module.get(ChatController);
+  });
+
+  describe('createChat', () => {
+    it("should put both participants' open sockets in the chat's room and return the chat", async () => {
+      const user = buildUser();
+      const other = randomUUID();
+      const chat = {
+        id: randomUUID(),
+        participants: [{ id: user.id }, { id: other }],
+      };
+      chatService.createChat.mockResolvedValue(chat);
+      const dto = { participantId: other };
+
+      await expect(controller.createChat(user, dto)).resolves.toBe(chat);
+
+      expect(chatService.createChat).toHaveBeenCalledWith(user.id, dto);
+      expect(chatGateway.addUserToRoom).toHaveBeenCalledTimes(2);
+      expect(chatGateway.addUserToRoom).toHaveBeenCalledWith(user.id, chat.id);
+      expect(chatGateway.addUserToRoom).toHaveBeenCalledWith(other, chat.id);
+    });
+
+    it('should join nobody when the chat is refused', async () => {
+      chatService.createChat.mockRejectedValue(
+        new ForbiddenException('You cannot start a chat with this user'),
+      );
+
+      await expect(
+        controller.createChat(buildUser(), { participantId: randomUUID() }),
+      ).rejects.toThrow(ForbiddenException);
+      expect(chatGateway.addUserToRoom).not.toHaveBeenCalled();
+    });
   });
 
   describe('sendMessage (HTTP fallback)', () => {

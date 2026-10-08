@@ -237,6 +237,32 @@ describe('Chat (e2e)', () => {
       expect(body.contents.participants).toHaveLength(2);
     });
 
+    it("should put both participants' open sockets in the new chat's room", async () => {
+      sessionUser = patientUser;
+      const mockChat = buildChatData();
+      prisma.user.findUnique
+        .mockResolvedValueOnce({ ...patientUser })
+        .mockResolvedValueOnce({ ...doctorUser });
+      prisma.chat.findFirst.mockResolvedValue(null);
+      prisma.chat.create.mockResolvedValue(mockChat);
+      const join = jest.spyOn(app.get(ChatGateway), 'addUserToRoom');
+
+      try {
+        const res = await app.inject({
+          method: 'POST',
+          url: '/chat',
+          payload: { participantId: doctorUser.id },
+        });
+
+        expect(res.statusCode).toBe(HttpStatus.CREATED);
+        expect(join).toHaveBeenCalledTimes(2);
+        expect(join).toHaveBeenCalledWith(patientUser.id, mockChat.id);
+        expect(join).toHaveBeenCalledWith(doctorUser.id, mockChat.id);
+      } finally {
+        join.mockRestore();
+      }
+    });
+
     it('should return existing chat if one already exists', async () => {
       sessionUser = patientUser;
       const existingChat = buildChatData();
@@ -716,6 +742,34 @@ describe('Chat (e2e)', () => {
           `${patientUser.firstname} ${patientUser.lastname}`,
         );
         expect(notifications.onNewChatMessage).toHaveBeenCalledTimes(1);
+      } finally {
+        to.mockRestore();
+      }
+    });
+
+    it('should still return 201 for the saved message when the room broadcast fails', async () => {
+      sessionUser = patientUser;
+      const chatId = randomUuid();
+      const mockMessage = buildMessageData(chatId, { content: `Saved ${randomUuid()}` });
+      prisma.chat.findUnique.mockResolvedValue(buildChatData({ id: chatId }));
+      prisma.user.findUnique.mockResolvedValue({ isActive: true, isBanned: false });
+      prisma.message.create.mockResolvedValue(mockMessage);
+      prisma.chat.update.mockResolvedValue({});
+      prisma.chatParticipant.findMany.mockResolvedValue([]);
+      const to = jest.spyOn(app.get(ChatGateway).server, 'to').mockImplementation(() => {
+        throw new Error('adapter down');
+      });
+
+      try {
+        const res = await app.inject({
+          method: 'POST',
+          url: `/chat/${chatId}/message`,
+          payload: { content: mockMessage.content },
+        });
+
+        expect(res.statusCode).toBe(HttpStatus.CREATED);
+        expect(JSON.parse(res.body).contents.content).toBe(mockMessage.content);
+        expect(prisma.message.create).toHaveBeenCalledTimes(1);
       } finally {
         to.mockRestore();
       }
