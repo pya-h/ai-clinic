@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -8,6 +9,7 @@ import { UserService } from '../user/user.service';
 import { RegistrationDto } from './dto/register.dto';
 import { UtilsService } from '../utils/utils.service';
 import { FastifyReply } from 'fastify';
+import { accountBlockReason } from './user-status';
 
 @Injectable()
 export class AuthService {
@@ -23,6 +25,12 @@ export class AuthService {
       !(await this.utilsService.compareHash(password, user.password))
     ) {
       throw new BadRequestException('Invalid email or password!');
+    }
+
+    // Checked only after the password, so the account state is not revealed to guessers.
+    const blockReason = accountBlockReason(user);
+    if (blockReason) {
+      throw new ForbiddenException(blockReason);
     }
 
     const { password: _, ...safeUser } = user;

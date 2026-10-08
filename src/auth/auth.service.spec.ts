@@ -10,7 +10,7 @@
  * Uses randomized test data via test-data.factory.
  */
 import { Test, TestingModule } from '@nestjs/testing';
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { UserService } from '../user/user.service';
 import { UtilsService } from '../utils/utils.service';
@@ -108,6 +108,38 @@ describe('AuthService', () => {
           mockReply,
         ),
       ).rejects.toThrow(BadRequestException);
+    });
+
+    it.each([
+      ['banned with a reason', { isBanned: true, banReason: 'Spam' }, 'Your account has been banned. Reason: Spam'],
+      ['banned without a reason', { isBanned: true, banReason: null }, 'Your account has been banned.'],
+      ['deactivated', { isActive: false }, 'Account is deactivated'],
+      ['banned and deactivated', { isActive: false, isBanned: true, banReason: null }, 'Your account has been banned.'],
+    ])('should refuse a %s user with the right password and set no session', async (_label, state, message) => {
+      (userService.getBy as jest.Mock).mockResolvedValue({ ...mockUser, ...state } as any);
+      (utilsService.compareHash as jest.Mock).mockResolvedValue(true as any);
+
+      const login = authService.verifyAndLogin(
+        { email: mockUser.email, password: randomPassword() },
+        mockReply,
+      );
+
+      await expect(login).rejects.toThrow(ForbiddenException);
+      await expect(login).rejects.toThrow(message);
+      expect(mockSession.set).not.toHaveBeenCalled();
+    });
+
+    it('should not reveal that an account is banned to a wrong password', async () => {
+      (userService.getBy as jest.Mock).mockResolvedValue({ ...mockUser, isBanned: true, banReason: 'Spam' } as any);
+      (utilsService.compareHash as jest.Mock).mockResolvedValue(false as any);
+
+      await expect(
+        authService.verifyAndLogin(
+          { email: mockUser.email, password: randomPassword() },
+          mockReply,
+        ),
+      ).rejects.toThrow(new BadRequestException('Invalid email or password!'));
+      expect(mockSession.set).not.toHaveBeenCalled();
     });
   });
 

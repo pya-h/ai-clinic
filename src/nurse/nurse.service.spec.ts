@@ -19,7 +19,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { NursePermissionEnum, UserRolesEnum } from '@prisma/client';
-import { CookieAuthGuard } from '../auth/guards/cookie-auth.guard';
+import { UserStatusCache } from '../auth/user-status';
 
 describe('NurseService', () => {
   let service: NurseService;
@@ -129,7 +129,7 @@ describe('NurseService', () => {
     });
 
     it('should make the NURSE upgrade apply to the user on their next request', async () => {
-      const invalidateSpy = jest.spyOn(CookieAuthGuard, 'invalidateUserStatus');
+      const invalidateSpy = jest.spyOn(UserStatusCache, 'invalidate');
       try {
         const patientUser = createMockUser();
         prisma.doctorProfile.findUnique.mockResolvedValue(doctorProfile);
@@ -145,7 +145,7 @@ describe('NurseService', () => {
     });
 
     it('should not touch the session status of a user who already is a NURSE', async () => {
-      const invalidateSpy = jest.spyOn(CookieAuthGuard, 'invalidateUserStatus');
+      const invalidateSpy = jest.spyOn(UserStatusCache, 'invalidate');
       try {
         prisma.doctorProfile.findUnique.mockResolvedValue(doctorProfile);
         prisma.user.findUnique.mockResolvedValue(nurseUser);

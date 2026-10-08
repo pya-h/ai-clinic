@@ -1,25 +1,13 @@
 import { CanActivate, ExecutionContext, ForbiddenException, Injectable, Logger, Optional, UnauthorizedException } from '@nestjs/common';
 import { FastifyRequest } from 'fastify';
-import { User } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
-
-type UserStatus = Pick<
-  User,
-  'isActive' | 'isBanned' | 'banReason' | 'role' | 'isAdmin' | 'isSuperAdmin'
->;
+import { UserStatus, UserStatusCache, accountBlockReason } from '../user-status';
 
 @Injectable()
 export class CookieAuthGuard implements CanActivate {
-  private static readonly statusCache = new Map<string, UserStatus & { checkedAt: number }>();
-  private static readonly STATUS_TTL = 60_000;
   private readonly logger = new Logger(CookieAuthGuard.name);
 
   constructor(@Optional() private readonly prisma?: PrismaService) {}
-
-  /** Call after changing a user's role, admin flags, ban or active state, so it applies on their next request. */
-  static invalidateUserStatus(userId: string): void {
-    CookieAuthGuard.statusCache.delete(userId);
-  }
 
   canActivate(context: ExecutionContext): boolean | Promise<boolean> {
     const request = context.switchToHttp().getRequest<FastifyRequest>();
@@ -50,17 +38,23 @@ export class CookieAuthGuard implements CanActivate {
   }
 
   private async verifyUserStatus(user: any, session: any, request: any): Promise<boolean> {
-    const status = await this.getUserStatus(user.id);
-    if (!status) return true;
-
-    if (status.isBanned) {
-      session.delete();
-      throw new ForbiddenException(
-        `Your account has been banned.${status.banReason ? ` Reason: ${status.banReason}` : ''}`,
-      );
+    let status: UserStatus | null;
+    try {
+      status = await UserStatusCache.get(this.prisma!, user.id);
+    } catch (error) {
+      this.logger.warn(`Failed to verify user status from DB for ${user.id}: ${error}`);
+      return true;
     }
-    if (!status.isActive) {
-      throw new ForbiddenException('Account is deactivated');
+
+    if (!status) {
+      this.logger.warn(`User ${user.id} has valid session but not found in DB`);
+      return true;
+    }
+
+    const blockReason = accountBlockReason(status);
+    if (blockReason) {
+      if (status.isBanned) session.delete();
+      throw new ForbiddenException(blockReason);
     }
 
     // The session holds a login-time copy of the user; role and admin checks must follow the DB.
@@ -80,39 +74,5 @@ export class CookieAuthGuard implements CanActivate {
     }
 
     return true;
-  }
-
-  private async getUserStatus(userId: string): Promise<UserStatus | null> {
-    const now = Date.now();
-    const cached = CookieAuthGuard.statusCache.get(userId);
-    if (cached && now - cached.checkedAt < CookieAuthGuard.STATUS_TTL) {
-      return cached;
-    }
-
-    let dbUser: UserStatus | null;
-    try {
-      dbUser = await this.prisma!.user.findFirst({
-        where: { id: userId },
-        select: {
-          isActive: true,
-          isBanned: true,
-          banReason: true,
-          role: true,
-          isAdmin: true,
-          isSuperAdmin: true,
-        },
-      });
-    } catch (error) {
-      this.logger.warn(`Failed to verify user status from DB for ${userId}: ${error}`);
-      return null;
-    }
-
-    if (!dbUser) {
-      this.logger.warn(`User ${userId} has valid session but not found in DB`);
-      return null;
-    }
-
-    CookieAuthGuard.statusCache.set(userId, { ...dbUser, checkedAt: now });
-    return dbUser;
   }
 }

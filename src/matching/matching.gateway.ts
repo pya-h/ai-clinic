@@ -17,6 +17,8 @@ import { MatchingService } from './matching.service';
 import { DoctorSpecialtiesEnum, MatchRequest, MatchStatusEnum } from '@prisma/client';
 import { NotificationService } from '../notification/notification.service';
 import { WsRateLimiter } from '../common/tools/ws-rate-limiter';
+import { PrismaService } from '../prisma/prisma.service';
+import { UserStatusCache, accountBlockReason } from '../auth/user-status';
 
 @WebSocketGateway({
   namespace: '/matching',
@@ -34,12 +36,14 @@ export class MatchingGateway
   private readonly logger = new Logger(MatchingGateway.name);
   private readonly patientTimers = new Map<string, NodeJS.Timeout>();
   private readonly rateLimit = new WsRateLimiter(5, 10_000);
+  private stopWatchingUserStatus?: () => void;
 
   constructor(
     private readonly matchingService: MatchingService,
     private readonly configService: ConfigService,
     @Inject(forwardRef(() => NotificationService))
     private readonly notificationService: NotificationService,
+    private readonly prisma: PrismaService,
   ) {}
 
   onModuleDestroy(): void {
@@ -48,21 +52,27 @@ export class MatchingGateway
     }
     this.patientTimers.clear();
     this.rateLimit.destroy();
+    this.stopWatchingUserStatus?.();
   }
 
   afterInit(server: Server): void {
     server.use(async (socket: Socket, next) => {
       try {
-        const user = this.extractUserFromSocket(socket);
-        if (!user) return next(new Error('Unauthorized: No valid session'));
-        if (user.isActive === false) return next(new Error('Unauthorized: Account deactivated'));
-        if (user.isBanned === true) return next(new Error('Unauthorized: Account banned'));
-        socket.data.user = user;
+        const sessionUser = this.extractUserFromSocket(socket);
+        if (!sessionUser) return next(new Error('Unauthorized: No valid session'));
+        const status = await UserStatusCache.get(this.prisma, sessionUser.id);
+        if (!status) return next(new Error('Unauthorized: No valid session'));
+        if (status.isBanned) return next(new Error('Unauthorized: Account banned'));
+        if (!status.isActive) return next(new Error('Unauthorized: Account deactivated'));
+        socket.data.user = { ...sessionUser, ...status };
         next();
       } catch (err) {
         this.logger.warn(`WS auth failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
         next(new Error('Unauthorized'));
       }
+    });
+    this.stopWatchingUserStatus = UserStatusCache.onInvalidate((userId) => {
+      void this.disconnectIfBlocked(userId);
     });
     this.logger.log('MatchingGateway initialized');
   }
@@ -89,9 +99,9 @@ export class MatchingGateway
     @ConnectedSocket() client: Socket,
     @MessageBody() payload: { soapId?: string; specialty?: string },
   ): Promise<void> {
-    const user = client.data.user;
-    if (!user) throw new WsException('Unauthorized');
-    this.rateLimit.check(user.id, 'match:request');
+    if (!client.data.user) throw new WsException('Unauthorized');
+    this.rateLimit.check(client.data.user.id, 'match:request');
+    const user = await this.currentUser(client);
 
     try {
       if (payload.specialty && !Object.values(DoctorSpecialtiesEnum).includes(payload.specialty as DoctorSpecialtiesEnum)) {
@@ -124,9 +134,9 @@ export class MatchingGateway
     @ConnectedSocket() client: Socket,
     @MessageBody() payload: { matchRequestId: string },
   ): Promise<void> {
-    const user = client.data.user;
-    if (!user) throw new WsException('Unauthorized');
-    this.rateLimit.check(user.id, 'match:accept');
+    if (!client.data.user) throw new WsException('Unauthorized');
+    this.rateLimit.check(client.data.user.id, 'match:accept');
+    const user = await this.currentUser(client);
     if (!payload.matchRequestId) throw new WsException('matchRequestId is required');
 
     try {
@@ -170,9 +180,9 @@ export class MatchingGateway
     @ConnectedSocket() client: Socket,
     @MessageBody() payload: { matchRequestId: string },
   ): Promise<void> {
-    const user = client.data.user;
-    if (!user) throw new WsException('Unauthorized');
-    this.rateLimit.check(user.id, 'match:reject');
+    if (!client.data.user) throw new WsException('Unauthorized');
+    this.rateLimit.check(client.data.user.id, 'match:reject');
+    const user = await this.currentUser(client);
     if (!payload.matchRequestId) throw new WsException('matchRequestId is required');
 
     try {
@@ -205,9 +215,9 @@ export class MatchingGateway
     @ConnectedSocket() client: Socket,
     @MessageBody() payload: { matchRequestId: string },
   ): Promise<void> {
-    const user = client.data.user;
-    if (!user) throw new WsException('Unauthorized');
-    this.rateLimit.check(user.id, 'match:cancel');
+    if (!client.data.user) throw new WsException('Unauthorized');
+    this.rateLimit.check(client.data.user.id, 'match:cancel');
+    const user = await this.currentUser(client);
     if (!payload.matchRequestId) throw new WsException('matchRequestId is required');
 
     try {
@@ -304,6 +314,27 @@ export class MatchingGateway
     if (timer) {
       clearTimeout(timer);
       this.patientTimers.delete(matchRequestId);
+    }
+  }
+
+  /** Sockets outlive bans and role changes, so each action re-reads the account (cached). */
+  private async currentUser(client: Socket): Promise<any> {
+    const status = await UserStatusCache.get(this.prisma, client.data.user.id);
+    if (!status || accountBlockReason(status)) {
+      throw new WsException('Account suspended');
+    }
+    client.data.user = { ...client.data.user, ...status };
+    return client.data.user;
+  }
+
+  private async disconnectIfBlocked(userId: string): Promise<void> {
+    try {
+      const status = await UserStatusCache.get(this.prisma, userId);
+      if (!status || accountBlockReason(status)) {
+        this.server.in(`user:${userId}`).disconnectSockets(true);
+      }
+    } catch (err) {
+      this.logger.error(`Status re-check failed for ${userId}: ${err instanceof Error ? err.message : 'Unknown error'}`);
     }
   }
 

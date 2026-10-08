@@ -284,6 +284,46 @@ describe('Auth (e2e)', () => {
       expect(res.statusCode).toBe(HttpStatus.BAD_REQUEST);
     });
 
+    it.each([
+      ['banned', { isBanned: true, banReason: 'Fake documents' }, 'Your account has been banned. Reason: Fake documents'],
+      ['deactivated', { isActive: false }, 'Account is deactivated'],
+    ])('should refuse a %s user with the right password and start no session', async (_label, state, message) => {
+      prisma.user.findFirst.mockResolvedValue({
+        ...createMockUser({ email: loginPayload.email }),
+        password: hashedPassword,
+        ...state,
+      });
+
+      const res = await app.inject({
+        method: 'POST',
+        url: '/auth/login',
+        payload: loginPayload,
+      });
+
+      expect(res.statusCode).toBe(HttpStatus.FORBIDDEN);
+      expect(JSON.parse(res.body).message).toContain(message);
+      expect(sessionUser).toBeNull();
+    });
+
+    it('should answer a banned user with a wrong password like any wrong password', async () => {
+      prisma.user.findFirst.mockResolvedValue({
+        ...createMockUser({ email: loginPayload.email }),
+        password: hashedPassword,
+        isBanned: true,
+        banReason: 'Fake documents',
+      });
+
+      const res = await app.inject({
+        method: 'POST',
+        url: '/auth/login',
+        payload: { ...loginPayload, password: 'WrongP@ss1' },
+      });
+
+      expect(res.statusCode).toBe(HttpStatus.BAD_REQUEST);
+      expect(res.body).not.toContain('banned');
+      expect(sessionUser).toBeNull();
+    });
+
     it('should reject non-existent email', async () => {
       prisma.user.findFirst.mockResolvedValue(null);
 

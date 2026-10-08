@@ -5,11 +5,26 @@ import { ConfigService } from '@nestjs/config';
 import { NotificationService } from '../notification/notification.service';
 import { WsException } from '@nestjs/websockets';
 import { MessageTypeEnum } from '@prisma/client';
+import { PrismaService } from '../prisma/prisma.service';
+import { UserStatusCache } from '../auth/user-status';
+import { captureHandshake, flushPromises } from '../../test/helpers/ws-handshake.helper';
+import { randomUUID } from 'crypto';
 
 describe('ChatGateway', () => {
   let gateway: ChatGateway;
   let chatService: Record<string, jest.Mock>;
   let notificationService: Record<string, jest.Mock>;
+  let prisma: { user: { findFirst: jest.Mock } };
+
+  const activeStatus = (overrides: Record<string, unknown> = {}) => ({
+    isActive: true,
+    isBanned: false,
+    banReason: null,
+    role: 'PATIENT',
+    isAdmin: false,
+    isSuperAdmin: false,
+    ...overrides,
+  });
 
   const mockUser = {
     id: 'user-1',
@@ -31,6 +46,7 @@ describe('ChatGateway', () => {
 
   const createMockServer = () => {
     const toEmit = jest.fn();
+    const disconnectSockets = jest.fn();
     const fetchSockets = jest.fn().mockResolvedValue([]);
     return {
       emit: jest.fn(),
@@ -38,8 +54,10 @@ describe('ChatGateway', () => {
       in: jest.fn().mockReturnValue({
         socketsJoin: jest.fn(),
         fetchSockets,
+        disconnectSockets,
       }),
       _toEmit: toEmit,
+      _disconnectSockets: disconnectSockets,
     };
   };
 
@@ -60,8 +78,10 @@ describe('ChatGateway', () => {
       editMessage: jest.fn(),
       deleteMessage: jest.fn(),
       getChatParticipantUserIds: jest.fn().mockResolvedValue([]),
-      getUserStatus: jest.fn().mockResolvedValue({ isActive: true, isBanned: false }),
     };
+
+    prisma = { user: { findFirst: jest.fn().mockResolvedValue(activeStatus()) } };
+    (UserStatusCache as any).entries.clear();
 
     notificationService = {
       onNewChatMessage: jest.fn().mockResolvedValue(undefined),
@@ -79,6 +99,7 @@ describe('ChatGateway', () => {
           },
         },
         { provide: NotificationService, useValue: notificationService },
+        { provide: PrismaService, useValue: prisma },
       ],
     }).compile();
 
@@ -87,6 +108,7 @@ describe('ChatGateway', () => {
   });
 
   afterEach(() => {
+    gateway.onModuleDestroy();
     jest.clearAllMocks();
   });
 
@@ -268,7 +290,7 @@ describe('ChatGateway', () => {
 
     it('should throw WsException when user is banned (status check)', async () => {
       const client = createMockSocket();
-      chatService.getUserStatus.mockResolvedValue({ isActive: true, isBanned: true });
+      prisma.user.findFirst.mockResolvedValue(activeStatus({ isBanned: true }));
 
       await expect(
         gateway.handleMessage(client as any, {
@@ -549,6 +571,113 @@ describe('ChatGateway', () => {
   describe('onModuleDestroy', () => {
     it('should destroy rate limiters without throwing', () => {
       expect(() => gateway.onModuleDestroy()).not.toThrow();
+    });
+  });
+
+  // ─── Account status (bans, deactivation) ───
+
+  describe('handshake account check', () => {
+    let connect: ReturnType<typeof captureHandshake>;
+    let sessionUser: any;
+
+    beforeEach(() => {
+      sessionUser = { ...mockUser, id: randomUUID(), isBanned: false };
+      jest.spyOn(gateway as any, 'extractUserFromSocket').mockImplementation(() => sessionUser);
+      connect = captureHandshake(gateway);
+    });
+
+    it('should admit an active user', async () => {
+      const { socket, next } = await connect();
+
+      expect(next).toHaveBeenCalledWith();
+      expect(socket.data.user).toMatchObject({ id: sessionUser.id, isActive: true, isBanned: false });
+      expect(prisma.user.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: sessionUser.id } }),
+      );
+    });
+
+    it.each([
+      ['banned', { isBanned: true, banReason: 'Spam' }, 'Unauthorized: Account banned'],
+      ['deactivated', { isActive: false }, 'Unauthorized: Account deactivated'],
+    ])('should reject a %s user whose session predates it', async (_label, dbState, message) => {
+      prisma.user.findFirst.mockResolvedValue(activeStatus(dbState));
+
+      const { socket, next } = await connect();
+
+      expect(next).toHaveBeenCalledWith(new Error(message));
+      expect(socket.data.user).toBeUndefined();
+    });
+
+    it('should reject a session whose user no longer exists', async () => {
+      prisma.user.findFirst.mockResolvedValue(null);
+
+      const { next } = await connect();
+
+      expect(next).toHaveBeenCalledWith(new Error('Unauthorized: No valid session'));
+    });
+
+    it('should reject when the account cannot be checked', async () => {
+      prisma.user.findFirst.mockRejectedValue(new Error('db down'));
+
+      const { next } = await connect();
+
+      expect(next).toHaveBeenCalledWith(new Error('Unauthorized'));
+    });
+  });
+
+  describe('disconnect on account block', () => {
+    beforeEach(() => {
+      captureHandshake(gateway);
+    });
+
+    it.each([
+      ['banned', { isBanned: true }],
+      ['deactivated', { isActive: false }],
+    ])("should disconnect a user's open sockets once they are %s", async (_label, dbState) => {
+      const userId = randomUUID();
+      prisma.user.findFirst.mockResolvedValue(activeStatus(dbState));
+
+      UserStatusCache.invalidate(userId);
+      await flushPromises();
+
+      expect(gateway.server.in).toHaveBeenCalledWith(`user:${userId}`);
+      expect((gateway.server as any)._disconnectSockets).toHaveBeenCalledWith(true);
+    });
+
+    it('should keep the sockets of a user who is still allowed in', async () => {
+      UserStatusCache.invalidate(randomUUID());
+      await flushPromises();
+
+      expect((gateway.server as any)._disconnectSockets).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('per-action account check', () => {
+    it.each([
+      ['chat:message', (g: ChatGateway, c: any) => g.handleMessage(c, { chatId: 'chat-1', content: 'Hi' })],
+      ['chat:edit', (g: ChatGateway, c: any) => g.handleEdit(c, { messageId: '1', content: 'Hi' })],
+      ['chat:delete', (g: ChatGateway, c: any) => g.handleDelete(c, { messageId: '1' })],
+    ])('should refuse %s from a user deactivated while connected', async (_event, act) => {
+      const client = createMockSocket({ ...mockUser, id: randomUUID() });
+      prisma.user.findFirst.mockResolvedValue(activeStatus({ isActive: false }));
+
+      await expect(act(gateway, client)).rejects.toThrow(new WsException('Account suspended'));
+      expect(chatService.sendMessage).not.toHaveBeenCalled();
+      expect(chatService.editMessage).not.toHaveBeenCalled();
+      expect(chatService.deleteMessage).not.toHaveBeenCalled();
+    });
+
+    it('should see a ban made after an earlier check once the status is invalidated', async () => {
+      const client = createMockSocket({ ...mockUser, id: randomUUID() });
+      chatService.sendMessage.mockResolvedValue({ id: 1 });
+      await gateway.handleMessage(client as any, { chatId: 'chat-1', content: 'Hi' });
+
+      prisma.user.findFirst.mockResolvedValue(activeStatus({ isBanned: true }));
+      UserStatusCache.invalidate(client.data.user.id);
+
+      await expect(
+        gateway.handleMessage(client as any, { chatId: 'chat-1', content: 'Hi again' }),
+      ).rejects.toThrow(new WsException('Account suspended'));
     });
   });
 });

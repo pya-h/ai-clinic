@@ -9,7 +9,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { UserRolesEnum } from '@prisma/client';
-import { CookieAuthGuard } from '../auth/guards/cookie-auth.guard';
+import { UserStatusCache } from '../auth/user-status';
 import {
   buildAdminUser,
   buildSuperAdminUser,
@@ -667,7 +667,7 @@ describe('AdminService', () => {
     let invalidateSpy: jest.SpyInstance;
 
     beforeEach(() => {
-      invalidateSpy = jest.spyOn(CookieAuthGuard, 'invalidateUserStatus');
+      invalidateSpy = jest.spyOn(UserStatusCache, 'invalidate');
     });
 
     afterEach(() => {

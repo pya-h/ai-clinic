@@ -15,6 +15,7 @@ import { AdminGuard } from './admin.guard';
 import { RolesGuard } from './roles.guard';
 import { SuperAdminGuard } from './super-admin.guard';
 import { OptionalAuthGuard } from './optional-auth.guard';
+import { UserStatusCache } from '../user-status';
 import { randomUuid } from '../../../test/helpers/test-data.factory';
 
 // ─── Helpers ────────────────────────────────────────────────────────────────────
@@ -114,7 +115,7 @@ describe('CookieAuthGuard', () => {
         },
       };
       guardWithPrisma = new CookieAuthGuard(mockPrisma);
-      (CookieAuthGuard as any).statusCache.clear();
+      (UserStatusCache as any).entries.clear();
     });
 
     const dbStatus = (overrides: Record<string, unknown> = {}) => ({
@@ -259,7 +260,7 @@ describe('CookieAuthGuard', () => {
       expect(requestOf(ctx).user.isAdmin).toBe(false);
     });
 
-    it('should re-read the DB after invalidateUserStatus instead of waiting for the TTL', async () => {
+    it('should re-read the DB after UserStatusCache.invalidate instead of waiting for the TTL', async () => {
       const user = sessionUser({ role: 'NONE', isAdmin: true });
       mockPrisma.user.findFirst.mockResolvedValueOnce(dbStatus({ role: 'NONE', isAdmin: true }));
       await guardWithPrisma.canActivate(createMockContext(user));
@@ -269,7 +270,7 @@ describe('CookieAuthGuard', () => {
       await guardWithPrisma.canActivate(staleCtx);
       expect(requestOf(staleCtx).user.isAdmin).toBe(true);
 
-      CookieAuthGuard.invalidateUserStatus(user.id);
+      UserStatusCache.invalidate(user.id);
       const ctx = createMockContext(user);
       await guardWithPrisma.canActivate(ctx);
 
@@ -277,13 +278,13 @@ describe('CookieAuthGuard', () => {
       expect(requestOf(ctx).user.isAdmin).toBe(false);
     });
 
-    it('should apply a ban right after invalidateUserStatus', async () => {
+    it('should apply a ban right after UserStatusCache.invalidate', async () => {
       const user = sessionUser();
       mockPrisma.user.findFirst.mockResolvedValueOnce(dbStatus());
       await guardWithPrisma.canActivate(createMockContext(user));
 
       mockPrisma.user.findFirst.mockResolvedValueOnce(dbStatus({ isBanned: true, banReason: 'abuse' }));
-      CookieAuthGuard.invalidateUserStatus(user.id);
+      UserStatusCache.invalidate(user.id);
       const ctx = createMockContext(user);
 
       await expect(guardWithPrisma.canActivate(ctx)).rejects.toThrow('Reason: abuse');

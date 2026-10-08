@@ -9,7 +9,7 @@ import {
   forwardRef,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { CookieAuthGuard } from '../auth/guards/cookie-auth.guard';
+import { UserStatusCache } from '../auth/user-status';
 import { ReviewService } from '../review/review.service';
 import { User } from '@prisma/client';
 import { AdminUserFilterDto } from './dto/admin-user-filter.dto';
@@ -114,7 +114,7 @@ export class AdminService {
       data: dto,
       select: this.safeAdminUserSelect(),
     });
-    CookieAuthGuard.invalidateUserStatus(userId);
+    UserStatusCache.invalidate(userId);
     return updated;
   }
 
@@ -142,7 +142,7 @@ export class AdminService {
       data: { isActive: false },
       select: this.safeAdminUserSelect(),
     });
-    CookieAuthGuard.invalidateUserStatus(userId);
+    UserStatusCache.invalidate(userId);
     return updated;
   }
 
@@ -178,7 +178,7 @@ export class AdminService {
       },
       select: this.safeAdminUserSelect(),
     });
-    CookieAuthGuard.invalidateUserStatus(userId);
+    UserStatusCache.invalidate(userId);
     return updated;
   }
 
@@ -208,7 +208,7 @@ export class AdminService {
       },
       select: this.safeAdminUserSelect(),
     });
-    CookieAuthGuard.invalidateUserStatus(userId);
+    UserStatusCache.invalidate(userId);
     return updated;
   }
 
@@ -297,7 +297,7 @@ export class AdminService {
       data: { isAdmin: true },
       select: this.safeAdminUserSelect(),
     });
-    CookieAuthGuard.invalidateUserStatus(userId);
+    UserStatusCache.invalidate(userId);
     return updated;
   }
 
@@ -324,7 +324,7 @@ export class AdminService {
       data: { isAdmin: false },
       select: this.safeAdminUserSelect(),
     });
-    CookieAuthGuard.invalidateUserStatus(userId);
+    UserStatusCache.invalidate(userId);
     return updated;
   }
 

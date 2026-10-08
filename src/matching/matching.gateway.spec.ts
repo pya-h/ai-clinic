@@ -6,11 +6,25 @@ import { NotificationService } from '../notification/notification.service';
 import { WsException } from '@nestjs/websockets';
 import { DoctorSpecialtiesEnum, MatchStatusEnum } from '@prisma/client';
 import { randomInt, randomUUID } from 'crypto';
+import { PrismaService } from '../prisma/prisma.service';
+import { UserStatusCache } from '../auth/user-status';
+import { captureHandshake, flushPromises } from '../../test/helpers/ws-handshake.helper';
 
 describe('MatchingGateway', () => {
   let gateway: MatchingGateway;
   let matchingService: Record<string, jest.Mock>;
   let notificationService: Record<string, jest.Mock>;
+  let prisma: { user: { findFirst: jest.Mock } };
+
+  const statusFor = (userId: string, overrides: Record<string, unknown> = {}) => ({
+    isActive: true,
+    isBanned: false,
+    banReason: null,
+    role: userId === mockDoctor.id ? 'DOCTOR' : 'PATIENT',
+    isAdmin: false,
+    isSuperAdmin: false,
+    ...overrides,
+  });
 
   const mockPatient = {
     id: 'patient-1',
@@ -40,11 +54,13 @@ describe('MatchingGateway', () => {
 
   const createMockServer = () => {
     const toEmit = jest.fn();
+    const disconnectSockets = jest.fn();
     return {
       emit: jest.fn(),
       to: jest.fn().mockReturnValue({ emit: toEmit }),
-      in: jest.fn().mockReturnValue({ socketsJoin: jest.fn() }),
+      in: jest.fn().mockReturnValue({ socketsJoin: jest.fn(), disconnectSockets }),
       _toEmit: toEmit,
+      _disconnectSockets: disconnectSockets,
     };
   };
 
@@ -64,6 +80,11 @@ describe('MatchingGateway', () => {
       onMatchAccepted: jest.fn().mockResolvedValue(undefined),
     };
 
+    prisma = {
+      user: { findFirst: jest.fn(async ({ where }: any) => statusFor(where.id)) },
+    };
+    (UserStatusCache as any).entries.clear();
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         MatchingGateway,
@@ -76,6 +97,7 @@ describe('MatchingGateway', () => {
           },
         },
         { provide: NotificationService, useValue: notificationService },
+        { provide: PrismaService, useValue: prisma },
       ],
     }).compile();
 
@@ -144,7 +166,7 @@ describe('MatchingGateway', () => {
       await gateway.handleMatchRequest(client as any, {});
 
       expect(matchingService.createMatchRequest).toHaveBeenCalledWith(
-        mockPatient,
+        expect.objectContaining(mockPatient),
         undefined,
         undefined,
       );
@@ -167,7 +189,7 @@ describe('MatchingGateway', () => {
       });
 
       expect(matchingService.createMatchRequest).toHaveBeenCalledWith(
-        mockPatient,
+        expect.objectContaining(mockPatient),
         'soap-1',
         DoctorSpecialtiesEnum.CARDIOLOGY,
       );
@@ -580,6 +602,151 @@ describe('MatchingGateway', () => {
   describe('onModuleDestroy', () => {
     it('should clear timers and destroy rate limiter without throwing', () => {
       expect(() => gateway.onModuleDestroy()).not.toThrow();
+    });
+  });
+
+  // ─── Account status (bans, deactivation, role changes) ───
+
+  describe('handshake account check', () => {
+    let connect: ReturnType<typeof captureHandshake>;
+    let sessionUser: any;
+
+    beforeEach(() => {
+      sessionUser = { ...mockPatient, id: randomUUID(), isBanned: false };
+      jest.spyOn(gateway as any, 'extractUserFromSocket').mockImplementation(() => sessionUser);
+      connect = captureHandshake(gateway);
+    });
+
+    it('should admit an active user with role and admin flags from the DB', async () => {
+      prisma.user.findFirst.mockResolvedValue(statusFor(sessionUser.id, { role: 'DOCTOR' }));
+
+      const { socket, next } = await connect();
+
+      expect(next).toHaveBeenCalledWith();
+      expect(socket.data.user).toMatchObject({ id: sessionUser.id, role: 'DOCTOR', isBanned: false });
+    });
+
+    it.each([
+      ['banned', { isBanned: true, banReason: 'Spam' }, 'Unauthorized: Account banned'],
+      ['deactivated', { isActive: false }, 'Unauthorized: Account deactivated'],
+    ])('should reject a %s user whose session predates it', async (_label, dbState, message) => {
+      prisma.user.findFirst.mockResolvedValue(statusFor(sessionUser.id, dbState));
+
+      const { socket, next } = await connect();
+
+      expect(next).toHaveBeenCalledWith(new Error(message));
+      expect(socket.data.user).toBeUndefined();
+    });
+
+    it('should admit a user unbanned since the session was issued', async () => {
+      sessionUser = { ...sessionUser, isBanned: true };
+
+      const { next } = await connect();
+
+      expect(next).toHaveBeenCalledWith();
+    });
+
+    it('should reject a session whose user no longer exists', async () => {
+      prisma.user.findFirst.mockResolvedValue(null);
+
+      const { next } = await connect();
+
+      expect(next).toHaveBeenCalledWith(new Error('Unauthorized: No valid session'));
+    });
+
+    it('should reject a connection without a session without querying the DB', async () => {
+      sessionUser = null;
+
+      const { next } = await connect();
+
+      expect(next).toHaveBeenCalledWith(new Error('Unauthorized: No valid session'));
+      expect(prisma.user.findFirst).not.toHaveBeenCalled();
+    });
+
+    it('should reject when the account cannot be checked', async () => {
+      prisma.user.findFirst.mockRejectedValue(new Error('db down'));
+
+      const { next } = await connect();
+
+      expect(next).toHaveBeenCalledWith(new Error('Unauthorized'));
+    });
+  });
+
+  describe('disconnect on account block', () => {
+    beforeEach(() => {
+      captureHandshake(gateway);
+    });
+
+    it("should disconnect a user's open sockets once they are banned", async () => {
+      const userId = randomUUID();
+      prisma.user.findFirst.mockResolvedValue(statusFor(userId, { isBanned: true }));
+
+      UserStatusCache.invalidate(userId);
+      await flushPromises();
+
+      expect(gateway.server.in).toHaveBeenCalledWith(`user:${userId}`);
+      expect((gateway.server as any)._disconnectSockets).toHaveBeenCalledWith(true);
+    });
+
+    it('should keep the sockets of a user whose change does not block them', async () => {
+      const userId = randomUUID();
+      prisma.user.findFirst.mockResolvedValue(statusFor(userId, { isAdmin: true }));
+
+      UserStatusCache.invalidate(userId);
+      await flushPromises();
+
+      expect((gateway.server as any)._disconnectSockets).not.toHaveBeenCalled();
+    });
+
+    it('should survive a failed re-check', async () => {
+      prisma.user.findFirst.mockRejectedValue(new Error('db down'));
+
+      UserStatusCache.invalidate(randomUUID());
+      await flushPromises();
+
+      expect((gateway.server as any)._disconnectSockets).not.toHaveBeenCalled();
+    });
+
+    it('should stop watching once the module is destroyed', async () => {
+      gateway.onModuleDestroy();
+
+      UserStatusCache.invalidate(randomUUID());
+      await flushPromises();
+
+      expect(prisma.user.findFirst).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('per-action account check', () => {
+    it.each([
+      ['match:request', (g: MatchingGateway, c: any) => g.handleMatchRequest(c, {})],
+      ['match:accept', (g: MatchingGateway, c: any) => g.handleAccept(c, { matchRequestId: randomUUID() })],
+      ['match:reject', (g: MatchingGateway, c: any) => g.handleReject(c, { matchRequestId: randomUUID() })],
+      ['match:cancel', (g: MatchingGateway, c: any) => g.handleCancel(c, { matchRequestId: randomUUID() })],
+    ])('should refuse %s from a user banned while connected', async (_event, act) => {
+      const client = createMockSocket({ ...mockPatient, id: randomUUID() });
+      prisma.user.findFirst.mockResolvedValue(statusFor(client.data.user.id, { isBanned: true }));
+
+      await expect(act(gateway, client)).rejects.toThrow(new WsException('Account suspended'));
+      for (const method of ['createMatchRequest', 'acceptMatch', 'rejectMatch', 'cancelRequest']) {
+        expect(matchingService[method]).not.toHaveBeenCalled();
+      }
+    });
+
+    it('should act with the role from the DB, not the one in the session', async () => {
+      const client = createMockSocket({ ...mockPatient, id: randomUUID() });
+      prisma.user.findFirst.mockResolvedValue(statusFor(client.data.user.id, { role: 'DOCTOR' }));
+      matchingService.acceptMatch.mockResolvedValue({
+        matchRequest: { id: randomUUID(), patientId: randomUUID() },
+        consultationId: randomUUID(),
+      });
+
+      await gateway.handleAccept(client as any, { matchRequestId: randomUUID() });
+
+      expect(matchingService.acceptMatch).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({ id: client.data.user.id, role: 'DOCTOR' }),
+      );
     });
   });
 });

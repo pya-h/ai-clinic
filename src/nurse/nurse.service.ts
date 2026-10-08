@@ -7,7 +7,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { CookieAuthGuard } from '../auth/guards/cookie-auth.guard';
+import { UserStatusCache } from '../auth/user-status';
 import {
   AppointmentStatusEnum,
   ConsultationStatusEnum,
@@ -95,7 +95,7 @@ export class NurseService {
     });
 
     if (targetUser.role !== UserRolesEnum.NURSE) {
-      CookieAuthGuard.invalidateUserStatus(targetUser.id);
+      UserStatusCache.invalidate(targetUser.id);
     }
     this.logger.log(
       `Doctor ${doctorProfile.id} assigned nurse ${dto.nurseId}`,

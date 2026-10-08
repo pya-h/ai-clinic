@@ -17,6 +17,8 @@ import { ConfigService } from '@nestjs/config';
 import { createHash } from 'crypto';
 import { NotificationService } from '../notification/notification.service';
 import { WsRateLimiter } from '../common/tools/ws-rate-limiter';
+import { PrismaService } from '../prisma/prisma.service';
+import { UserStatusCache, accountBlockReason } from '../auth/user-status';
 
 /**
  * Chat WebSocket Gateway
@@ -43,20 +45,20 @@ export class ChatGateway
   private readonly logger = new Logger(ChatGateway.name);
   private readonly msgRateLimit = new WsRateLimiter(20, 10_000);
   private readonly typingRateLimit = new WsRateLimiter(30, 10_000);
-  private readonly userStatusCache = new Map<string, { isActive: boolean; isBanned: boolean; checkedAt: number }>();
-  private static readonly STATUS_CACHE_TTL = 60_000;
+  private stopWatchingUserStatus?: () => void;
 
   constructor(
     private readonly chatService: ChatService,
     private readonly configService: ConfigService,
     @Inject(forwardRef(() => NotificationService))
     private readonly notificationService: NotificationService,
+    private readonly prisma: PrismaService,
   ) {}
 
   onModuleDestroy(): void {
     this.msgRateLimit.destroy();
     this.typingRateLimit.destroy();
-    this.userStatusCache.clear();
+    this.stopWatchingUserStatus?.();
   }
 
   /**
@@ -66,22 +68,30 @@ export class ChatGateway
   afterInit(server: Server): void {
     server.use(async (socket: Socket, next) => {
       try {
-        const user = this.extractUserFromSocket(socket);
-        if (!user) {
+        const sessionUser = this.extractUserFromSocket(socket);
+        if (!sessionUser) {
           return next(new Error('Unauthorized: No valid session'));
         }
-        if (user.isActive === false) {
-          return next(new Error('Unauthorized: Account deactivated'));
+        const status = await UserStatusCache.get(this.prisma, sessionUser.id);
+        if (!status) {
+          return next(new Error('Unauthorized: No valid session'));
         }
-        if (user.isBanned === true) {
+        if (status.isBanned) {
           return next(new Error('Unauthorized: Account banned'));
         }
-        socket.data.user = user;
+        if (!status.isActive) {
+          return next(new Error('Unauthorized: Account deactivated'));
+        }
+        socket.data.user = { ...sessionUser, ...status };
         next();
       } catch (err) {
         this.logger.warn(`WS auth failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
         next(new Error('Unauthorized'));
       }
+    });
+
+    this.stopWatchingUserStatus = UserStatusCache.onInvalidate((userId) => {
+      void this.disconnectIfBlocked(userId);
     });
 
     this.logger.log('ChatGateway initialized with auth middleware');
@@ -390,18 +400,20 @@ export class ChatGateway
   }
 
   private async checkUserStatus(userId: string): Promise<void> {
-    const now = Date.now();
-    const cached = this.userStatusCache.get(userId);
-    if (cached && now - cached.checkedAt < ChatGateway.STATUS_CACHE_TTL) {
-      if (!cached.isActive || cached.isBanned) {
-        throw new WsException('Account suspended');
-      }
-      return;
-    }
-    const status = await this.chatService.getUserStatus(userId);
-    this.userStatusCache.set(userId, { ...status, checkedAt: now });
-    if (!status.isActive || status.isBanned) {
+    const status = await UserStatusCache.get(this.prisma, userId);
+    if (!status || accountBlockReason(status)) {
       throw new WsException('Account suspended');
+    }
+  }
+
+  private async disconnectIfBlocked(userId: string): Promise<void> {
+    try {
+      const status = await UserStatusCache.get(this.prisma, userId);
+      if (!status || accountBlockReason(status)) {
+        this.server.in(`user:${userId}`).disconnectSockets(true);
+      }
+    } catch (err) {
+      this.logger.error(`Status re-check failed for ${userId}: ${err instanceof Error ? err.message : 'Unknown error'}`);
     }
   }
 
