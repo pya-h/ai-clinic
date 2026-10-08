@@ -25,9 +25,12 @@ import {
   createMockUser,
   createMockDoctorUser,
   createMockAdminUser,
+  createMockNurseUser,
   MockUser,
 } from './helpers/mock-session.helper';
 import { randomUuid } from './helpers/test-data.factory';
+import { NursePermissionEnum } from '@prisma/client';
+import { randomInt } from 'crypto';
 import authConfigs from '../src/configs/auth';
 import generalConfigs from '../src/configs/general';
 
@@ -50,6 +53,11 @@ describe('SOAP (e2e)', () => {
   let prisma: MockPrismaService;
   let sessionUser: MockUser | null = null;
   let sessionStore: Record<string, any> = {};
+  const nurseService = {
+    getMyAssignments: jest.fn().mockResolvedValue([]),
+    getDoctorNurseIds: jest.fn().mockResolvedValue([]),
+    getDoctorIdsForNurse: jest.fn().mockResolvedValue([]),
+  };
 
   const patientUser = createMockUser();
   const doctorUser = createMockDoctorUser();
@@ -84,10 +92,7 @@ describe('SOAP (e2e)', () => {
         onNewChatMessage: jest.fn().mockResolvedValue(undefined),
       })
       .overrideProvider(NurseService)
-      .useValue({
-        getMyAssignments: jest.fn().mockResolvedValue([]),
-        getDoctorNurseIds: jest.fn().mockResolvedValue([]),
-      })
+      .useValue(nurseService)
       .compile();
 
     app = moduleFixture.createNestApplication<NestFastifyApplication>(
@@ -228,6 +233,67 @@ describe('SOAP (e2e)', () => {
       const res = await app.inject({ method: 'GET', url: `/soap/${soapId}` });
 
       expect(res.statusCode).toBe(HttpStatus.OK);
+    });
+
+    it('should allow a doctor with a consultation linked to the SOAP', async () => {
+      sessionUser = doctorUser;
+      const soap = buildSoap();
+      prisma.patientSOAP.findUnique.mockResolvedValue(soap);
+      prisma.consultation.findFirst.mockResolvedValue({ id: randomUuid() });
+
+      const res = await app.inject({ method: 'GET', url: `/soap/${soap.id}` });
+
+      expect(res.statusCode).toBe(HttpStatus.OK);
+      expect(JSON.parse(res.body).contents.id).toBe(soap.id);
+      expect(prisma.consultation.findFirst).toHaveBeenCalledWith({
+        where: { soapId: soap.id, doctor: { userId: doctorUser.id } },
+        select: { id: true },
+      });
+    });
+
+    it('should return 403 for a doctor without a consultation linked to the SOAP', async () => {
+      sessionUser = createMockDoctorUser();
+      const soap = buildSoap();
+      prisma.patientSOAP.findUnique.mockResolvedValue(soap);
+      prisma.consultation.findFirst.mockResolvedValue(null);
+
+      const res = await app.inject({ method: 'GET', url: `/soap/${soap.id}` });
+
+      expect(res.statusCode).toBe(HttpStatus.FORBIDDEN);
+    });
+
+    it('should allow a nurse with VIEW_SOAPS for a linked doctor', async () => {
+      const nurse = createMockNurseUser();
+      const doctorProfileId = randomInt(1, 100_000);
+      sessionUser = nurse;
+      const soap = buildSoap();
+      prisma.patientSOAP.findUnique.mockResolvedValue(soap);
+      nurseService.getDoctorIdsForNurse.mockResolvedValueOnce([doctorProfileId]);
+      prisma.consultation.findFirst.mockResolvedValue({ id: randomUuid() });
+
+      const res = await app.inject({ method: 'GET', url: `/soap/${soap.id}` });
+
+      expect(res.statusCode).toBe(HttpStatus.OK);
+      expect(nurseService.getDoctorIdsForNurse).toHaveBeenCalledWith(
+        nurse.id,
+        NursePermissionEnum.VIEW_SOAPS,
+      );
+      expect(prisma.consultation.findFirst).toHaveBeenCalledWith({
+        where: { soapId: soap.id, doctorId: { in: [doctorProfileId] } },
+        select: { id: true },
+      });
+    });
+
+    it('should return 403 for a nurse without VIEW_SOAPS for any doctor', async () => {
+      sessionUser = createMockNurseUser();
+      const soap = buildSoap();
+      prisma.patientSOAP.findUnique.mockResolvedValue(soap);
+      nurseService.getDoctorIdsForNurse.mockResolvedValueOnce([]);
+
+      const res = await app.inject({ method: 'GET', url: `/soap/${soap.id}` });
+
+      expect(res.statusCode).toBe(HttpStatus.FORBIDDEN);
+      expect(prisma.consultation.findFirst).not.toHaveBeenCalled();
     });
   });
 });

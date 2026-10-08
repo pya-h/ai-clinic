@@ -4,11 +4,14 @@ import { PrismaService } from '../prisma/prisma.service';
 import { NotificationService } from '../notification/notification.service';
 import { NurseService } from '../nurse/nurse.service';
 import { NotFoundException, ForbiddenException } from '@nestjs/common';
+import { NursePermissionEnum, UserRolesEnum } from '@prisma/client';
+import { randomInt } from 'crypto';
 import { randomUuid } from '../../test/helpers/test-data.factory';
 
 describe('SoapService', () => {
   let service: SoapService;
   let prisma: Record<string, any>;
+  let nurseService: { getDoctorIdsForNurse: jest.Mock };
 
   const mockUserId = randomUuid();
   const mockConversationId = randomUuid();
@@ -44,6 +47,12 @@ describe('SoapService', () => {
         findUnique: jest.fn(),
         update: jest.fn(),
       },
+      consultation: {
+        findFirst: jest.fn().mockResolvedValue(null),
+      },
+    };
+    nurseService = {
+      getDoctorIdsForNurse: jest.fn().mockResolvedValue([]),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -54,12 +63,7 @@ describe('SoapService', () => {
           provide: NotificationService,
           useValue: { onSoapReady: jest.fn().mockResolvedValue(undefined) },
         },
-        {
-          provide: NurseService,
-          useValue: {
-            getNursePermissionForDoctor: jest.fn().mockResolvedValue(null),
-          },
-        },
+        { provide: NurseService, useValue: nurseService },
       ],
     }).compile();
 
@@ -464,6 +468,112 @@ Follow up in 2 weeks`;
       await expect(
         service.getById(mockSoapId, randomUuid(), false),
       ).rejects.toThrow(ForbiddenException);
+    });
+
+    describe('doctor and nurse access', () => {
+      const doctorA = { profileId: randomInt(1, 50_000), userId: randomUuid() };
+      const doctorB = { profileId: randomInt(50_000, 100_000), userId: randomUuid() };
+
+      // In-memory stand-in for consultations linked to mockSoap, filtered like the real query.
+      const linkSoapTo = (...doctors: (typeof doctorA)[]) =>
+        prisma.consultation.findFirst.mockImplementation(async ({ where }: any) => {
+          const match = doctors.find(
+            (d) =>
+              where.soapId === mockSoapId &&
+              (where.doctor === undefined || where.doctor.userId === d.userId) &&
+              (where.doctorId === undefined || where.doctorId.in.includes(d.profileId)),
+          );
+          return match ? { id: randomUuid(), doctorId: match.profileId } : null;
+        });
+
+      beforeEach(() => {
+        prisma.patientSOAP.findUnique.mockResolvedValue(mockSoap);
+      });
+
+      it('should allow a doctor with a consultation linked to the SOAP', async () => {
+        linkSoapTo(doctorA);
+
+        const result = await service.getById(mockSoapId, doctorA.userId, false, UserRolesEnum.DOCTOR);
+
+        expect(result).toEqual(mockSoap);
+        expect(prisma.consultation.findFirst).toHaveBeenCalledWith({
+          where: { soapId: mockSoapId, doctor: { userId: doctorA.userId } },
+          select: { id: true },
+        });
+      });
+
+      it('should allow every doctor the SOAP is linked to, not only the first', async () => {
+        linkSoapTo(doctorA, doctorB);
+
+        await expect(
+          service.getById(mockSoapId, doctorB.userId, false, UserRolesEnum.DOCTOR),
+        ).resolves.toEqual(mockSoap);
+      });
+
+      it('should forbid a doctor without a consultation linked to the SOAP', async () => {
+        linkSoapTo(doctorA);
+
+        await expect(
+          service.getById(mockSoapId, doctorB.userId, false, UserRolesEnum.DOCTOR),
+        ).rejects.toThrow(ForbiddenException);
+      });
+
+      it('should forbid a doctor when the SOAP is not linked to any consultation', async () => {
+        await expect(
+          service.getById(mockSoapId, doctorA.userId, false, UserRolesEnum.DOCTOR),
+        ).rejects.toThrow(ForbiddenException);
+      });
+
+      it('should not grant doctor access to a non-doctor role', async () => {
+        linkSoapTo(doctorA);
+
+        await expect(
+          service.getById(mockSoapId, doctorA.userId, false, UserRolesEnum.PATIENT),
+        ).rejects.toThrow(ForbiddenException);
+        expect(prisma.consultation.findFirst).not.toHaveBeenCalled();
+      });
+
+      it('should allow a nurse with VIEW_SOAPS for a linked doctor', async () => {
+        const nurseId = randomUuid();
+        linkSoapTo(doctorA);
+        nurseService.getDoctorIdsForNurse.mockResolvedValue([doctorA.profileId]);
+
+        await expect(
+          service.getById(mockSoapId, nurseId, false, UserRolesEnum.NURSE),
+        ).resolves.toEqual(mockSoap);
+        expect(nurseService.getDoctorIdsForNurse).toHaveBeenCalledWith(
+          nurseId,
+          NursePermissionEnum.VIEW_SOAPS,
+        );
+      });
+
+      it('should allow a nurse of the second linked doctor, not only the first', async () => {
+        linkSoapTo(doctorA, doctorB);
+        nurseService.getDoctorIdsForNurse.mockResolvedValue([doctorB.profileId]);
+
+        await expect(
+          service.getById(mockSoapId, randomUuid(), false, UserRolesEnum.NURSE),
+        ).resolves.toEqual(mockSoap);
+      });
+
+      it('should forbid a nurse whose VIEW_SOAPS doctors are not linked to the SOAP', async () => {
+        linkSoapTo(doctorA);
+        nurseService.getDoctorIdsForNurse.mockResolvedValue([doctorB.profileId]);
+
+        await expect(
+          service.getById(mockSoapId, randomUuid(), false, UserRolesEnum.NURSE),
+        ).rejects.toThrow(ForbiddenException);
+      });
+
+      it('should forbid a nurse without VIEW_SOAPS for any doctor', async () => {
+        linkSoapTo(doctorA);
+        nurseService.getDoctorIdsForNurse.mockResolvedValue([]);
+
+        await expect(
+          service.getById(mockSoapId, randomUuid(), false, UserRolesEnum.NURSE),
+        ).rejects.toThrow(ForbiddenException);
+        expect(prisma.consultation.findFirst).not.toHaveBeenCalled();
+      });
     });
   });
 });

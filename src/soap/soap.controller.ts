@@ -36,7 +36,7 @@ export class SoapController {
 
   @ApiOperation({
     description:
-      'Get a single SOAP note by ID (ownership check — must be your own).',
+      'Get a single SOAP note by ID. Allowed: owner, admins, doctors with a consultation linked to it, and their nurses with VIEW_SOAPS.',
   })
   @Get(':id')
   async getSoapById(

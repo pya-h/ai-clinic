@@ -236,9 +236,8 @@ export class SoapService {
   }
 
   /**
-   * Get a single SOAP by ID, with ownership check.
-   * Admins can access any SOAP. Nurses with VIEW_SOAPS permission
-   * can access SOAPs belonging to their assigned doctor's patients.
+   * Besides the owner and admins: a doctor with a consultation linked to the SOAP,
+   * or a nurse with VIEW_SOAPS for such a doctor.
    */
   async getById(
     id: string,
@@ -258,18 +257,25 @@ export class SoapService {
 
     if (soap.userId === requestingUserId) return soap;
 
-    if (requestingUserRole === UserRolesEnum.NURSE) {
-      const consultation = await this.prisma.consultation.findFirst({
-        where: { soapId: soap.id },
-        select: { doctorId: true },
+    if (requestingUserRole === UserRolesEnum.DOCTOR) {
+      const linked = await this.prisma.consultation.findFirst({
+        where: { soapId: soap.id, doctor: { userId: requestingUserId } },
+        select: { id: true },
       });
-      if (consultation) {
-        const assignment = await this.nurseService.getNursePermissionForDoctor(
-          requestingUserId,
-          consultation.doctorId,
-          NursePermissionEnum.VIEW_SOAPS,
-        );
-        if (assignment) return soap;
+      if (linked) return soap;
+    }
+
+    if (requestingUserRole === UserRolesEnum.NURSE) {
+      const doctorIds = await this.nurseService.getDoctorIdsForNurse(
+        requestingUserId,
+        NursePermissionEnum.VIEW_SOAPS,
+      );
+      if (doctorIds.length > 0) {
+        const linked = await this.prisma.consultation.findFirst({
+          where: { soapId: soap.id, doctorId: { in: doctorIds } },
+          select: { id: true },
+        });
+        if (linked) return soap;
       }
     }
 
