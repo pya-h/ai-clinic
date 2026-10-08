@@ -75,6 +75,37 @@ export class DoctorService {
     });
   }
 
+  /** Puts a rejected profile back in the admins' pending list. */
+  async resubmitForReview(user: User) {
+    const profile = await this.prisma.doctorProfile.findUnique({
+      where: { userId: user.id },
+    });
+    if (!profile) {
+      throw new NotFoundException('Doctor profile not found.');
+    }
+    if (profile.verified) {
+      throw new ConflictException('Your profile is already verified.');
+    }
+    if (!profile.rejectionReason) {
+      throw new ConflictException('Your profile is already awaiting review.');
+    }
+
+    // Matching the reason read above, so a newer rejection is never silently cleared.
+    const { count } = await this.prisma.doctorProfile.updateMany({
+      where: { id: profile.id, verified: false, rejectionReason: profile.rejectionReason },
+      data: { rejectionReason: null },
+    });
+    if (count === 0) {
+      throw new ConflictException(
+        'Your verification status changed. Please reload and try again.',
+      );
+    }
+
+    return this.prisma.doctorProfile.findUniqueOrThrow({
+      where: { id: profile.id },
+    });
+  }
+
   /**
    * Public listing of verified doctors with optional filters and pagination.
    */

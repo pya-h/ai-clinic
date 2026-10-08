@@ -16,6 +16,7 @@
  *   onNewChatMessage     — sends PUSH, skips self-message
  *   onNewReview          — sends PUSH to doctor
  *   onDoctorVerified     — sends BOTH to doctor
+ *   onDoctorRejected     — sends BOTH to doctor with the reason, DOCTOR_VERIFIED type, approved=false
  *   onSoapReady          — sends PUSH with conversationId
  *   onMatchFound         — sends CONSULTATION_REQUEST via BOTH
  *   onMatchAccepted      — sends DOCTOR_DECISION via BOTH
@@ -634,6 +635,36 @@ describe('NotificationService', () => {
         }),
       );
       expect(emailChannel.send).toHaveBeenCalledTimes(1);
+      expect(pushChannel.send).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('onDoctorRejected()', () => {
+    it('should send BOTH notification with the reason to the doctor', async () => {
+      const doctorUserId = randomUUID();
+      const reason = `Unreadable license ${randomUUID().slice(0, 8)}`;
+      const created = buildNotification({ userId: doctorUserId });
+      prisma.notification.create.mockResolvedValue(created);
+      prisma.notification.update.mockResolvedValue({ ...created, sentAt: new Date() });
+
+      await service.onDoctorRejected(doctorUserId, reason);
+
+      expect(prisma.notification.create).toHaveBeenCalledWith({
+        data: {
+          userId: doctorUserId,
+          type: NotificationTypeEnum.DOCTOR_VERIFIED,
+          title: 'Profile Not Verified',
+          body: `Your doctor profile was not verified (reason: ${reason}). Update your profile or documents, then re-submit it for review.`,
+          data: { approved: false, reason },
+          channel: NotificationChannelEnum.BOTH,
+        },
+      });
+      expect(emailChannel.send).toHaveBeenCalledWith(
+        doctorUserId,
+        'Profile Not Verified',
+        expect.stringContaining(reason),
+        { approved: false, reason },
+      );
       expect(pushChannel.send).toHaveBeenCalledTimes(1);
     });
   });

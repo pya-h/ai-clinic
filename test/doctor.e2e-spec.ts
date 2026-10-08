@@ -324,6 +324,115 @@ describe('Doctor (e2e)', () => {
 
   // ───────────────── GET /doctor (public listing) ─────────────────
 
+  describe('POST /doctor/profile/resubmit', () => {
+    function profileOf(user: MockUser, overrides: Record<string, unknown> = {}) {
+      return {
+        id: Math.floor(Math.random() * 10_000) + 1,
+        userId: user.id,
+        specialty: DoctorSpecialtiesEnum.GENERAL,
+        verified: false,
+        rejectionReason: `Unreadable license ${Math.random().toString(36).slice(2, 8)}`,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        ...overrides,
+      };
+    }
+
+    it('should clear the rejection so the profile is reviewed again', async () => {
+      sessionUser = createMockDoctorUser();
+      const rejected = profileOf(sessionUser);
+      prisma.doctorProfile.findUnique.mockResolvedValue(rejected);
+      prisma.doctorProfile.updateMany.mockResolvedValue({ count: 1 });
+      prisma.doctorProfile.findUniqueOrThrow.mockResolvedValue({
+        ...rejected,
+        rejectionReason: null,
+      });
+
+      const res = await app.inject({
+        method: 'POST',
+        url: '/doctor/profile/resubmit',
+      });
+
+      expect(res.statusCode).toBe(HttpStatus.OK);
+      const body = JSON.parse(res.body);
+      expect(body.contents.rejectionReason).toBeNull();
+      expect(body.contents.verified).toBe(false);
+      expect(prisma.doctorProfile.updateMany).toHaveBeenCalledWith({
+        where: {
+          id: rejected.id,
+          verified: false,
+          rejectionReason: rejected.rejectionReason,
+        },
+        data: { rejectionReason: null },
+      });
+    });
+
+    it.each([
+      ['already verified', { verified: true, rejectionReason: null }, 'already verified'],
+      ['awaiting review', { rejectionReason: null }, 'already awaiting review'],
+    ])('should return 409 when the profile is %s', async (_case, state, message) => {
+      sessionUser = createMockDoctorUser();
+      prisma.doctorProfile.findUnique.mockResolvedValue(profileOf(sessionUser, state));
+
+      const res = await app.inject({
+        method: 'POST',
+        url: '/doctor/profile/resubmit',
+      });
+
+      expect(res.statusCode).toBe(HttpStatus.CONFLICT);
+      expect(JSON.parse(res.body).message).toContain(message);
+      expect(prisma.doctorProfile.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('should return 409 when the profile was reviewed again meanwhile', async () => {
+      sessionUser = createMockDoctorUser();
+      prisma.doctorProfile.findUnique.mockResolvedValue(profileOf(sessionUser));
+      prisma.doctorProfile.updateMany.mockResolvedValue({ count: 0 });
+
+      const res = await app.inject({
+        method: 'POST',
+        url: '/doctor/profile/resubmit',
+      });
+
+      expect(res.statusCode).toBe(HttpStatus.CONFLICT);
+    });
+
+    it('should return 404 when the doctor has no profile', async () => {
+      sessionUser = createMockDoctorUser();
+      prisma.doctorProfile.findUnique.mockResolvedValue(null);
+
+      const res = await app.inject({
+        method: 'POST',
+        url: '/doctor/profile/resubmit',
+      });
+
+      expect(res.statusCode).toBe(HttpStatus.NOT_FOUND);
+    });
+
+    it('should return 403 for a non-doctor', async () => {
+      sessionUser = createMockUser();
+
+      const res = await app.inject({
+        method: 'POST',
+        url: '/doctor/profile/resubmit',
+      });
+
+      expect(res.statusCode).toBe(HttpStatus.FORBIDDEN);
+      expect(prisma.doctorProfile.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('should return 401 when not authenticated', async () => {
+      sessionUser = null;
+
+      const res = await app.inject({
+        method: 'POST',
+        url: '/doctor/profile/resubmit',
+      });
+
+      expect(res.statusCode).toBe(HttpStatus.UNAUTHORIZED);
+    });
+  });
+
   describe('GET /doctor', () => {
     const mockListResult = [
       {

@@ -19,6 +19,9 @@ import { BanUserDto } from './dto/ban-user.dto';
 import { NotificationService } from '../notification/notification.service';
 import { ConsultationStatusEnum, PaymentStatusEnum } from '@prisma/client';
 
+// A rejected doctor stays out until they re-submit, which clears the reason.
+const PENDING_VERIFICATION = { verified: false, rejectionReason: null };
+
 @Injectable()
 export class AdminService {
   private readonly logger = new Logger(AdminService.name);
@@ -216,7 +219,7 @@ export class AdminService {
 
   async listPendingDoctors() {
     return this.prisma.doctorProfile.findMany({
-      where: { verified: false },
+      where: PENDING_VERIFICATION,
       orderBy: { createdAt: 'asc' },
       include: {
         user: {
@@ -254,7 +257,8 @@ export class AdminService {
       throw new NotFoundException('Doctor not found.');
     }
 
-    if (!dto.approved && !dto.reason) {
+    const reason = dto.approved ? undefined : dto.reason?.trim();
+    if (!dto.approved && !reason) {
       throw new BadRequestException(
         'A reason is required when rejecting a doctor.',
       );
@@ -266,15 +270,14 @@ export class AdminService {
         verified: dto.approved,
         verifiedAt: dto.approved ? new Date() : null,
         verifiedBy: dto.approved ? admin.id : null,
-        rejectionReason: dto.approved ? null : dto.reason,
+        rejectionReason: reason ?? null,
       },
     });
 
-    if (dto.approved) {
-      this.notificationService
-        .onDoctorVerified(doctor.userId)
-        .catch((e) => this.logger.error(`Notification failed: ${e.message}`));
-    }
+    const notification = reason
+      ? this.notificationService.onDoctorRejected(doctor.userId, reason)
+      : this.notificationService.onDoctorVerified(doctor.userId);
+    notification.catch((e) => this.logger.error(`Notification failed: ${e.message}`));
 
     return updated;
   }
@@ -350,7 +353,7 @@ export class AdminService {
       this.prisma.doctorProfile.count({ where: { verified: true } }),
       this.prisma.patientProfile.count(),
       this.prisma.consultation.count(),
-      this.prisma.doctorProfile.count({ where: { verified: false } }),
+      this.prisma.doctorProfile.count({ where: PENDING_VERIFICATION }),
       this.prisma.consultation.count({
         where: { status: ConsultationStatusEnum.IN_PROGRESS },
       }),

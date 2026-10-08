@@ -240,6 +240,18 @@ export class NotificationService {
     );
   }
 
+  /** Shares the DOCTOR_VERIFIED type; `data.approved` is false. */
+  async onDoctorRejected(doctorUserId: string, reason: string): Promise<void> {
+    await this.send(
+      doctorUserId,
+      NotificationTypeEnum.DOCTOR_VERIFIED,
+      'Profile Not Verified',
+      `Your doctor profile was not verified (reason: ${reason}). Update your profile or documents, then re-submit it for review.`,
+      { approved: false, reason },
+      NotificationChannelEnum.BOTH,
+    );
+  }
+
   async onSoapReady(
     userId: string,
     conversationId: string,

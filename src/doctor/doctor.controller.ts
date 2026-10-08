@@ -3,6 +3,8 @@ import {
   Body,
   Controller,
   Get,
+  HttpCode,
+  HttpStatus,
   Param,
   ParseIntPipe,
   Patch,
@@ -56,6 +58,18 @@ export class DoctorController {
     @Body() dto: UpdateDoctorProfileDto,
   ) {
     return this.doctorService.updateProfile(user, dto);
+  }
+
+  @ApiOperation({
+    description:
+      'Re-submit a rejected doctor profile for verification. Clears the rejection reason so admins review it again.',
+  })
+  @UseGuards(CookieAuthGuard, RolesGuard)
+  @Roles(UserRolesEnum.DOCTOR)
+  @Post('profile/resubmit')
+  @HttpCode(HttpStatus.OK)
+  async resubmitForReview(@CurrentUser() user: User) {
+    return this.doctorService.resubmitForReview(user);
   }
 
   @ApiOperation({

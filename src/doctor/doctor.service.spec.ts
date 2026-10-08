@@ -5,6 +5,7 @@
  *   hasProfile          — doctor has profile, no profile, check any kind
  *   createDoctorProfile — successful, wrong role, duplicate profile
  *   updateProfile       — successful, profile not found
+ *   resubmitForReview   — clears rejection, not found, verified, not rejected, concurrent change
  *   findAll             — no filters, with specialty filter, with search, pagination
  *   findOne             — found verified, not found, unverified
  *
@@ -175,6 +176,62 @@ describe('DoctorService', () => {
       await expect(
         service.updateProfile(mockDoctorUser as any, { bio: randomBio() }),
       ).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  // ───────────────────── resubmitForReview ─────────────────────
+
+  describe('resubmitForReview', () => {
+    const rejectionReason = `Unreadable license ${randomUuid().slice(0, 8)}`;
+    const rejected = { ...mockProfile, verified: false, rejectionReason };
+
+    it('should clear the rejection reason of a rejected profile', async () => {
+      const resubmitted = { ...rejected, rejectionReason: null };
+      prisma.doctorProfile.findUnique.mockResolvedValue(rejected);
+      prisma.doctorProfile.updateMany.mockResolvedValue({ count: 1 });
+      prisma.doctorProfile.findUniqueOrThrow.mockResolvedValue(resubmitted);
+
+      const result = await service.resubmitForReview(mockDoctorUser as any);
+
+      expect(result).toEqual(resubmitted);
+      expect(prisma.doctorProfile.findUnique).toHaveBeenCalledWith({
+        where: { userId: mockDoctorUser.id },
+      });
+      expect(prisma.doctorProfile.updateMany).toHaveBeenCalledWith({
+        where: { id: mockProfile.id, verified: false, rejectionReason },
+        data: { rejectionReason: null },
+      });
+    });
+
+    it('should throw NotFoundException when the profile does not exist', async () => {
+      prisma.doctorProfile.findUnique.mockResolvedValue(null);
+
+      await expect(
+        service.resubmitForReview(mockDoctorUser as any),
+      ).rejects.toThrow(NotFoundException);
+      expect(prisma.doctorProfile.updateMany).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['already verified', { verified: true, rejectionReason: null }, 'Your profile is already verified.'],
+      ['awaiting review', { verified: false, rejectionReason: null }, 'Your profile is already awaiting review.'],
+    ])('should throw ConflictException when %s', async (_case, state, message) => {
+      prisma.doctorProfile.findUnique.mockResolvedValue({ ...mockProfile, ...state });
+
+      await expect(
+        service.resubmitForReview(mockDoctorUser as any),
+      ).rejects.toThrow(new ConflictException(message));
+      expect(prisma.doctorProfile.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('should throw ConflictException when the status changed meanwhile', async () => {
+      prisma.doctorProfile.findUnique.mockResolvedValue(rejected);
+      prisma.doctorProfile.updateMany.mockResolvedValue({ count: 0 });
+
+      await expect(
+        service.resubmitForReview(mockDoctorUser as any),
+      ).rejects.toThrow(ConflictException);
+      expect(prisma.doctorProfile.findUniqueOrThrow).not.toHaveBeenCalled();
     });
   });
 

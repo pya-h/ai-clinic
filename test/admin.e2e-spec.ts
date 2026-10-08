@@ -55,6 +55,7 @@ import generalConfigs from '../src/configs/general';
 
 const mockNotificationService = {
   onDoctorVerified: jest.fn().mockResolvedValue(undefined),
+  onDoctorRejected: jest.fn().mockResolvedValue(undefined),
   onNewConsultation: jest.fn().mockResolvedValue(undefined),
   notifyUser: jest.fn().mockResolvedValue(undefined),
 };
@@ -416,7 +417,7 @@ describe('Admin (e2e)', () => {
       expect(pending.documents).toEqual([document]);
       expect(prisma.doctorProfile.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: { verified: false },
+          where: { verified: false, rejectionReason: null },
           include: expect.objectContaining({
             documents: { orderBy: { createdAt: 'desc' } },
           }),
@@ -527,6 +528,8 @@ describe('Admin (e2e)', () => {
       const body = JSON.parse(res.body);
       expect(body.contents).toBeDefined();
       expect(body.contents.verified).toBe(true);
+      expect(mockNotificationService.onDoctorVerified).toHaveBeenCalledWith(doctorProfile.userId);
+      expect(mockNotificationService.onDoctorRejected).not.toHaveBeenCalled();
     });
 
     it('should reject a doctor with reason (admin)', async () => {
@@ -542,12 +545,43 @@ describe('Admin (e2e)', () => {
       const res = await app.inject({
         method: 'PATCH',
         url: `/admin/doctors/${doctorProfileId}/verify`,
-        payload: { approved: false, reason: 'Incomplete documents' },
+        payload: { approved: false, reason: ' Incomplete documents ' },
       });
 
       expect(res.statusCode).toBe(HttpStatus.OK);
       const body = JSON.parse(res.body);
-      expect(body.contents).toBeDefined();
+      expect(body.contents.verified).toBe(false);
+      expect(body.contents.rejectionReason).toBe('Incomplete documents');
+      expect(prisma.doctorProfile.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ verified: false, rejectionReason: 'Incomplete documents' }),
+        }),
+      );
+      expect(mockNotificationService.onDoctorRejected).toHaveBeenCalledWith(
+        doctorProfile.userId,
+        'Incomplete documents',
+      );
+      expect(mockNotificationService.onDoctorVerified).not.toHaveBeenCalled();
+    });
+
+    it('should still return 200 when the rejection notification fails (admin)', async () => {
+      sessionUser = adminUser;
+      prisma.doctorProfile.findUnique.mockResolvedValue(doctorProfile);
+      prisma.doctorProfile.update.mockResolvedValue({
+        ...doctorProfile,
+        verified: false,
+        rejectionReason: 'Expired license',
+      });
+      mockNotificationService.onDoctorRejected.mockRejectedValueOnce(new Error('smtp down'));
+
+      const res = await app.inject({
+        method: 'PATCH',
+        url: `/admin/doctors/${doctorProfileId}/verify`,
+        payload: { approved: false, reason: 'Expired license' },
+      });
+
+      expect(res.statusCode).toBe(HttpStatus.OK);
+      expect(JSON.parse(res.body).contents.rejectionReason).toBe('Expired license');
     });
 
     it('should return 400 when id is not an integer', async () => {
@@ -589,6 +623,22 @@ describe('Admin (e2e)', () => {
 
       expect(res.statusCode).toBe(HttpStatus.BAD_REQUEST);
       expect(prisma.doctorProfile.update).not.toHaveBeenCalled();
+    });
+
+    it('should return 400 when rejecting with a blank reason', async () => {
+      sessionUser = adminUser;
+      prisma.doctorProfile.findUnique.mockResolvedValue(doctorProfile);
+
+      const res = await app.inject({
+        method: 'PATCH',
+        url: `/admin/doctors/${doctorProfileId}/verify`,
+        payload: { approved: false, reason: '   ' },
+      });
+
+      expect(res.statusCode).toBe(HttpStatus.BAD_REQUEST);
+      expect(JSON.parse(res.body).message).toContain('reason is required');
+      expect(prisma.doctorProfile.update).not.toHaveBeenCalled();
+      expect(mockNotificationService.onDoctorRejected).not.toHaveBeenCalled();
     });
 
     it('should return 400 when missing approved field', async () => {
@@ -837,6 +887,9 @@ describe('Admin (e2e)', () => {
       expect(body.contents).toHaveProperty('totalAppointments');
       expect(body.contents).toHaveProperty('newUsersThisMonth');
       expect(body.contents).toHaveProperty('totalRevenue');
+      expect(prisma.doctorProfile.count).toHaveBeenCalledWith({
+        where: { verified: false, rejectionReason: null },
+      });
     });
 
     it('should return 401 when not authenticated', async () => {

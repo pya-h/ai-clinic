@@ -22,6 +22,7 @@ describe('AdminService', () => {
   let service: AdminService;
   let prisma: Record<string, any>;
   let reviewService: Record<string, jest.Mock>;
+  let notificationService: { onDoctorVerified: jest.Mock; onDoctorRejected: jest.Mock };
 
   const mockAdminUser = buildAdminUser();
 
@@ -75,15 +76,17 @@ describe('AdminService', () => {
       delete: jest.fn(),
     };
 
+    notificationService = {
+      onDoctorVerified: jest.fn().mockResolvedValue(undefined),
+      onDoctorRejected: jest.fn().mockResolvedValue(undefined),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         AdminService,
         { provide: PrismaService, useValue: prisma },
         { provide: ReviewService, useValue: reviewService },
-        {
-          provide: NotificationService,
-          useValue: { onDoctorVerified: jest.fn().mockResolvedValue(undefined) },
-        },
+        { provide: NotificationService, useValue: notificationService },
       ],
     }).compile();
 
@@ -259,7 +262,7 @@ describe('AdminService', () => {
   /* ── listPendingDoctors ────────────────────────────────── */
 
   describe('listPendingDoctors', () => {
-    it('should return unverified doctors with their documents', async () => {
+    it('should return unverified doctors that are not rejected, with their documents', async () => {
       const pending = [
         {
           ...mockDoctorProfile,
@@ -282,7 +285,7 @@ describe('AdminService', () => {
 
       expect(result).toEqual(pending);
       expect(prisma.doctorProfile.findMany).toHaveBeenCalledWith({
-        where: { verified: false },
+        where: { verified: false, rejectionReason: null },
         orderBy: { createdAt: 'asc' },
         include: {
           user: {
@@ -368,6 +371,21 @@ describe('AdminService', () => {
           rejectionReason: null,
         },
       });
+      expect(notificationService.onDoctorVerified).toHaveBeenCalledWith(mockDoctorProfile.userId);
+      expect(notificationService.onDoctorRejected).not.toHaveBeenCalled();
+    });
+
+    it('should ignore a reason sent with an approval', async () => {
+      prisma.doctorProfile.findUnique.mockResolvedValue(mockDoctorProfile);
+      prisma.doctorProfile.update.mockResolvedValue({ ...mockDoctorProfile, verified: true });
+
+      await service.verifyDoctor(1, { approved: true, reason: 'leftover' }, mockAdminUser as any);
+
+      expect(prisma.doctorProfile.update).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ rejectionReason: null }) }),
+      );
+      expect(notificationService.onDoctorVerified).toHaveBeenCalledWith(mockDoctorProfile.userId);
+      expect(notificationService.onDoctorRejected).not.toHaveBeenCalled();
     });
 
     it('should reject a doctor with reason', async () => {
@@ -393,18 +411,60 @@ describe('AdminService', () => {
           rejectionReason: 'Invalid license',
         },
       });
+      expect(notificationService.onDoctorRejected).toHaveBeenCalledWith(
+        mockDoctorProfile.userId,
+        'Invalid license',
+      );
+      expect(notificationService.onDoctorVerified).not.toHaveBeenCalled();
     });
 
-    it('should throw BadRequestException if rejecting without reason', async () => {
+    it('should store and send the reason without surrounding whitespace', async () => {
+      prisma.doctorProfile.findUnique.mockResolvedValue(mockDoctorProfile);
+      prisma.doctorProfile.update.mockResolvedValue(mockDoctorProfile);
+
+      await service.verifyDoctor(1, { approved: false, reason: '  Blurry scan \n' }, mockAdminUser as any);
+
+      expect(prisma.doctorProfile.update).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ rejectionReason: 'Blurry scan' }) }),
+      );
+      expect(notificationService.onDoctorRejected).toHaveBeenCalledWith(
+        mockDoctorProfile.userId,
+        'Blurry scan',
+      );
+    });
+
+    it.each([
+      ['no reason', undefined],
+      ['an empty reason', ''],
+      ['a blank reason', '  \t '],
+    ])('should throw BadRequestException when rejecting with %s', async (_case, reason) => {
       prisma.doctorProfile.findUnique.mockResolvedValue(mockDoctorProfile);
 
       await expect(
-        service.verifyDoctor(
-          1,
-          { approved: false },
-          mockAdminUser as any,
-        ),
+        service.verifyDoctor(1, { approved: false, reason }, mockAdminUser as any),
       ).rejects.toThrow(BadRequestException);
+      expect(prisma.doctorProfile.update).not.toHaveBeenCalled();
+      expect(notificationService.onDoctorRejected).not.toHaveBeenCalled();
+    });
+
+    it('should still return the rejection when the notification fails', async () => {
+      const rejected = { ...mockDoctorProfile, rejectionReason: 'Invalid license' };
+      prisma.doctorProfile.findUnique.mockResolvedValue(mockDoctorProfile);
+      prisma.doctorProfile.update.mockResolvedValue(rejected);
+      notificationService.onDoctorRejected.mockRejectedValue(new Error('smtp down'));
+      const logError = jest
+        .spyOn((service as any).logger, 'error')
+        .mockImplementation(() => undefined);
+
+      const result = await service.verifyDoctor(
+        1,
+        { approved: false, reason: 'Invalid license' },
+        mockAdminUser as any,
+      );
+      await new Promise((resolve) => setImmediate(resolve));
+
+      expect(result).toEqual(rejected);
+      expect(logError).toHaveBeenCalledWith(expect.stringContaining('smtp down'));
     });
 
     it('should throw NotFoundException if doctor not found', async () => {
@@ -551,6 +611,22 @@ describe('AdminService', () => {
         newUsersThisMonth: 8,
         totalRevenue: 1500,
       });
+    });
+
+    it('should count pending verifications like the pending list, leaving out rejected doctors', async () => {
+      prisma.user.count.mockResolvedValue(0);
+      prisma.doctorProfile.count.mockResolvedValue(0);
+      prisma.patientProfile.count.mockResolvedValue(0);
+      prisma.consultation.count.mockResolvedValue(0);
+      prisma.appointment.count.mockResolvedValue(0);
+      prisma.payment.aggregate.mockResolvedValue({ _sum: { amount: null } });
+
+      await service.getPlatformStats();
+
+      expect(prisma.doctorProfile.count).toHaveBeenCalledWith({
+        where: { verified: false, rejectionReason: null },
+      });
+      expect(prisma.doctorProfile.count).toHaveBeenCalledWith({ where: { verified: true } });
     });
   });
 
