@@ -21,7 +21,7 @@ A telemedicine platform backend built with **NestJS 11** on **Fastify**, providi
 
 - **Node.js** >= 20
 - **PostgreSQL** >= 15
-- **pnpm** >= 10 (`corepack enable` provides it)
+- **pnpm** >= 11, which reads the build-script approvals (`allowBuilds`) in `pnpm-workspace.yaml`. `package.json` pins the version (`packageManager`); `corepack enable`, or pnpm 10 and later, switches to it automatically.
 
 ## Getting Started
 
