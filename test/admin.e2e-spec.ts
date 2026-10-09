@@ -1151,6 +1151,33 @@ describe('Admin (e2e)', () => {
       expect((await listUsers()).statusCode).toBe(HttpStatus.FORBIDDEN);
     });
 
+    it.each(['DOCTOR', 'NURSE', 'NONE'] as const)(
+      'should give an existing session the role %s set via PATCH /admin/users/:id on its very next request',
+      async (role) => {
+        const admin = createMockAdminUser();
+        const patient = createMockUser();
+        db.set(admin.id, admin);
+        db.set(patient.id, patient);
+
+        sessionUser = patient;
+        expect((await app.inject({ method: 'GET', url: '/user' })).statusCode).toBe(HttpStatus.OK);
+        const patientSession = sessionUser;
+
+        sessionUser = admin;
+        const update = await app.inject({
+          method: 'PATCH',
+          url: `/admin/users/${patient.id}`,
+          payload: { role },
+        });
+        expect(update.statusCode).toBe(HttpStatus.OK);
+
+        sessionUser = patientSession;
+        expect((await app.inject({ method: 'GET', url: '/user' })).statusCode).toBe(HttpStatus.OK);
+        expect(sessionUser?.role).toBe(role);
+        expect(sessionUser?.id).toBe(patient.id);
+      },
+    );
+
     it('should cut off a user banned by an admin on their very next request', async () => {
       const admin = createMockAdminUser();
       const doctor = createMockDoctorUser();

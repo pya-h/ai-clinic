@@ -575,6 +575,46 @@ describe('SchedulingService', () => {
       });
     });
 
+    describe('with a mid-day start (e.g. matching passes "now")', () => {
+      // A random time on 2026-03-10 (a Tuesday) after midnight UTC.
+      const midDay = () => {
+        const minutes = 1 + Math.floor(Math.random() * (24 * 60 - 2));
+        return new Date(Date.UTC(2026, 2, 10, 0, minutes));
+      };
+
+      beforeEach(() => {
+        prisma.doctorAvailability.findMany.mockResolvedValue([
+          { dayOfWeek: 2, startTime: '09:00', endTime: '17:00', isActive: true },
+        ]);
+        prisma.slotDuration.findMany.mockResolvedValue([{ minutes: 60, isActive: true }]);
+        prisma.appointment.findMany.mockResolvedValue([]);
+      });
+
+      it("should still apply that day's blocking exception, stored at midnight", async () => {
+        const start = midDay();
+        prisma.availabilityException.findMany.mockImplementation(async ({ where }: any) =>
+          where.date.gte <= new Date('2026-03-10T00:00:00.000Z')
+            ? [{ date: new Date('2026-03-10'), isBlocked: true, doctorId: 42 }]
+            : [],
+        );
+
+        expect(await service.getAvailableSlots(42, start, start)).toEqual([]);
+      });
+
+      it("should still apply that day's partial override", async () => {
+        const start = midDay();
+        prisma.availabilityException.findMany.mockImplementation(async ({ where }: any) =>
+          where.date.gte <= new Date('2026-03-10T00:00:00.000Z')
+            ? [{ date: new Date('2026-03-10'), isBlocked: false, startTime: '13:00', endTime: '15:00', doctorId: 42 }]
+            : [],
+        );
+
+        const result = await service.getAvailableSlots(42, start, start);
+
+        expect(result.map((s) => s.startTime)).toEqual(['13:00', '14:00']);
+      });
+    });
+
     it('should treat time-bearing bounds as whole UTC days', async () => {
       // 2026-03-10 = Tuesday, 2026-03-11 = Wednesday
       prisma.doctorAvailability.findMany.mockResolvedValue([

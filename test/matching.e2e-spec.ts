@@ -275,6 +275,49 @@ describe('Matching (e2e)', () => {
       }
     });
 
+    it('should return 409 without offering anything when the offer fails, and still time the request out', async () => {
+      sessionUser = patientUser;
+      const specialty = randomSpecialty();
+      const doctorProfile = {
+        ...buildDoctorProfile({ userId: doctorUser.id, specialty, verified: true }),
+        user: {
+          id: doctorUser.id,
+          firstname: doctorUser.firstname,
+          lastname: doctorUser.lastname,
+          avatar: null as null,
+        },
+        _count: { consultations: 0 },
+      };
+      const searching = { ...mockMatchRequest, specialty };
+      const toSpy = jest.spyOn(gateway.server, 'to');
+      const timers: Map<string, NodeJS.Timeout> = (gateway as any).patientTimers;
+
+      prisma.matchRequest.findFirst.mockResolvedValue(null);
+      prisma.matchRequest.create.mockResolvedValue({ ...searching });
+      prisma.doctorProfile.findMany.mockResolvedValue([doctorProfile]);
+      prisma.matchRequest.findUnique.mockResolvedValue({ ...searching });
+      // Cancelled between creation and the offer: the compare-and-swap finds nothing.
+      prisma.matchRequest.updateMany.mockResolvedValue({ count: 0 });
+
+      try {
+        const res = await app.inject({
+          method: 'POST',
+          url: '/matching/request',
+          payload: { specialty },
+        });
+
+        expect(res.statusCode).toBe(HttpStatus.CONFLICT);
+        expect(JSON.parse(res.body).message).toBe('Match request status changed concurrently.');
+        expect(toSpy).not.toHaveBeenCalledWith(`user:${doctorUser.id}`);
+        expect(app.get(NotificationService).onMatchFound).not.toHaveBeenCalled();
+        expect(timers.has(matchRequestId)).toBe(true);
+      } finally {
+        toSpy.mockRestore();
+        clearTimeout(timers.get(matchRequestId));
+        timers.delete(matchRequestId);
+      }
+    });
+
     it('should create a match request with optional specialty', async () => {
       sessionUser = patientUser;
 

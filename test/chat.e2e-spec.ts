@@ -415,6 +415,23 @@ describe('Chat (e2e)', () => {
       expect(prisma.chat.create).toHaveBeenCalled();
     });
 
+    it('should let a doctor start a chat with a patient they only have an appointment with', async () => {
+      const doctorProfileId = randomId();
+      const patient = createMockUser();
+      prisma.doctorProfile.findUnique.mockResolvedValue({ id: doctorProfileId });
+      prisma.consultation.findFirst.mockResolvedValue(null);
+      prisma.appointment.findFirst.mockResolvedValue({ id: randomUuid() });
+
+      const res = await startChat(createMockDoctorUser(), patient);
+
+      expect(res.statusCode).toBe(HttpStatus.CREATED);
+      expect(prisma.appointment.findFirst).toHaveBeenCalledWith({
+        where: { patientId: patient.id, doctorId: { in: [doctorProfileId] } },
+        select: { id: true },
+      });
+      expect(prisma.chat.create).toHaveBeenCalled();
+    });
+
     it('should return 403 when a doctor starts a chat with an unrelated patient', async () => {
       prisma.doctorProfile.findUnique.mockResolvedValue({ id: randomId() });
       prisma.consultation.findFirst.mockResolvedValue(null);
