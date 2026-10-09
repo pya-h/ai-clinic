@@ -103,6 +103,7 @@ describe('NurseService', () => {
           },
         });
         expect(prisma.user.update).not.toHaveBeenCalled();
+        expect(prisma.user.updateMany).not.toHaveBeenCalled();
         expect(invalidateSpy).not.toHaveBeenCalled();
         expect(notificationService.onNurseInvitation).toHaveBeenCalledWith(
           invitee.id,
@@ -287,6 +288,7 @@ describe('NurseService', () => {
         status: NurseAssignmentStatusEnum.PENDING,
       });
       prisma.user.findUnique.mockImplementation(async () => invitee);
+      prisma.user.updateMany.mockResolvedValue({ count: 1 });
       prisma.doctorNurseAssignment.updateMany.mockResolvedValue({ count: 1 });
       prisma.doctorNurseAssignment.findUniqueOrThrow.mockResolvedValue(answered);
     });
@@ -316,7 +318,7 @@ describe('NurseService', () => {
 
       await expect(answer()).rejects.toThrow(new NotFoundException('Invitation not found.'));
       expect(prisma.doctorNurseAssignment.updateMany).not.toHaveBeenCalled();
-      expect(prisma.user.update).not.toHaveBeenCalled();
+      expect(prisma.user.updateMany).not.toHaveBeenCalled();
     });
 
     it.each([NurseAssignmentStatusEnum.ACCEPTED, NurseAssignmentStatusEnum.DECLINED])(
@@ -337,7 +339,7 @@ describe('NurseService', () => {
       await expect(answer()).rejects.toThrow(
         new ConflictException('This invitation is no longer pending.'),
       );
-      expect(prisma.user.update).not.toHaveBeenCalled();
+      expect(prisma.user.updateMany).not.toHaveBeenCalled();
       expect(notificationService.onNurseInvitationAnswered).not.toHaveBeenCalled();
     });
   });
@@ -348,6 +350,7 @@ describe('NurseService', () => {
     beforeEach(() => {
       assignmentId = Math.floor(Math.random() * 1e6) + 1;
       prisma.doctorNurseAssignment.updateMany.mockResolvedValue({ count: 1 });
+      prisma.user.updateMany.mockResolvedValue({ count: 1 });
       prisma.doctorNurseAssignment.findUniqueOrThrow.mockResolvedValue({
         id: assignmentId,
         doctor: { user: { id: doctorUser.id } },
@@ -373,8 +376,8 @@ describe('NurseService', () => {
       try {
         await service.acceptInvitation(invitee as any, assignmentId);
 
-        expect(prisma.user.update).toHaveBeenCalledWith({
-          where: { id: invitee.id },
+        expect(prisma.user.updateMany).toHaveBeenCalledWith({
+          where: { id: invitee.id, role: invitee.role, isAdmin: false, isSuperAdmin: false },
           data: { role: UserRolesEnum.NURSE },
         });
         expect(prisma.$transaction).toHaveBeenCalled();
@@ -391,7 +394,7 @@ describe('NurseService', () => {
       try {
         await service.acceptInvitation(nurseUser as any, assignmentId);
 
-        expect(prisma.user.update).not.toHaveBeenCalled();
+        expect(prisma.user.updateMany).not.toHaveBeenCalled();
         expect(invalidateSpy).not.toHaveBeenCalled();
       } finally {
         invalidateSpy.mockRestore();
@@ -409,7 +412,27 @@ describe('NurseService', () => {
         new BadRequestException('Doctors and admins cannot become nurses.'),
       );
       expect(prisma.doctorNurseAssignment.updateMany).not.toHaveBeenCalled();
-      expect(prisma.user.update).not.toHaveBeenCalled();
+      expect(prisma.user.updateMany).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['a patient', () => createMockUser()],
+      ['a role-less user', () => createMockUser({ role: UserRolesEnum.NONE })],
+    ])('should refuse (409) and tell no one when %s has their role changed concurrently', async (_case, make) => {
+      const invitee = make();
+      given(invitee);
+      prisma.user.updateMany.mockResolvedValue({ count: 0 });
+      const invalidateSpy = jest.spyOn(UserStatusCache, 'invalidate');
+
+      try {
+        await expect(service.acceptInvitation(invitee as any, assignmentId)).rejects.toThrow(
+          new ConflictException('Your account changed while accepting; please try again.'),
+        );
+        expect(invalidateSpy).not.toHaveBeenCalled();
+        expect(notificationService.onNurseInvitationAnswered).not.toHaveBeenCalled();
+      } finally {
+        invalidateSpy.mockRestore();
+      }
     });
 
     it('should not change the role when the invitation was cancelled concurrently', async () => {
@@ -418,7 +441,7 @@ describe('NurseService', () => {
       prisma.doctorNurseAssignment.updateMany.mockResolvedValue({ count: 0 });
 
       await expect(service.acceptInvitation(invitee as any, assignmentId)).rejects.toThrow(ConflictException);
-      expect(prisma.user.update).not.toHaveBeenCalled();
+      expect(prisma.user.updateMany).not.toHaveBeenCalled();
     });
   });
 
@@ -439,7 +462,7 @@ describe('NurseService', () => {
       await service.declineInvitation(invitee as any, assignmentId);
 
       expect(prisma.doctorNurseAssignment.updateMany.mock.calls[0][0].data).not.toHaveProperty('isActive');
-      expect(prisma.user.update).not.toHaveBeenCalled();
+      expect(prisma.user.updateMany).not.toHaveBeenCalled();
     });
   });
 

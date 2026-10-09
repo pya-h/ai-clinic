@@ -8,7 +8,7 @@
  *   createUser   — successful + duplicate email + invalid role
  *   updateUser   — successful + empty data + email conflict + replaced avatar file deleted
  *   getUsers     — returns user list
- *   uploadAvatar — upload + update, replaced avatar file deleted (never on failure)
+ *   uploadAvatar — upload + update, replaced avatar file deleted (never on failure or while another account uses it)
  *
  * Uses randomized test data via test-data.factory.
  */
@@ -393,6 +393,43 @@ describe('UserService', () => {
 
         await expect(service.uploadAvatar(mockUser, mockFile)).rejects.toThrow('DB down');
         expect(fileUploadService.deleteUploadedFile).not.toHaveBeenCalled();
+      });
+
+      it('should check that no other account uses the previous avatar before deleting it', async () => {
+        const previous = `/uploads/avatars/${randomUuid()}.png`;
+        prisma.user.findUnique.mockResolvedValue({ avatar: previous });
+        prisma.user.count.mockResolvedValue(0);
+
+        await service.uploadAvatar(mockUser, mockFile);
+
+        expect(prisma.user.count).toHaveBeenCalledWith({ where: { avatar: previous } });
+        expect(prisma.user.count.mock.invocationCallOrder[0]).toBeGreaterThan(
+          prisma.user.update.mock.invocationCallOrder[0],
+        );
+        expect(fileUploadService.deleteUploadedFile).toHaveBeenCalledWith('avatars', previous);
+      });
+
+      it.each([1, 2 + Math.floor(Math.random() * 5)])(
+        'should keep the previous file while %i other account(s) still use it',
+        async (others) => {
+          prisma.user.findUnique.mockResolvedValue({ avatar: `/uploads/avatars/${randomUuid()}.png` });
+          prisma.user.count.mockResolvedValue(others);
+
+          await expect(service.uploadAvatar(mockUser, mockFile)).resolves.toEqual({ id: mockUser.id, avatar: next });
+          expect(fileUploadService.deleteUploadedFile).not.toHaveBeenCalled();
+        },
+      );
+
+      it('should keep the previous file and log when checking for other users fails', async () => {
+        const previous = `/uploads/avatars/${randomUuid()}.png`;
+        prisma.user.findUnique.mockResolvedValue({ avatar: previous });
+        prisma.user.count.mockRejectedValue(new Error('DB down'));
+        const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation();
+
+        await expect(service.uploadAvatar(mockUser, mockFile)).resolves.toEqual({ id: mockUser.id, avatar: next });
+        expect(fileUploadService.deleteUploadedFile).not.toHaveBeenCalled();
+        expect(warn).toHaveBeenCalledWith(expect.stringContaining(previous));
+        warn.mockRestore();
       });
     });
   });

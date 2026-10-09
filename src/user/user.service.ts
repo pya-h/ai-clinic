@@ -211,6 +211,8 @@ export class UserService {
   private async removeReplacedAvatar(previous: string | null, current: string | null): Promise<void> {
     if (!previous || previous === current) return;
     try {
+      // Profile updates only take absolute URLs today, but another account must never lose its file.
+      if (await this.prisma.user.count({ where: { avatar: previous } })) return;
       await this.fileUploadService.deleteUploadedFile('avatars', previous);
     } catch (err) {
       this.logger.warn(

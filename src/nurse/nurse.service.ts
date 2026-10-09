@@ -155,10 +155,14 @@ export class NurseService {
         isActive: true,
       });
       if (becomesNurse) {
-        await tx.user.update({
-          where: { id: user.id },
+        // Conditional on the role checked above, so a concurrent admin change isn't overwritten.
+        const { count } = await tx.user.updateMany({
+          where: { id: user.id, role: invitee.role, isAdmin: false, isSuperAdmin: false },
           data: { role: UserRolesEnum.NURSE },
         });
+        if (count === 0) {
+          throw new ConflictException('Your account changed while accepting; please try again.');
+        }
       }
       return tx.doctorNurseAssignment.findUniqueOrThrow({
         where: { id: assignmentId },

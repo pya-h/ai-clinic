@@ -9,6 +9,7 @@ export type MockPrismaService = {
     findMany: jest.Mock;
     create: jest.Mock;
     update: jest.Mock;
+    updateMany: jest.Mock;
     delete: jest.Mock;
     count: jest.Mock;
   };
@@ -219,7 +220,7 @@ export function createMockPrismaService(): MockPrismaService {
   };
 
   const mock: MockPrismaService = {
-    user: createModelMock(['count']) as any,
+    user: createModelMock(['count', 'updateMany']) as any,
     doctorProfile: createModelMock(['count', 'updateMany', 'findUniqueOrThrow']) as any,
     patientProfile: createModelMock() as any,
     doctorReview: createModelMock(['aggregate', 'groupBy', 'count']) as any,

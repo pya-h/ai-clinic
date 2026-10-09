@@ -213,6 +213,7 @@ describe('Nurse (e2e)', () => {
         data: expect.objectContaining({ status: 'PENDING', isActive: false }),
       });
       expect(prisma.user.update).not.toHaveBeenCalled();
+      expect(prisma.user.updateMany).not.toHaveBeenCalled();
       expect(prisma.notification.create).toHaveBeenCalledWith({
         data: expect.objectContaining({
           userId: invitee.id,
@@ -824,6 +825,7 @@ describe('Nurse (e2e)', () => {
           status: NurseAssignmentStatusEnum.PENDING,
         });
         prisma.user.findUnique.mockResolvedValue(invitee);
+        prisma.user.updateMany.mockResolvedValue({ count: 1 });
         prisma.doctorNurseAssignment.updateMany.mockResolvedValue({ count: 1 });
         prisma.doctorNurseAssignment.findUniqueOrThrow.mockResolvedValue({
           ...pending,
@@ -851,12 +853,12 @@ describe('Nurse (e2e)', () => {
           }),
         });
         if (accepting) {
-          expect(prisma.user.update).toHaveBeenCalledWith({
-            where: { id: invitee.id },
+          expect(prisma.user.updateMany).toHaveBeenCalledWith({
+            where: { id: invitee.id, role: invitee.role, isAdmin: false, isSuperAdmin: false },
             data: { role: 'NURSE' },
           });
         } else {
-          expect(prisma.user.update).not.toHaveBeenCalled();
+          expect(prisma.user.updateMany).not.toHaveBeenCalled();
         }
       });
 
@@ -908,7 +910,7 @@ describe('Nurse (e2e)', () => {
     afterEach(() => {
       prisma.user.findFirst.mockReset();
       prisma.user.findUnique.mockReset();
-      prisma.user.update.mockReset();
+      prisma.user.updateMany.mockReset();
     });
 
     it('should keep a just-invited patient a patient, and make them a nurse on accepting, without re-login', async () => {
@@ -920,9 +922,11 @@ describe('Nurse (e2e)', () => {
       let row: any = null;
       prisma.user.findFirst.mockImplementation(async ({ where }: any) => db.get(where.id) ?? null);
       prisma.user.findUnique.mockImplementation(async ({ where }: any) => db.get(where.id) ?? null);
-      prisma.user.update.mockImplementation(async ({ where, data }: any) => {
-        db.set(where.id, { ...db.get(where.id)!, ...data });
-        return db.get(where.id);
+      prisma.user.updateMany.mockImplementation(async ({ where, data }: any) => {
+        const user = db.get(where.id);
+        if (!user || user.role !== where.role) return { count: 0 };
+        db.set(where.id, { ...user, ...data });
+        return { count: 1 };
       });
       prisma.doctorProfile.findUnique.mockResolvedValue(doctorProfile);
       prisma.doctorNurseAssignment.findUnique.mockImplementation(async () => row);
