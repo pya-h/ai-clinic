@@ -2,9 +2,12 @@
  * Nurse E2E Tests
  *
  * Tests:
- *   POST   /nurse/assign                    — assign nurse to doctor (DOCTOR only)
+ *   POST   /nurse/assign                    — invite a nurse (verified DOCTOR only)
+ *   GET    /nurse/invitations               — invitee's pending invitations
+ *   POST   /nurse/invitations/:id/accept    — accept (becomes NURSE)
+ *   POST   /nurse/invitations/:id/decline   — decline
  *   PATCH  /nurse/assignment/:id/permissions — update permissions (DOCTOR only)
- *   DELETE /nurse/assignment/:id            — deactivate assignment (DOCTOR only)
+ *   DELETE /nurse/assignment/:id            — cancel invitation / deactivate assignment (DOCTOR only)
  *   GET    /nurse/assignments               — list assignments (DOCTOR or NURSE)
  *   GET    /nurse/assignment/:id            — get single assignment (DOCTOR or NURSE)
  */
@@ -40,7 +43,11 @@ import {
   randomUuid,
   buildDoctorProfile,
 } from './helpers/test-data.factory';
-import { NursePermissionEnum } from '@prisma/client';
+import {
+  NotificationTypeEnum,
+  NurseAssignmentStatusEnum,
+  NursePermissionEnum,
+} from '@prisma/client';
 import authConfigs from '../src/configs/auth';
 import generalConfigs from '../src/configs/general';
 
@@ -174,29 +181,78 @@ describe('Nurse (e2e)', () => {
   // ─── POST /nurse/assign ──────────────────────────────────────────
 
   describe('POST /nurse/assign', () => {
-    it('should assign a nurse successfully (doctor)', async () => {
+    it('should create a pending invitation and notify the invitee (doctor)', async () => {
       sessionUser = doctorUser;
+      const invitee = createMockUser();
+      const pending = buildAssignment({
+        nurseId: invitee.id,
+        isActive: false,
+        status: NurseAssignmentStatusEnum.PENDING,
+      });
 
       prisma.doctorProfile.findUnique.mockResolvedValue(doctorProfile);
-      prisma.user.findUnique.mockResolvedValue({
-        ...nurseUser,
-        role: 'NURSE',
-      });
-      prisma.doctorNurseAssignment.create.mockResolvedValue(buildAssignment());
+      prisma.user.findUnique.mockResolvedValue(invitee);
+      prisma.doctorNurseAssignment.findUnique.mockResolvedValue(null);
+      prisma.doctorNurseAssignment.create.mockResolvedValue(pending);
+      prisma.doctorNurseAssignment.findUniqueOrThrow.mockResolvedValue(pending);
+      prisma.notification.create.mockResolvedValue({ id: 1 });
 
       const res = await app.inject({
         method: 'POST',
         url: '/nurse/assign',
         payload: {
-          nurseId: nurseUser.id,
+          nurseId: invitee.id,
           permissions: [NursePermissionEnum.VIEW_PATIENTS],
         },
       });
 
       expect(res.statusCode).toBe(HttpStatus.CREATED);
       const body = JSON.parse(res.body);
-      expect(body.contents).toBeDefined();
-      expect(body.contents.nurseId).toBe(nurseUser.id);
+      expect(body.contents).toMatchObject({ nurseId: invitee.id, isActive: false, status: 'PENDING' });
+      expect(prisma.doctorNurseAssignment.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({ status: 'PENDING', isActive: false }),
+      });
+      expect(prisma.user.update).not.toHaveBeenCalled();
+      expect(prisma.notification.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          userId: invitee.id,
+          type: NotificationTypeEnum.NURSE_INVITATION,
+          data: { assignmentId },
+        }),
+      });
+    });
+
+    it('should return 403 for an unverified doctor', async () => {
+      sessionUser = doctorUser;
+      prisma.doctorProfile.findUnique.mockResolvedValue({ ...doctorProfile, verified: false });
+
+      const res = await app.inject({
+        method: 'POST',
+        url: '/nurse/assign',
+        payload: { nurseId: randomUuid() },
+      });
+
+      expect(res.statusCode).toBe(HttpStatus.FORBIDDEN);
+      expect(JSON.parse(res.body).message).toBe('Only verified doctors can invite nurses.');
+      expect(prisma.doctorNurseAssignment.create).not.toHaveBeenCalled();
+    });
+
+    it('should return 409 when the user already has a pending invitation', async () => {
+      sessionUser = doctorUser;
+      prisma.doctorProfile.findUnique.mockResolvedValue(doctorProfile);
+      prisma.user.findUnique.mockResolvedValue(createMockUser());
+      prisma.doctorNurseAssignment.findUnique.mockResolvedValue(
+        buildAssignment({ isActive: false, status: NurseAssignmentStatusEnum.PENDING }),
+      );
+
+      const res = await app.inject({
+        method: 'POST',
+        url: '/nurse/assign',
+        payload: { nurseId: randomUuid() },
+      });
+
+      expect(res.statusCode).toBe(HttpStatus.CONFLICT);
+      expect(prisma.notification.create).not.toHaveBeenCalled();
     });
 
     it('should return 401 when not authenticated', async () => {
@@ -396,6 +452,26 @@ describe('Nurse (e2e)', () => {
   // ─── DELETE /nurse/assignment/:id ────────────────────────────────
 
   describe('DELETE /nurse/assignment/:id', () => {
+    it('should cancel (delete) a pending invitation (doctor)', async () => {
+      sessionUser = doctorUser;
+      const pending = buildAssignment({ isActive: false, status: NurseAssignmentStatusEnum.PENDING });
+      prisma.doctorProfile.findUnique.mockResolvedValue(doctorProfile);
+      prisma.doctorNurseAssignment.findUnique.mockResolvedValue(pending);
+      prisma.doctorNurseAssignment.deleteMany.mockResolvedValue({ count: 1 });
+
+      const res = await app.inject({
+        method: 'DELETE',
+        url: `/nurse/assignment/${assignmentId}`,
+      });
+
+      expect(res.statusCode).toBe(HttpStatus.OK);
+      expect(JSON.parse(res.body).contents).toMatchObject({ id: assignmentId, status: 'PENDING' });
+      expect(prisma.doctorNurseAssignment.deleteMany).toHaveBeenCalledWith({
+        where: { id: assignmentId, status: NurseAssignmentStatusEnum.PENDING },
+      });
+      expect(prisma.doctorNurseAssignment.update).not.toHaveBeenCalled();
+    });
+
     it('should deactivate assignment successfully (doctor)', async () => {
       sessionUser = doctorUser;
 
@@ -684,21 +760,164 @@ describe('Nurse (e2e)', () => {
     });
   });
 
-  // ─── Role upgrade after login ───────────────────────────────────
+  // ─── Invitations (invitee side) ────────────────────────────────
 
-  describe('role upgrade after login', () => {
+  describe('nurse invitations', () => {
+    let invitee: MockUser;
+    let pending: ReturnType<typeof buildAssignment>;
+
+    beforeEach(() => {
+      invitee = createMockUser();
+      pending = buildAssignment({
+        nurseId: invitee.id,
+        isActive: false,
+        status: NurseAssignmentStatusEnum.PENDING,
+      });
+      prisma.notification.create.mockResolvedValue({ id: 1 });
+    });
+
+    describe('GET /nurse/invitations', () => {
+      it.each([
+        ['a patient', () => invitee],
+        ['a role-less user', () => ({ ...invitee, role: 'NONE' as any })],
+        ['a nurse', () => nurseUser],
+      ])("should list %s's pending invitations", async (_case, who) => {
+        sessionUser = who();
+        prisma.doctorNurseAssignment.findMany.mockResolvedValue([pending]);
+
+        const res = await app.inject({ method: 'GET', url: '/nurse/invitations' });
+
+        expect(res.statusCode).toBe(HttpStatus.OK);
+        expect(JSON.parse(res.body).contents).toEqual([
+          expect.objectContaining({ id: assignmentId, status: 'PENDING' }),
+        ]);
+        expect(prisma.doctorNurseAssignment.findMany).toHaveBeenCalledWith(
+          expect.objectContaining({
+            where: { nurseId: sessionUser!.id, status: NurseAssignmentStatusEnum.PENDING },
+          }),
+        );
+      });
+
+      it('should return 403 for a doctor', async () => {
+        sessionUser = doctorUser;
+        expect((await app.inject({ method: 'GET', url: '/nurse/invitations' })).statusCode).toBe(
+          HttpStatus.FORBIDDEN,
+        );
+      });
+
+      it('should return 401 when not authenticated', async () => {
+        expect((await app.inject({ method: 'GET', url: '/nurse/invitations' })).statusCode).toBe(
+          HttpStatus.UNAUTHORIZED,
+        );
+      });
+    });
+
+    describe.each([
+      ['accept', true],
+      ['decline', false],
+    ])('POST /nurse/invitations/:id/%s', (action, accepting) => {
+      const url = (id: number | string = assignmentId) => `/nurse/invitations/${id}/${action}`;
+
+      beforeEach(() => {
+        prisma.doctorNurseAssignment.findUnique.mockResolvedValue({
+          nurseId: invitee.id,
+          status: NurseAssignmentStatusEnum.PENDING,
+        });
+        prisma.user.findUnique.mockResolvedValue(invitee);
+        prisma.doctorNurseAssignment.updateMany.mockResolvedValue({ count: 1 });
+        prisma.doctorNurseAssignment.findUniqueOrThrow.mockResolvedValue({
+          ...pending,
+          isActive: accepting,
+          status: accepting ? 'ACCEPTED' : 'DECLINED',
+        });
+      });
+
+      it(`should ${action} the invitation (200) and tell the doctor`, async () => {
+        sessionUser = invitee;
+
+        const res = await app.inject({ method: 'POST', url: url() });
+
+        expect(res.statusCode).toBe(HttpStatus.OK);
+        expect(JSON.parse(res.body).contents).toMatchObject({
+          id: assignmentId,
+          isActive: accepting,
+          status: accepting ? 'ACCEPTED' : 'DECLINED',
+        });
+        expect(prisma.notification.create).toHaveBeenCalledWith({
+          data: expect.objectContaining({
+            userId: doctorUser.id,
+            type: NotificationTypeEnum.NURSE_INVITATION_ANSWERED,
+            data: { assignmentId, accepted: accepting },
+          }),
+        });
+        if (accepting) {
+          expect(prisma.user.update).toHaveBeenCalledWith({
+            where: { id: invitee.id },
+            data: { role: 'NURSE' },
+          });
+        } else {
+          expect(prisma.user.update).not.toHaveBeenCalled();
+        }
+      });
+
+      it("should return 404 for someone else's invitation", async () => {
+        sessionUser = createMockUser();
+
+        const res = await app.inject({ method: 'POST', url: url() });
+
+        expect(res.statusCode).toBe(HttpStatus.NOT_FOUND);
+        expect(prisma.doctorNurseAssignment.updateMany).not.toHaveBeenCalled();
+      });
+
+      it('should return 409 for an invitation already answered', async () => {
+        sessionUser = invitee;
+        prisma.doctorNurseAssignment.findUnique.mockResolvedValue({
+          nurseId: invitee.id,
+          status: NurseAssignmentStatusEnum.DECLINED,
+        });
+
+        const res = await app.inject({ method: 'POST', url: url() });
+
+        expect(res.statusCode).toBe(HttpStatus.CONFLICT);
+        expect(JSON.parse(res.body).message).toBe('This invitation has already been answered.');
+      });
+
+      it('should return 403 for a doctor', async () => {
+        sessionUser = doctorUser;
+        expect((await app.inject({ method: 'POST', url: url() })).statusCode).toBe(HttpStatus.FORBIDDEN);
+      });
+
+      it('should return 401 when not authenticated', async () => {
+        expect((await app.inject({ method: 'POST', url: url() })).statusCode).toBe(
+          HttpStatus.UNAUTHORIZED,
+        );
+      });
+
+      it('should return 400 when id is not an integer', async () => {
+        sessionUser = invitee;
+        expect((await app.inject({ method: 'POST', url: url('abc') })).statusCode).toBe(
+          HttpStatus.BAD_REQUEST,
+        );
+      });
+    });
+  });
+
+  // ─── Role upgrade on accepting ─────────────────────────────────
+
+  describe('role upgrade on accepting an invitation', () => {
     afterEach(() => {
       prisma.user.findFirst.mockReset();
       prisma.user.findUnique.mockReset();
       prisma.user.update.mockReset();
     });
 
-    it('should let a patient use nurse routes right after a doctor assigns them, without re-login', async () => {
+    it('should keep a just-invited patient a patient, and make them a nurse on accepting, without re-login', async () => {
       const patient = createMockUser();
       const db = new Map<string, MockUser>([
         [patient.id, patient],
         [doctorUser.id, doctorUser],
       ]);
+      let row: any = null;
       prisma.user.findFirst.mockImplementation(async ({ where }: any) => db.get(where.id) ?? null);
       prisma.user.findUnique.mockImplementation(async ({ where }: any) => db.get(where.id) ?? null);
       prisma.user.update.mockImplementation(async ({ where, data }: any) => {
@@ -706,29 +925,41 @@ describe('Nurse (e2e)', () => {
         return db.get(where.id);
       });
       prisma.doctorProfile.findUnique.mockResolvedValue(doctorProfile);
-      prisma.doctorNurseAssignment.findUnique.mockResolvedValue(null);
-      prisma.doctorNurseAssignment.create.mockResolvedValue(buildAssignment({ nurseId: patient.id }));
+      prisma.doctorNurseAssignment.findUnique.mockImplementation(async () => row);
+      prisma.doctorNurseAssignment.create.mockImplementation(async ({ data }: any) => {
+        row = buildAssignment({ ...data });
+        return row;
+      });
+      prisma.doctorNurseAssignment.updateMany.mockImplementation(async ({ where, data }: any) => {
+        if (!row || row.status !== where.status) return { count: 0 };
+        row = { ...row, ...data };
+        return { count: 1 };
+      });
+      prisma.doctorNurseAssignment.findUniqueOrThrow.mockImplementation(async () => row);
       prisma.doctorNurseAssignment.findMany.mockResolvedValue([]);
+      prisma.notification.create.mockResolvedValue({ id: 1 });
+
+      sessionUser = doctorUser;
+      const invite = await app.inject({
+        method: 'POST',
+        url: '/nurse/assign',
+        payload: { nurseId: patient.id, permissions: [NursePermissionEnum.VIEW_PATIENTS] },
+      });
+      expect(invite.statusCode).toBe(HttpStatus.CREATED);
 
       sessionUser = patient;
       expect((await app.inject({ method: 'GET', url: '/nurse/dashboard' })).statusCode).toBe(
         HttpStatus.FORBIDDEN,
       );
-      const patientSession = sessionUser;
+      expect(db.get(patient.id)!.role).toBe('PATIENT');
 
-      sessionUser = doctorUser;
-      const assign = await app.inject({
-        method: 'POST',
-        url: '/nurse/assign',
-        payload: { nurseId: patient.id, permissions: [NursePermissionEnum.VIEW_PATIENTS] },
-      });
-      expect(assign.statusCode).toBe(HttpStatus.CREATED);
+      const accept = await app.inject({ method: 'POST', url: `/nurse/invitations/${row.id}/accept` });
+      expect(accept.statusCode).toBe(HttpStatus.OK);
 
-      sessionUser = patientSession;
       const res = await app.inject({ method: 'GET', url: '/nurse/dashboard' });
-
       expect(res.statusCode).toBe(HttpStatus.OK);
       expect(sessionUser?.role).toBe('NURSE');
+      expect(row).toMatchObject({ status: 'ACCEPTED', isActive: true });
     });
   });
 });

@@ -78,6 +78,12 @@ enum NursePermissionEnum {
   VIEW_CONSULTATION_NOTES
 }
 
+enum NurseAssignmentStatusEnum {
+  PENDING
+  ACCEPTED
+  DECLINED
+}
+
 enum CallTypeEnum {
   VOICE
   VIDEO
@@ -131,6 +137,8 @@ enum NotificationTypeEnum {
   NEW_REVIEW
   DOCTOR_VERIFIED
   SOAP_READY
+  NURSE_INVITATION
+  NURSE_INVITATION_ANSWERED
   SYSTEM
 }
 
@@ -581,8 +589,11 @@ model DoctorNurseAssignment {
   nurseId String @map("nurse_id")
   nurse   User   @relation("NurseAssignments", fields: [nurseId], references: [id], onDelete: Cascade)
 
-  permissions NursePermissionEnum[] @map("permissions")
-  isActive    Boolean               @default(true) @map("is_active")
+  permissions NursePermissionEnum[]     @map("permissions")
+  // In effect only once the invited user accepts; a doctor's removal clears it again.
+  isActive    Boolean                   @default(false) @map("is_active")
+  status      NurseAssignmentStatusEnum @default(PENDING) @map("status")
+  respondedAt DateTime?                 @map("responded_at")
 
   @@unique([doctorId, nurseId])
   @@map("doctor_nurse_assignment")

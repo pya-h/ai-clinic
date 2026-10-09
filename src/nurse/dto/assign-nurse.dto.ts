@@ -3,7 +3,7 @@ import { NursePermissionEnum } from '@prisma/client';
 import { ArrayNotEmpty, IsArray, IsEnum, IsOptional, IsUUID } from 'class-validator';
 
 export class AssignNurseDto {
-  @ApiProperty({ description: 'User ID to assign as nurse. PATIENT/NONE users are auto-upgraded to NURSE role.' })
+  @ApiProperty({ description: 'User ID to invite as a nurse. A PATIENT/NONE user becomes a NURSE only when they accept.' })
   @IsUUID()
   nurseId: string;
 

@@ -252,6 +252,37 @@ export class NotificationService {
     );
   }
 
+  async onNurseInvitation(
+    inviteeUserId: string,
+    assignmentId: number,
+    doctorName: string,
+  ): Promise<void> {
+    await this.send(
+      inviteeUserId,
+      NotificationTypeEnum.NURSE_INVITATION,
+      'Nurse Invitation',
+      `Dr. ${doctorName} invited you to join their team as a nurse. Accept or decline it on your invitations page.`,
+      { assignmentId },
+      NotificationChannelEnum.BOTH,
+    );
+  }
+
+  async onNurseInvitationAnswered(
+    doctorUserId: string,
+    assignmentId: number,
+    nurseName: string,
+    accepted: boolean,
+  ): Promise<void> {
+    await this.send(
+      doctorUserId,
+      NotificationTypeEnum.NURSE_INVITATION_ANSWERED,
+      accepted ? 'Nurse Invitation Accepted' : 'Nurse Invitation Declined',
+      `${nurseName} ${accepted ? 'accepted' : 'declined'} your invitation to join your team as a nurse.`,
+      { assignmentId, accepted },
+      NotificationChannelEnum.PUSH,
+    );
+  }
+
   async onSoapReady(
     userId: string,
     conversationId: string,

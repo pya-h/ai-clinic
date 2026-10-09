@@ -669,6 +669,61 @@ describe('NotificationService', () => {
     });
   });
 
+  describe('onNurseInvitation()', () => {
+    it('should send NURSE_INVITATION via BOTH to the invitee, naming the doctor', async () => {
+      const inviteeId = randomUUID();
+      const assignmentId = Math.floor(Math.random() * 1e6) + 1;
+      const doctorName = `Ana ${randomUUID().slice(0, 6)}`;
+      const created = buildNotification({ userId: inviteeId });
+      prisma.notification.create.mockResolvedValue(created);
+      prisma.notification.update.mockResolvedValue({ ...created, sentAt: new Date() });
+
+      await service.onNurseInvitation(inviteeId, assignmentId, doctorName);
+
+      expect(prisma.notification.create).toHaveBeenCalledWith({
+        data: {
+          userId: inviteeId,
+          type: NotificationTypeEnum.NURSE_INVITATION,
+          title: 'Nurse Invitation',
+          body: `Dr. ${doctorName} invited you to join their team as a nurse. Accept or decline it on your invitations page.`,
+          data: { assignmentId },
+          channel: NotificationChannelEnum.BOTH,
+        },
+      });
+      expect(emailChannel.send).toHaveBeenCalledTimes(1);
+      expect(pushChannel.send).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('onNurseInvitationAnswered()', () => {
+    it.each([
+      [true, 'Nurse Invitation Accepted', 'accepted'],
+      [false, 'Nurse Invitation Declined', 'declined'],
+    ])('should tell the doctor by PUSH (accepted: %s)', async (accepted, title, verb) => {
+      const doctorUserId = randomUUID();
+      const assignmentId = Math.floor(Math.random() * 1e6) + 1;
+      const nurseName = `Sam ${randomUUID().slice(0, 6)}`;
+      const created = buildNotification({ userId: doctorUserId });
+      prisma.notification.create.mockResolvedValue(created);
+      prisma.notification.update.mockResolvedValue({ ...created, sentAt: new Date() });
+
+      await service.onNurseInvitationAnswered(doctorUserId, assignmentId, nurseName, accepted);
+
+      expect(prisma.notification.create).toHaveBeenCalledWith({
+        data: {
+          userId: doctorUserId,
+          type: NotificationTypeEnum.NURSE_INVITATION_ANSWERED,
+          title,
+          body: `${nurseName} ${verb} your invitation to join your team as a nurse.`,
+          data: { assignmentId, accepted },
+          channel: NotificationChannelEnum.PUSH,
+        },
+      });
+      expect(pushChannel.send).toHaveBeenCalledTimes(1);
+      expect(emailChannel.send).not.toHaveBeenCalled();
+    });
+  });
+
   describe('onSoapReady()', () => {
     it('should send PUSH notification with conversationId', async () => {
       const conversationId = randomUUID();

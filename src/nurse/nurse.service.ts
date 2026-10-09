@@ -8,11 +8,14 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { UserStatusCache } from '../auth/user-status';
+import { NotificationService } from '../notification/notification.service';
 import {
   AppointmentStatusEnum,
   ConsultationStatusEnum,
   DoctorNurseAssignment,
+  NurseAssignmentStatusEnum,
   NursePermissionEnum,
+  Prisma,
   User,
   UserRolesEnum,
 } from '@prisma/client';
@@ -23,15 +26,25 @@ import { UpdatePermissionsDto } from './dto/update-permissions.dto';
 export class NurseService {
   private readonly logger = new Logger(NurseService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notificationService: NotificationService,
+  ) {}
 
   // ──────────────── Assignment Flow (B-95) ────────────────
 
+  /**
+   * Invites a user to the doctor's team. Nothing changes for them (role,
+   * access) until they accept; see acceptInvitation.
+   */
   async assignNurse(
     doctorUser: User,
     dto: AssignNurseDto,
   ): Promise<DoctorNurseAssignment> {
     const doctorProfile = await this.getDoctorProfile(doctorUser.id);
+    if (!doctorProfile.verified) {
+      throw new ForbiddenException('Only verified doctors can invite nurses.');
+    }
 
     const targetUser = await this.prisma.user.findUnique({
       where: { id: dto.nurseId },
@@ -47,60 +60,136 @@ export class NurseService {
       throw new BadRequestException('Cannot assign an admin as a nurse.');
     }
 
-    const assignment = await this.prisma.$transaction(async (tx) => {
-      if (targetUser.role !== UserRolesEnum.NURSE) {
+    const existing = await this.prisma.doctorNurseAssignment.findUnique({
+      where: {
+        doctorId_nurseId: { doctorId: doctorProfile.id, nurseId: dto.nurseId },
+      },
+    });
+    if (existing?.isActive) {
+      throw new ConflictException('This nurse is already assigned to you.');
+    }
+    if (existing?.status === NurseAssignmentStatusEnum.PENDING) {
+      throw new ConflictException('This user already has a pending invitation from you.');
+    }
+
+    const invitation = {
+      permissions: dto.permissions ?? [NursePermissionEnum.VIEW_PATIENTS],
+      status: NurseAssignmentStatusEnum.PENDING,
+      isActive: false,
+      respondedAt: null,
+    };
+    // A declined or removed assignment is reused as the new invitation. Both writes
+    // are conditional so that a concurrent invite can't send a second one.
+    try {
+      if (existing) {
+        const { count } = await this.prisma.doctorNurseAssignment.updateMany({
+          where: {
+            id: existing.id,
+            isActive: false,
+            status: { not: NurseAssignmentStatusEnum.PENDING },
+          },
+          data: invitation,
+        });
+        if (count === 0) {
+          throw new ConflictException('This user already has a pending invitation from you.');
+        }
+      } else {
+        await this.prisma.doctorNurseAssignment.create({
+          data: { doctorId: doctorProfile.id, nurseId: dto.nurseId, ...invitation },
+        });
+      }
+    } catch (err) {
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+        throw new ConflictException('This user already has a pending invitation from you.');
+      }
+      throw err;
+    }
+
+    const assignment = await this.prisma.doctorNurseAssignment.findUniqueOrThrow({
+      where: {
+        doctorId_nurseId: { doctorId: doctorProfile.id, nurseId: dto.nurseId },
+      },
+      include: this.assignmentInclude(),
+    });
+
+    this.notificationService
+      .onNurseInvitation(targetUser.id, assignment.id, `${doctorUser.firstname} ${doctorUser.lastname}`)
+      .catch((e) => this.logger.error(`Notification failed: ${e.message}`));
+    this.logger.log(
+      `Doctor ${doctorProfile.id} invited user ${dto.nurseId} as a nurse`,
+    );
+    return assignment;
+  }
+
+  /** Pending invitations sent to the current user. */
+  async getMyInvitations(user: User): Promise<DoctorNurseAssignment[]> {
+    return this.prisma.doctorNurseAssignment.findMany({
+      where: { nurseId: user.id, status: NurseAssignmentStatusEnum.PENDING },
+      include: this.assignmentInclude(),
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  /** Puts the assignment in effect; a patient or role-less invitee becomes a NURSE. */
+  async acceptInvitation(
+    user: User,
+    assignmentId: number,
+  ): Promise<DoctorNurseAssignment> {
+    await this.findPendingInvitation(user, assignmentId);
+
+    const invitee = await this.prisma.user.findUnique({
+      where: { id: user.id },
+      select: { role: true, isAdmin: true, isSuperAdmin: true },
+    });
+    if (!invitee) {
+      throw new NotFoundException('User not found.');
+    }
+    if (invitee.role === UserRolesEnum.DOCTOR || invitee.isAdmin || invitee.isSuperAdmin) {
+      throw new BadRequestException('Doctors and admins cannot become nurses.');
+    }
+    const becomesNurse = invitee.role !== UserRolesEnum.NURSE;
+
+    const accepted = await this.prisma.$transaction(async (tx) => {
+      await this.answerInvitation(tx, user, assignmentId, {
+        status: NurseAssignmentStatusEnum.ACCEPTED,
+        isActive: true,
+      });
+      if (becomesNurse) {
         await tx.user.update({
-          where: { id: targetUser.id },
+          where: { id: user.id },
           data: { role: UserRolesEnum.NURSE },
         });
-        this.logger.log(
-          `Upgraded user ${targetUser.id} role from ${targetUser.role} to NURSE`,
-        );
       }
-
-      const existing = await tx.doctorNurseAssignment.findUnique({
-        where: {
-          doctorId_nurseId: {
-            doctorId: doctorProfile.id,
-            nurseId: dto.nurseId,
-          },
-        },
-      });
-
-      if (existing) {
-        if (existing.isActive) {
-          throw new ConflictException(
-            'This nurse is already assigned to you.',
-          );
-        }
-        return tx.doctorNurseAssignment.update({
-          where: { id: existing.id },
-          data: {
-            isActive: true,
-            permissions: dto.permissions ?? [NursePermissionEnum.VIEW_PATIENTS],
-          },
-          include: this.assignmentInclude(),
-        });
-      }
-
-      return tx.doctorNurseAssignment.create({
-        data: {
-          doctorId: doctorProfile.id,
-          nurseId: dto.nurseId,
-          permissions: dto.permissions ?? [NursePermissionEnum.VIEW_PATIENTS],
-          isActive: true,
-        },
+      return tx.doctorNurseAssignment.findUniqueOrThrow({
+        where: { id: assignmentId },
         include: this.assignmentInclude(),
       });
     });
 
-    if (targetUser.role !== UserRolesEnum.NURSE) {
-      UserStatusCache.invalidate(targetUser.id);
+    if (becomesNurse) {
+      UserStatusCache.invalidate(user.id);
+      this.logger.log(`User ${user.id} became a NURSE by accepting assignment ${assignmentId}`);
     }
-    this.logger.log(
-      `Doctor ${doctorProfile.id} assigned nurse ${dto.nurseId}`,
-    );
-    return assignment;
+    this.notifyDoctorOfAnswer(accepted, user, true);
+    return accepted;
+  }
+
+  async declineInvitation(
+    user: User,
+    assignmentId: number,
+  ): Promise<DoctorNurseAssignment> {
+    await this.findPendingInvitation(user, assignmentId);
+
+    await this.answerInvitation(this.prisma, user, assignmentId, {
+      status: NurseAssignmentStatusEnum.DECLINED,
+    });
+    const declined = await this.prisma.doctorNurseAssignment.findUniqueOrThrow({
+      where: { id: assignmentId },
+      include: this.assignmentInclude(),
+    });
+
+    this.notifyDoctorOfAnswer(declined, user, false);
+    return declined;
   }
 
   async updatePermissions(
@@ -138,12 +227,22 @@ export class NurseService {
 
     const assignment = await this.prisma.doctorNurseAssignment.findUnique({
       where: { id: assignmentId },
+      include: this.assignmentInclude(),
     });
     if (!assignment) {
       throw new NotFoundException('Assignment not found.');
     }
     if (assignment.doctorId !== doctorProfile.id) {
       throw new ForbiddenException('You do not own this assignment.');
+    }
+
+    // Cancelling an invitation leaves nothing behind. If the invitee accepted in
+    // the meantime, nothing is deleted and the assignment is deactivated instead.
+    if (assignment.status === NurseAssignmentStatusEnum.PENDING) {
+      const { count } = await this.prisma.doctorNurseAssignment.deleteMany({
+        where: { id: assignmentId, status: NurseAssignmentStatusEnum.PENDING },
+      });
+      if (count === 1) return assignment;
     }
 
     return this.prisma.doctorNurseAssignment.update({
@@ -157,7 +256,10 @@ export class NurseService {
     if (user.role === UserRolesEnum.DOCTOR) {
       const doctorProfile = await this.getDoctorProfile(user.id);
       return this.prisma.doctorNurseAssignment.findMany({
-        where: { doctorId: doctorProfile.id, isActive: true },
+        where: {
+          doctorId: doctorProfile.id,
+          OR: [{ isActive: true }, { status: NurseAssignmentStatusEnum.PENDING }],
+        },
         include: this.assignmentInclude(),
         orderBy: { createdAt: 'desc' },
       });
@@ -313,6 +415,51 @@ export class NurseService {
   }
 
   // ──────────────── Private Helpers ────────────────
+
+  /** Someone else's invitation is reported as missing, so ids can't be probed. */
+  private async findPendingInvitation(user: User, assignmentId: number): Promise<void> {
+    const invitation = await this.prisma.doctorNurseAssignment.findUnique({
+      where: { id: assignmentId },
+      select: { nurseId: true, status: true },
+    });
+    if (!invitation || invitation.nurseId !== user.id) {
+      throw new NotFoundException('Invitation not found.');
+    }
+    if (invitation.status !== NurseAssignmentStatusEnum.PENDING) {
+      throw new ConflictException('This invitation has already been answered.');
+    }
+  }
+
+  // Conditional on PENDING, so a concurrent answer or cancellation can't be overwritten.
+  private async answerInvitation(
+    client: Prisma.TransactionClient,
+    user: User,
+    assignmentId: number,
+    data: Prisma.DoctorNurseAssignmentUpdateManyMutationInput,
+  ): Promise<void> {
+    const { count } = await client.doctorNurseAssignment.updateMany({
+      where: { id: assignmentId, nurseId: user.id, status: NurseAssignmentStatusEnum.PENDING },
+      data: { ...data, respondedAt: new Date() },
+    });
+    if (count === 0) {
+      throw new ConflictException('This invitation is no longer pending.');
+    }
+  }
+
+  private notifyDoctorOfAnswer(
+    assignment: DoctorNurseAssignment & { doctor: { user: { id: string } } },
+    nurse: User,
+    accepted: boolean,
+  ): void {
+    this.notificationService
+      .onNurseInvitationAnswered(
+        assignment.doctor.user.id,
+        assignment.id,
+        `${nurse.firstname} ${nurse.lastname}`,
+        accepted,
+      )
+      .catch((e) => this.logger.error(`Notification failed: ${e.message}`));
+  }
 
   private async getDoctorProfile(userId: string) {
     const profile = await this.prisma.doctorProfile.findUnique({

@@ -3,6 +3,8 @@ import {
   Controller,
   Delete,
   Get,
+  HttpCode,
+  HttpStatus,
   Param,
   ParseIntPipe,
   Patch,
@@ -25,7 +27,10 @@ import { UpdatePermissionsDto } from './dto/update-permissions.dto';
 export class NurseController {
   constructor(private readonly nurseService: NurseService) {}
 
-  @ApiOperation({ description: 'Assign a nurse to the authenticated doctor.' })
+  @ApiOperation({
+    description:
+      "Invite a user to the authenticated (verified) doctor's team as a nurse. It takes effect, and a patient or role-less user becomes a NURSE, only when they accept.",
+  })
   @Roles(UserRolesEnum.DOCTOR)
   @Post('assign')
   async assignNurse(
@@ -46,7 +51,7 @@ export class NurseController {
     return this.nurseService.updatePermissions(user, id, dto);
   }
 
-  @ApiOperation({ description: 'Deactivate a nurse assignment.' })
+  @ApiOperation({ description: 'Cancel a pending invitation, or deactivate a nurse assignment.' })
   @Roles(UserRolesEnum.DOCTOR)
   @Delete('assignment/:id')
   async removeAssignment(
@@ -54,6 +59,35 @@ export class NurseController {
     @Param('id', ParseIntPipe) id: number,
   ) {
     return this.nurseService.removeAssignment(user, id);
+  }
+
+  @ApiOperation({ description: 'List the pending nurse invitations sent to the current user.' })
+  @Roles(UserRolesEnum.PATIENT, UserRolesEnum.NONE, UserRolesEnum.NURSE)
+  @Get('invitations')
+  async getMyInvitations(@CurrentUser() user: User) {
+    return this.nurseService.getMyInvitations(user);
+  }
+
+  @ApiOperation({ description: "Accept a nurse invitation: join the doctor's team, becoming a NURSE if needed." })
+  @Roles(UserRolesEnum.PATIENT, UserRolesEnum.NONE, UserRolesEnum.NURSE)
+  @HttpCode(HttpStatus.OK)
+  @Post('invitations/:id/accept')
+  async acceptInvitation(
+    @CurrentUser() user: User,
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    return this.nurseService.acceptInvitation(user, id);
+  }
+
+  @ApiOperation({ description: 'Decline a nurse invitation.' })
+  @Roles(UserRolesEnum.PATIENT, UserRolesEnum.NONE, UserRolesEnum.NURSE)
+  @HttpCode(HttpStatus.OK)
+  @Post('invitations/:id/decline')
+  async declineInvitation(
+    @CurrentUser() user: User,
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    return this.nurseService.declineInvitation(user, id);
   }
 
   @ApiOperation({ description: 'Get nurse dashboard with assignments and stats.' })
