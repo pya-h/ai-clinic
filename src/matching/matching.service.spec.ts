@@ -26,7 +26,11 @@ import {
   MockUser,
 } from '../../test/helpers/mock-session.helper';
 import { buildDoctorProfile } from '../../test/helpers/test-data.factory';
-import { randomUUID } from 'crypto';
+import { randomInt, randomUUID } from 'crypto';
+
+const MATCH_TIMEOUT_MS = 5 * 60 * 1000;
+/** A creation time this many ms past (positive) or short of (negative) the 5-minute timeout. */
+const createdPastTimeout = (ms: number) => new Date(Date.now() - MATCH_TIMEOUT_MS - ms);
 
 describe('MatchingService', () => {
   let service: MatchingService;
@@ -726,6 +730,36 @@ describe('MatchingService', () => {
       ).rejects.toThrow(NotFoundException);
     });
 
+    it('should refuse an expired request without creating a consultation', async () => {
+      prisma.matchRequest.findUnique.mockResolvedValue({
+        id: requestId,
+        patientId: patient.id,
+        matchedDoctorId: doctorProfileId,
+        status: MatchStatusEnum.MATCHED,
+        createdAt: createdPastTimeout(randomInt(1_000, 48 * 3600_000)),
+      });
+
+      await expect(service.acceptMatch(requestId, doctor as any)).rejects.toThrow(
+        new BadRequestException('This match request has expired.'),
+      );
+      expect(prisma.consultation.create).not.toHaveBeenCalled();
+      expect(prisma.matchRequest.update).not.toHaveBeenCalled();
+    });
+
+    it('should accept a request still inside its 5 minutes', async () => {
+      prisma.matchRequest.findUnique.mockResolvedValue({
+        id: requestId,
+        patientId: patient.id,
+        matchedDoctorId: doctorProfileId,
+        status: MatchStatusEnum.MATCHED,
+        createdAt: createdPastTimeout(-randomInt(5_000, MATCH_TIMEOUT_MS)),
+      });
+      prisma.consultation.create.mockResolvedValue({ id: consultationId });
+      prisma.matchRequest.update.mockResolvedValue({ id: requestId, status: MatchStatusEnum.CONSULTATION_CREATED });
+
+      await expect(service.acceptMatch(requestId, doctor as any)).resolves.toMatchObject({ consultationId });
+    });
+
     it('should pass soapId to consultation when present', async () => {
       const soapId = randomUUID();
       const matchData = {
@@ -839,6 +873,23 @@ describe('MatchingService', () => {
       await expect(
         service.rejectMatch(requestId, doctor as any),
       ).rejects.toThrow(BadRequestException);
+    });
+
+    it('should refuse an expired request without recording a rejection or re-queuing it', async () => {
+      prisma.matchRequest.findUnique.mockResolvedValue({
+        id: requestId,
+        patientId: patient.id,
+        matchedDoctorId: doctorProfileId,
+        status: MatchStatusEnum.MATCHED,
+        createdAt: createdPastTimeout(randomInt(1_000, 48 * 3600_000)),
+      });
+
+      await expect(service.rejectMatch(requestId, doctor as any)).rejects.toThrow(
+        new BadRequestException('This match request has expired.'),
+      );
+      expect((prisma as any).matchRejection.create).not.toHaveBeenCalled();
+      expect(prisma.matchRequest.update).not.toHaveBeenCalled();
+      expect(prisma.doctorProfile.findMany).not.toHaveBeenCalled();
     });
 
     it('should exclude the rejected doctor from re-scoring', async () => {
@@ -966,6 +1017,64 @@ describe('MatchingService', () => {
       await expect(
         service.timeoutRequest(randomUUID()),
       ).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  // ──────────────── expireStaleRequests ────────────────
+
+  describe('expireStaleRequests', () => {
+    const buildActive = () => {
+      const matched = Math.random() < 0.5;
+      return {
+        id: randomUUID(),
+        patientId: randomUUID(),
+        status: matched ? MatchStatusEnum.MATCHED : MatchStatusEnum.SEARCHING,
+        matchedDoctorId: matched ? randomInt(1, 10_000) : null,
+        createdAt: createdPastTimeout(randomInt(1, 48 * 3600_000)),
+      };
+    };
+
+    afterEach(() => jest.restoreAllMocks());
+
+    it('should look only for active requests older than the 5-minute timeout', async () => {
+      const now = Date.now() + randomInt(0, 1e9);
+      jest.spyOn(Date, 'now').mockReturnValue(now);
+      prisma.matchRequest.findMany.mockResolvedValue([]);
+
+      await expect(service.expireStaleRequests()).resolves.toEqual([]);
+
+      expect(prisma.matchRequest.findMany).toHaveBeenCalledWith({
+        where: {
+          status: { in: [MatchStatusEnum.SEARCHING, MatchStatusEnum.MATCHED] },
+          createdAt: { lt: new Date(now - MATCH_TIMEOUT_MS) },
+        },
+      });
+      expect(prisma.matchRequest.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('should time out each one only if it is unchanged, and return those it timed out', async () => {
+      const stale = Array.from({ length: randomInt(2, 8) }, buildActive);
+      const changedMeanwhile = new Set(stale.filter(() => Math.random() < 0.4).map((r) => r.id));
+      prisma.matchRequest.findMany.mockResolvedValue(stale);
+      prisma.matchRequest.updateMany.mockImplementation(async ({ where }: any) => ({
+        count: changedMeanwhile.has(where.id) ? 0 : 1,
+      }));
+
+      const expired = await service.expireStaleRequests();
+
+      expect(expired).toEqual(stale.filter((r) => !changedMeanwhile.has(r.id)));
+      for (const request of stale) {
+        expect(prisma.matchRequest.updateMany).toHaveBeenCalledWith({
+          where: { id: request.id, status: request.status, matchedDoctorId: request.matchedDoctorId },
+          data: { status: MatchStatusEnum.TIMEOUT, resolvedAt: expect.any(Date) },
+        });
+      }
+    });
+
+    it('should propagate a failed lookup', async () => {
+      prisma.matchRequest.findMany.mockRejectedValue(new Error('db down'));
+
+      await expect(service.expireStaleRequests()).rejects.toThrow('db down');
     });
   });
 
@@ -1375,10 +1484,25 @@ describe('MatchingService', () => {
           where: {
             matchedDoctorId: doctorProfileId,
             status: MatchStatusEnum.MATCHED,
+            createdAt: { gte: expect.any(Date) },
           },
           orderBy: { createdAt: 'asc' },
         }),
       );
+    });
+
+    it('should leave out requests past their 5 minutes', async () => {
+      const now = Date.now() + randomInt(0, 1e9);
+      const spy = jest.spyOn(Date, 'now').mockReturnValue(now);
+      prisma.doctorProfile.findUnique.mockResolvedValue({ id: doctorProfileId, userId: doctor.id });
+      prisma.matchRequest.findMany.mockResolvedValue([]);
+
+      await service.getPendingForDoctor(doctor as any);
+
+      expect(prisma.matchRequest.findMany.mock.calls[0][0].where.createdAt).toEqual({
+        gte: new Date(now - MATCH_TIMEOUT_MS),
+      });
+      spy.mockRestore();
     });
 
     it('should return empty array when no pending requests', async () => {

@@ -380,6 +380,8 @@ Socket.IO namespaces on the same port. The handshake must carry the session cook
 | Client → server | `match:request` (patient), `match:accept` / `match:reject` (doctor), `match:cancel` (patient) |
 | Server → client | `match:searching`, `match:request`, `match:accepted`, `match:rejected`, `match:timeout`, `match:cancelled`, `match:error` |
 
+- A request times out 5 minutes after it is created; the patient and the doctor holding the offer get `match:timeout`. A sweep at startup and every minute times out requests whose timers were lost (e.g. on restart), and an expired request can't be accepted or declined.
+
 ## Response Format
 
 All JSON responses are wrapped in a standard envelope (file downloads, the SSE stream and `204` responses are not):

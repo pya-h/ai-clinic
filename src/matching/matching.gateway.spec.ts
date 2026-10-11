@@ -75,6 +75,7 @@ describe('MatchingGateway', () => {
       matchDoctor: jest.fn().mockResolvedValue(undefined),
       timeoutRequest: jest.fn(),
       getDoctorUserId: jest.fn(),
+      expireStaleRequests: jest.fn().mockResolvedValue([]),
     };
 
     notificationService = {
@@ -573,6 +574,120 @@ describe('MatchingGateway', () => {
 
       expect(matchingService.timeoutRequest).toHaveBeenCalledWith(request.id);
       expect(gateway.server.to).toHaveBeenCalledWith(`user:${mockPatient.id}`);
+    });
+  });
+
+  // ─── Expiry sweep (requests whose timers were lost, e.g. on restart) ───
+
+  describe('expireStaleRequests', () => {
+    const SWEEP_INTERVAL_MS = 60_000;
+
+    const buildExpired = (offered = Math.random() < 0.5) => ({
+      id: randomUUID(),
+      patientId: randomUUID(),
+      status: offered ? MatchStatusEnum.MATCHED : MatchStatusEnum.SEARCHING,
+      matchedDoctorId: offered ? randomInt(1, 100_000) : null,
+    });
+
+    beforeEach(() => {
+      jest.useFakeTimers();
+    });
+
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
+    it('should sweep at bootstrap, then every minute until the module is destroyed', async () => {
+      gateway.onApplicationBootstrap();
+      await jest.advanceTimersByTimeAsync(0);
+      expect(matchingService.expireStaleRequests).toHaveBeenCalledTimes(1);
+
+      const minutes = randomInt(1, 6);
+      await jest.advanceTimersByTimeAsync(minutes * SWEEP_INTERVAL_MS);
+      expect(matchingService.expireStaleRequests).toHaveBeenCalledTimes(1 + minutes);
+
+      gateway.onModuleDestroy();
+      await jest.advanceTimersByTimeAsync(5 * SWEEP_INTERVAL_MS);
+      expect(matchingService.expireStaleRequests).toHaveBeenCalledTimes(1 + minutes);
+    });
+
+    it('should tell each patient, and each doctor holding the offer, that the request timed out', async () => {
+      const expired = Array.from({ length: randomInt(2, 6) }, () => buildExpired());
+      const doctorUserIds = new Map(expired.map((r) => [r.matchedDoctorId, randomUUID()]));
+      matchingService.expireStaleRequests.mockResolvedValue(expired);
+      matchingService.getDoctorUserId.mockImplementation(async (id: number) => doctorUserIds.get(id));
+
+      await gateway.expireStaleRequests();
+
+      const offered = expired.filter((r) => r.matchedDoctorId);
+      expect(matchingService.getDoctorUserId).toHaveBeenCalledTimes(offered.length);
+      for (const request of expired) {
+        expect(gateway.server.to).toHaveBeenCalledWith(`user:${request.patientId}`);
+      }
+      for (const request of offered) {
+        expect(gateway.server.to).toHaveBeenCalledWith(`user:${doctorUserIds.get(request.matchedDoctorId)}`);
+      }
+      const emitted = (gateway.server as any)._toEmit.mock.calls;
+      expect(emitted).toHaveLength(expired.length + offered.length);
+      expect(new Set(emitted.map(([event]: [string]) => event))).toEqual(new Set(['match:timeout']));
+      expect(new Set(emitted.map(([, body]: [string, any]) => body.matchRequestId))).toEqual(
+        new Set(expired.map((r) => r.id)),
+      );
+    });
+
+    it('should drop the in-memory timer of a request it expired, so it is not announced twice', async () => {
+      const request = buildExpired(false);
+      await gateway.dispatchMatchRequest(request as any, []);
+      matchingService.expireStaleRequests.mockResolvedValue([request]);
+
+      await gateway.expireStaleRequests();
+      await jest.advanceTimersByTimeAsync(5 * 60 * 1000);
+
+      expect(matchingService.timeoutRequest).not.toHaveBeenCalled();
+      expect((gateway as any).patientTimers.has(request.id)).toBe(false);
+      expect((gateway.server as any)._toEmit).toHaveBeenCalledTimes(1);
+    });
+
+    it('should still announce the rest when one doctor lookup fails', async () => {
+      const [failing, other] = [buildExpired(true), buildExpired(true)];
+      const otherDoctorUserId = randomUUID();
+      matchingService.expireStaleRequests.mockResolvedValue([failing, other]);
+      matchingService.getDoctorUserId.mockImplementation(async (id: number) => {
+        if (id === failing.matchedDoctorId) throw new Error('db down');
+        return otherDoctorUserId;
+      });
+      const logError = jest.spyOn((gateway as any).logger, 'error').mockImplementation(() => undefined);
+
+      await expect(gateway.expireStaleRequests()).resolves.toBeUndefined();
+
+      expect(logError).toHaveBeenCalledWith(`Timeout notice for ${failing.id} failed: db down`);
+      expect(gateway.server.to).toHaveBeenCalledWith(`user:${other.patientId}`);
+      expect(gateway.server.to).toHaveBeenCalledWith(`user:${otherDoctorUserId}`);
+    });
+
+    it('should log a failed sweep without throwing, and sweep again next time', async () => {
+      matchingService.expireStaleRequests.mockRejectedValueOnce(new Error('connection reset'));
+      const logError = jest.spyOn((gateway as any).logger, 'error').mockImplementation(() => undefined);
+
+      await expect(gateway.expireStaleRequests()).resolves.toBeUndefined();
+      expect(logError).toHaveBeenCalledWith('Match request expiry sweep failed: connection reset');
+
+      await gateway.expireStaleRequests();
+      expect(matchingService.expireStaleRequests).toHaveBeenCalledTimes(2);
+    });
+
+    it('should not start a sweep while one is still running', async () => {
+      let finish!: (value: unknown[]) => void;
+      matchingService.expireStaleRequests.mockReturnValueOnce(new Promise((resolve) => (finish = resolve)));
+
+      const first = gateway.expireStaleRequests();
+      await gateway.expireStaleRequests();
+      expect(matchingService.expireStaleRequests).toHaveBeenCalledTimes(1);
+
+      finish([]);
+      await first;
+      await gateway.expireStaleRequests();
+      expect(matchingService.expireStaleRequests).toHaveBeenCalledTimes(2);
     });
   });
 

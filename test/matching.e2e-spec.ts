@@ -100,8 +100,11 @@ describe('Matching (e2e)', () => {
     updatedAt: new Date(),
   };
 
+  let startupMatchRequestQueries: unknown[][] = [];
+
   beforeAll(async () => {
     prisma = createMockPrismaService();
+    prisma.matchRequest.findMany.mockResolvedValue([]);
 
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [TestAppModule],
@@ -174,6 +177,7 @@ describe('Matching (e2e)', () => {
     await app.init();
     await app.getHttpAdapter().getInstance().ready();
     gateway = app.get(MatchingGateway);
+    startupMatchRequestQueries = prisma.matchRequest.findMany.mock.calls.slice();
   });
 
   afterAll(async () => {
@@ -184,6 +188,19 @@ describe('Matching (e2e)', () => {
     jest.clearAllMocks();
     sessionUser = null;
     sessionStore = {};
+  });
+
+  describe('startup', () => {
+    it('should time out requests left active past their 5 minutes, e.g. by a restart', () => {
+      expect(startupMatchRequestQueries).toContainEqual([
+        {
+          where: {
+            status: { in: [MatchStatusEnum.SEARCHING, MatchStatusEnum.MATCHED] },
+            createdAt: { lt: expect.any(Date) },
+          },
+        },
+      ]);
+    });
   });
 
   // ─── POST /matching/request ───

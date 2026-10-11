@@ -313,6 +313,7 @@ export class MatchingService {
           'This match request is not assigned to you.',
         );
       }
+      this.assertNotExpired(fresh);
 
       this.validateTransition(fresh.status, MatchStatusEnum.CONSULTATION_CREATED);
 
@@ -374,6 +375,7 @@ export class MatchingService {
           'This match request is not assigned to you.',
         );
       }
+      this.assertNotExpired(fresh);
 
       this.validateTransition(fresh.status, MatchStatusEnum.SEARCHING);
 
@@ -433,6 +435,34 @@ export class MatchingService {
     return this.prisma.matchRequest.findUniqueOrThrow({
       where: { id: matchRequestId },
     });
+  }
+
+  /**
+   * Times out active requests past their age. Their in-memory timers are lost on
+   * restart, so this catches what they no longer will. Returns the requests this
+   * call timed out, as they were just before.
+   */
+  async expireStaleRequests(): Promise<MatchRequest[]> {
+    const stale = await this.prisma.matchRequest.findMany({
+      where: {
+        status: { in: [MatchStatusEnum.SEARCHING, MatchStatusEnum.MATCHED] },
+        createdAt: { lt: new Date(Date.now() - this.MATCH_TIMEOUT_MS) },
+      },
+    });
+
+    const expired: MatchRequest[] = [];
+    for (const request of stale) {
+      const { count } = await this.prisma.matchRequest.updateMany({
+        where: {
+          id: request.id,
+          status: request.status,
+          matchedDoctorId: request.matchedDoctorId,
+        },
+        data: { status: MatchStatusEnum.TIMEOUT, resolvedAt: new Date() },
+      });
+      if (count) expired.push(request);
+    }
+    return expired;
   }
 
   // ────────────── Cancel ──────────────
@@ -590,6 +620,7 @@ export class MatchingService {
       where: {
         matchedDoctorId: doctorProfile.id,
         status: MatchStatusEnum.MATCHED,
+        createdAt: { gte: new Date(Date.now() - this.MATCH_TIMEOUT_MS) },
       },
       include: {
         patient: {
@@ -617,6 +648,12 @@ export class MatchingService {
   }
 
   // ────────────── Internal Helpers ──────────────
+
+  private assertNotExpired(request: MatchRequest): void {
+    if (this.isExpired(request)) {
+      throw new BadRequestException('This match request has expired.');
+    }
+  }
 
   private async getByIdRaw(id: string): Promise<MatchRequest> {
     const request = await this.prisma.matchRequest.findUnique({

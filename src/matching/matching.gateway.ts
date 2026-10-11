@@ -9,7 +9,7 @@ import {
   WebSocketServer,
   WsException,
 } from '@nestjs/websockets';
-import { Inject, Logger, OnModuleDestroy, forwardRef } from '@nestjs/common';
+import { Inject, Logger, OnApplicationBootstrap, OnModuleDestroy, forwardRef } from '@nestjs/common';
 import { Server, Socket } from 'socket.io';
 import { ConfigService } from '@nestjs/config';
 import { HttpAdapterHost } from '@nestjs/core';
@@ -22,6 +22,8 @@ import { PrismaService } from '../prisma/prisma.service';
 import { UserStatusCache, accountBlockReason } from '../auth/user-status';
 import { sessionUserFromCookieHeader } from '../auth/socket-session';
 
+const EXPIRY_SWEEP_INTERVAL_MS = 60_000;
+
 @WebSocketGateway({
   namespace: '/matching',
   cors: {
@@ -30,7 +32,12 @@ import { sessionUserFromCookieHeader } from '../auth/socket-session';
   },
 })
 export class MatchingGateway
-  implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect, OnModuleDestroy
+  implements
+    OnGatewayInit,
+    OnGatewayConnection,
+    OnGatewayDisconnect,
+    OnApplicationBootstrap,
+    OnModuleDestroy
 {
   @WebSocketServer()
   server: Server;
@@ -39,6 +46,8 @@ export class MatchingGateway
   private readonly patientTimers = new Map<string, NodeJS.Timeout>();
   private readonly rateLimit = new WsRateLimiter(5, 10_000);
   private stopWatchingUserStatus?: () => void;
+  private expirySweep?: NodeJS.Timeout;
+  private sweeping = false;
 
   constructor(
     private readonly matchingService: MatchingService,
@@ -49,7 +58,14 @@ export class MatchingGateway
     private readonly adapterHost: HttpAdapterHost,
   ) {}
 
+  onApplicationBootstrap(): void {
+    void this.expireStaleRequests();
+    this.expirySweep = setInterval(() => void this.expireStaleRequests(), EXPIRY_SWEEP_INTERVAL_MS);
+    this.expirySweep.unref();
+  }
+
   onModuleDestroy(): void {
+    clearInterval(this.expirySweep);
     for (const [, timer] of this.patientTimers) {
       clearTimeout(timer);
     }
@@ -276,6 +292,25 @@ export class MatchingGateway
     }
   }
 
+  /** Never throws: it runs unattended. */
+  async expireStaleRequests(): Promise<void> {
+    if (this.sweeping) return;
+    this.sweeping = true;
+    try {
+      const expired = await this.matchingService.expireStaleRequests();
+      for (const request of expired) {
+        this.clearTimeout(request.id);
+        await this.announceTimeout(request).catch((err) =>
+          this.logger.error(`Timeout notice for ${request.id} failed: ${err instanceof Error ? err.message : 'Unknown error'}`),
+        );
+      }
+    } catch (err) {
+      this.logger.error(`Match request expiry sweep failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    } finally {
+      this.sweeping = false;
+    }
+  }
+
   // ─────────────── Helpers ───────────────
 
   private async offerToTopDoctor(
@@ -306,19 +341,8 @@ export class MatchingGateway
       this.patientTimers.delete(matchRequestId);
       try {
         const request = await this.matchingService.timeoutRequest(matchRequestId);
-        if (
-          request.status === MatchStatusEnum.TIMEOUT
-        ) {
-          this.server
-            .to(`user:${patientId}`)
-            .emit('match:timeout', { matchRequestId });
-          // The doctor holding the offer can no longer accept it.
-          const doctorUserId = request.matchedDoctorId
-            ? await this.getDoctorUserId(request.matchedDoctorId)
-            : null;
-          if (doctorUserId) {
-            this.server.to(`user:${doctorUserId}`).emit('match:timeout', { matchRequestId });
-          }
+        if (request.status === MatchStatusEnum.TIMEOUT) {
+          await this.announceTimeout({ id: matchRequestId, patientId, matchedDoctorId: request.matchedDoctorId });
         }
       } catch (err) {
         this.logger.error(`Timeout handler error: ${err instanceof Error ? err.message : 'Unknown error'}`);
@@ -326,6 +350,20 @@ export class MatchingGateway
     }, 5 * 60 * 1000);
 
     this.patientTimers.set(matchRequestId, timer);
+  }
+
+  private async announceTimeout(
+    request: Pick<MatchRequest, 'id' | 'patientId' | 'matchedDoctorId'>,
+  ): Promise<void> {
+    const matchRequestId = request.id;
+    this.server.to(`user:${request.patientId}`).emit('match:timeout', { matchRequestId });
+    // The doctor holding the offer can no longer accept it.
+    const doctorUserId = request.matchedDoctorId
+      ? await this.getDoctorUserId(request.matchedDoctorId)
+      : null;
+    if (doctorUserId) {
+      this.server.to(`user:${doctorUserId}`).emit('match:timeout', { matchRequestId });
+    }
   }
 
   private clearTimeout(matchRequestId: string): void {
