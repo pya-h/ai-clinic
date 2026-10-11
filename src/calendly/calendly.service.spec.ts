@@ -299,29 +299,62 @@ describe('CalendlyService', () => {
   // ──────────────── verifyWebhookSignature ────────────────
 
   describe('verifyWebhookSignature', () => {
-    it('should verify a valid signature', () => {
-      const timestamp = '1234567890';
-      const body = '{"event":"invitee.created"}';
-      const data = `${timestamp}.${body}`;
-      const hmac = crypto
-        .createHmac('sha256', 'test-signing-key')
-        .update(data)
-        .digest('hex');
-      const signature = `t=${timestamp},v1=${hmac}`;
+    const body = () => JSON.stringify({ event: 'invitee.created', id: crypto.randomUUID() });
+    const sign = (timestamp: string, rawBody: string, key = 'test-signing-key') =>
+      `t=${timestamp},v1=${crypto.createHmac('sha256', key).update(`${timestamp}.${rawBody}`).digest('hex')}`;
+    // Fixed "now" so the tolerance boundaries are exact.
+    const now = 1_800_000_000 + Math.floor(Math.random() * 1_000_000);
+    const secondsAgo = (seconds: number) => String(now - seconds);
 
-      expect(service.verifyWebhookSignature(body, signature, timestamp)).toBe(true);
+    beforeEach(() => jest.spyOn(Date, 'now').mockReturnValue(now * 1000));
+    afterEach(() => jest.restoreAllMocks());
+
+    it.each([0, 1, 90, 180, -60, -180])('should verify a valid signature sent %is ago', (age) => {
+      const rawBody = body();
+      const timestamp = secondsAgo(age);
+
+      expect(service.verifyWebhookSignature(rawBody, sign(timestamp, rawBody), timestamp)).toBe(true);
+    });
+
+    it.each([181, 600, 86_400, -181, -3600])(
+      'should reject a correctly signed webhook whose timestamp is %is old (replay or skew)',
+      (age) => {
+        const rawBody = body();
+        const timestamp = secondsAgo(age);
+
+        expect(service.verifyWebhookSignature(rawBody, sign(timestamp, rawBody), timestamp)).toBe(false);
+      },
+    );
+
+    it.each(['', 'abc', '1.5', '-1', ' 1800000000', `${now}x`])(
+      'should reject a non-numeric timestamp %j',
+      (timestamp) => {
+        const rawBody = body();
+
+        expect(service.verifyWebhookSignature(rawBody, sign(timestamp, rawBody), timestamp)).toBe(false);
+      },
+    );
+
+    it('should reject a fresh timestamp that is not the signed one', () => {
+      const rawBody = body();
+
+      expect(service.verifyWebhookSignature(rawBody, sign(secondsAgo(600), rawBody), secondsAgo(0))).toBe(false);
+    });
+
+    it('should reject a signature over another body, or made with another key', () => {
+      const rawBody = body();
+      const timestamp = secondsAgo(0);
+
+      expect(service.verifyWebhookSignature(rawBody, sign(timestamp, body()), timestamp)).toBe(false);
+      expect(service.verifyWebhookSignature(rawBody, sign(timestamp, rawBody, 'other-key'), timestamp)).toBe(false);
     });
 
     it('should reject an invalid signature', () => {
-      expect(
-        service.verifyWebhookSignature('body', 't=123,v1=invalid', '123'),
-      ).toBe(false);
+      expect(service.verifyWebhookSignature('body', `t=${now},v1=invalid`, String(now))).toBe(false);
     });
 
     it('should reject when no v1 prefix in signature', () => {
-      expect(
-        service.verifyWebhookSignature('body', 't=123,bad=hmac', '123'),
-      ).toBe(false);
+      expect(service.verifyWebhookSignature('body', `t=${now},bad=hmac`, String(now))).toBe(false);
     });
 
     it('should return false when signing key is empty', async () => {
@@ -343,7 +376,8 @@ describe('CalendlyService', () => {
       }).compile();
       const svc = module.get<CalendlyService>(CalendlyService);
 
-      expect(svc.verifyWebhookSignature('body', 'sig', '123')).toBe(false);
+      const timestamp = String(now);
+      expect(svc.verifyWebhookSignature('body', sign(timestamp, 'body', ''), timestamp)).toBe(false);
     });
   });
 

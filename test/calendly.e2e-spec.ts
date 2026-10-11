@@ -2,7 +2,8 @@
  * Calendly E2E Tests
  *
  * Tests:
- *   POST /calendly/webhook            — valid invitee.created + invitee.canceled + invalid signature + missing signature
+ *   POST /calendly/webhook            — valid invitee.created + invitee.canceled + invalid signature + missing signature,
+ *                                       all with the global CsrfGuard installed (the webhook is exempt; other routes aren't)
  *   GET  /calendly/event-types        — authenticated + unauthenticated
  *   GET  /calendly/appointment/:id/event — authenticated + unauthenticated + invalid ID
  */
@@ -22,6 +23,9 @@ import { UtilsModule } from '../src/utils/utils.module';
 import { CalendlyModule } from '../src/calendly/calendly.module';
 import { CalendlyService } from '../src/calendly/calendly.service';
 import { ExceptionTemplateFilter } from '../src/common/filters/exception-template.filter';
+import { CsrfGuard } from '../src/common/guards/csrf.guard';
+import fastifyCookie from '@fastify/cookie';
+import { randomBytes } from 'crypto';
 import { ResponseTemplateInterceptor } from '../src/common/interceptors/response-template.interceptor';
 import {
   createMockPrismaService,
@@ -107,9 +111,13 @@ describe('Calendly (e2e)', () => {
 
     app = moduleFixture.createNestApplication<NestFastifyApplication>(
       new FastifyAdapter(),
+      { rawBody: true },
     );
     app.useGlobalFilters(new ExceptionTemplateFilter());
     app.useGlobalInterceptors(new ResponseTemplateInterceptor());
+    // As in main.ts: Calendly's servers send no CSRF cookie or header.
+    await app.register(fastifyCookie);
+    app.useGlobalGuards(new CsrfGuard());
     app.useGlobalPipes(
       new ValidationPipe({
         whitelist: true,
@@ -282,6 +290,51 @@ describe('Calendly (e2e)', () => {
       });
 
       expect(res.statusCode).toBe(HttpStatus.BAD_REQUEST);
+    });
+
+    it('should keep CSRF enforced on other routes in this app (403 without a token)', async () => {
+      const res = await app.inject({
+        method: 'POST',
+        url: '/auth/login',
+        payload: { email: 'someone@example.com', password: 'whatever' },
+      });
+
+      expect(res.statusCode).toBe(HttpStatus.FORBIDDEN);
+      expect(JSON.parse(res.body).message).toBe('Invalid or missing CSRF token');
+    });
+
+    it('should accept a webhook carrying unrelated cookies and no CSRF header', async () => {
+      mockCalendlyService.verifyWebhookSignature.mockReturnValue(true);
+
+      const res = await app.inject({
+        method: 'POST',
+        url: '/calendly/webhook',
+        payload: validWebhookBody,
+        headers: {
+          'calendly-webhook-signature': 't=1234567890,v1=abc123signature',
+          cookie: `csrf-token=${randomBytes(16).toString('hex')}`,
+        },
+      });
+
+      expect(res.statusCode).toBe(HttpStatus.OK);
+      expect(mockCalendlyService.handleWebhookEvent).toHaveBeenCalledTimes(1);
+    });
+
+    it('should check the signature over the exact bytes received, with the header and its timestamp', async () => {
+      mockCalendlyService.verifyWebhookSignature.mockReturnValue(true);
+      const timestamp = String(Math.floor(Date.now() / 1000));
+      const signature = `t=${timestamp},v1=${randomBytes(32).toString('hex')}`;
+      // Spacing that re-serializing the parsed body would lose.
+      const rawBody = JSON.stringify(validWebhookBody, null, 1 + Math.floor(Math.random() * 4)) + '\n';
+
+      await app.inject({
+        method: 'POST',
+        url: '/calendly/webhook',
+        payload: rawBody,
+        headers: { 'calendly-webhook-signature': signature, 'content-type': 'application/json' },
+      });
+
+      expect(mockCalendlyService.verifyWebhookSignature).toHaveBeenCalledWith(rawBody, signature, timestamp);
     });
 
     it('should reject webhook with empty body', async () => {

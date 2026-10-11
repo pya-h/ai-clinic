@@ -21,6 +21,8 @@ import * as crypto from 'crypto';
 const CACHE_GROUP = 'calendly';
 const EVENT_TYPES_KEY = 'event-types';
 const EVENT_TYPES_TTL = 60 * 60 * 1000; // 1 hour
+// Calendly's recommended tolerance for the signed timestamp.
+const WEBHOOK_TOLERANCE_SECONDS = 3 * 60;
 
 @Injectable()
 export class CalendlyService {
@@ -172,6 +174,10 @@ export class CalendlyService {
     timestamp: string,
   ): boolean {
     if (!this.webhookSigningKey) return false;
+
+    // `t` (Unix seconds) is signed with the body; an old one means a replayed request.
+    const sentAt = /^\d+$/.test(timestamp) ? Number(timestamp) : NaN;
+    if (!(Math.abs(Date.now() / 1000 - sentAt) <= WEBHOOK_TOLERANCE_SECONDS)) return false;
 
     const data = `${timestamp}.${rawBody}`;
     const expectedSignature = crypto

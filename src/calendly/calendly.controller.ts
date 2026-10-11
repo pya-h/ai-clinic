@@ -23,6 +23,7 @@ import { User } from '@prisma/client';
 import { CalendlyWebhookEvent } from './types/calendly.types';
 import { FastifyRequest } from 'fastify';
 import { SkipThrottle } from '@nestjs/throttler';
+import { SkipCsrf } from '../common/decorators/skip-csrf.decorator';
 
 @ApiTags('Calendly')
 @Controller('calendly')
@@ -34,6 +35,8 @@ export class CalendlyController {
       'Calendly webhook endpoint. Handles invitee.created and invitee.canceled events.',
   })
   @SkipThrottle()
+  // Calendly's servers send no CSRF cookie; the signature below authenticates them instead.
+  @SkipCsrf()
   @Post('webhook')
   @HttpCode(200)
   @UsePipes(new ValidationPipe({ whitelist: true, transform: true }))
