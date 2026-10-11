@@ -9,7 +9,6 @@ export default () => ({
       'development'
     ).toLowerCase(),
     appPort: parseInt(process.env.APP_PORT ?? '8080', 10) || 8080,
-    appName: process.env.APP_NAME,
-    slogan: process.env.SLOGAN,
+    appName: process.env.APP_NAME || 'AI-Clinic',
   },
 });

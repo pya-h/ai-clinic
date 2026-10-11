@@ -7,11 +7,11 @@ const logger = new Logger('SwaggerSetup');
 export const setupSwagger = (app: INestApplication) => {
   const configService = app.get<ConfigService>(ConfigService);
 
-  const isInDebugMode = configService.get<boolean>('general.debug'),
-    appPort = configService.getOrThrow<number>('general.appPort'),
-    appName = configService.getOrThrow<string>('general.appName');
+  const isInDebugMode = configService.get<boolean>('general.debug');
 
   if (isInDebugMode) {
+    const appPort = configService.getOrThrow<number>('general.appPort'),
+      appName = configService.getOrThrow<string>('general.appName');
     // TODO: Make it password protected using basicAuth when app is not in development mode.
     const config = new DocumentBuilder()
       .setTitle(appName)

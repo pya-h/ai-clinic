@@ -1,3 +1,4 @@
+import { spawnSync } from 'child_process';
 import { existsSync, readdirSync, readFileSync } from 'fs';
 import * as path from 'path';
 import * as ts from 'typescript';
@@ -194,6 +195,67 @@ describe('build configuration', () => {
         ignored: false,
       });
     }
+  });
+
+  /** Environment variables the server and its seed read. */
+  const envVarsRead = () => {
+    const sources = readdirSync(path.join(serverRoot, 'src'), { recursive: true, encoding: 'utf8' })
+      .filter((file) => file.endsWith('.ts') && !file.endsWith('.spec.ts'))
+      .map((file) => read(path.join('src', file)))
+      .concat(read('prisma/seed.ts'));
+    const names = sources.flatMap((source) =>
+      [...source.matchAll(/process\.env\.([A-Z][A-Z0-9_]*)/g)].map((m) => m[1]),
+    );
+    for (const m of read('prisma/schema.prisma').matchAll(/env\("([A-Z][A-Z0-9_]*)"\)/g)) names.push(m[1]);
+    return [...new Set(names)].sort();
+  };
+
+  it('should list in .env.example exactly the variables the server reads', () => {
+    const listed = [...read('.env.example').matchAll(/^#?\s*([A-Z][A-Z0-9_]*)=/gm)].map((m) => m[1]);
+
+    expect(envVarsRead()).toContain('DATABASE_URL');
+    expect([...new Set(listed)].sort()).toEqual(envVarsRead());
+  });
+
+  describe('ESLint', () => {
+    const eslint = (args: string[], input?: string) =>
+      spawnSync(process.execPath, [path.join(serverRoot, 'node_modules/eslint/bin/eslint.js'), ...args], {
+        cwd: serverRoot,
+        input,
+        encoding: 'utf8',
+      });
+
+    it('should have only a flat config, which ESLint 9 loads', () => {
+      const result = eslint(['--print-config', 'src/main.ts']);
+
+      expect(readdirSync(serverRoot).filter((file) => file.startsWith('.eslintrc'))).toEqual([]);
+      expect(result.stderr).toBe('');
+      expect(result.status).toBe(0);
+      const { rules } = JSON.parse(result.stdout);
+      expect(rules['prettier/prettier']).toEqual([2]);
+      expect(rules['@typescript-eslint/no-explicit-any']).toEqual([0]);
+    });
+
+    it('should report unused variables, except _-prefixed ones and rest siblings', () => {
+      const name = () => `v${Math.random().toString(36).slice(2, 8)}`;
+      const [arg, used, omitted, underscored, unused] = [name(), name(), name(), name(), name()];
+      const source = [
+        `export function f(_${arg}: number, ${used}: number): number {`,
+        `  const { ${omitted}, ...rest } = { ${omitted}: 1, kept: 2 };`,
+        `  const _${underscored} = 3;`,
+        `  const ${unused} = 4;`,
+        `  return ${used} + rest.kept;`,
+        `}`,
+        ``,
+      ].join('\n');
+
+      const result = eslint(['--format', 'json', '--stdin', '--stdin-filename', 'src/lint-check.ts'], source);
+      const [{ messages }] = JSON.parse(result.stdout);
+
+      expect(messages.map((m: { ruleId: string; message: string }) => [m.ruleId, m.message])).toEqual([
+        ['@typescript-eslint/no-unused-vars', expect.stringContaining(`'${unused}' is assigned a value but never used.`)],
+      ]);
+    });
   });
 
   describe('helpers', () => {

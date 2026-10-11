@@ -25,7 +25,7 @@ export function splitIn2<T>(
   items: Array<T> | Set<T>,
   condition: (item: T) => boolean,
 ) {
-  let trues: T[] = [],
+  const trues: T[] = [],
     falses: T[] = [];
 
   for (const item of items) {
@@ -38,7 +38,7 @@ export function splitIn2Set<T>(
   items: Array<T> | Set<T>,
   condition: (item: T) => boolean,
 ) {
-  let trues = new Set<T>(),
+  const trues = new Set<T>(),
     falses = new Set<T>();
 
   for (const item of items) {

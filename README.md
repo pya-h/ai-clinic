@@ -46,7 +46,7 @@ Key environment variables:
 |----------|----------|-------------|
 | `DATABASE_URL` | Yes | PostgreSQL connection string |
 | `SESSION_SECRET` | Yes | Session encryption secret (use a long random string; startup warns below 16 chars) |
-| `APP_NAME` | Yes | App name, used as the Swagger title (startup fails without it) |
+| `APP_NAME` | No | App name, used as the Swagger title (default: `AI-Clinic`) |
 | `APP_PORT` | No | Server port (default: `8080`) |
 | `APP_ENV` | No | `production` enables rate limiting; anything else disables it (falls back to `NODE_ENV`, default `development`) |
 | `NODE_ENV` | No | `production` adds the `Secure` flag to the session and CSRF cookies |
@@ -60,7 +60,7 @@ Key environment variables:
 | `OPENAI_API_KEY`, `OPENAI_MODEL` | No | OpenAI key and model (default model: `gpt-3.5-turbo`) |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM` | No | Email notifications |
 | `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` | No | Web push notifications |
-| `CALENDLY_API_KEY`, `CALENDLY_ORGANIZATION_URI`, `CALENDLY_USER_URI` | No | Calendly API access |
+| `CALENDLY_API_KEY`, `CALENDLY_ORGANIZATION_URI` | No | Calendly API access |
 | `CALENDLY_WEBHOOK_SIGNING_KEY` | No | Verifies Calendly webhooks (all webhooks are rejected without it) |
 | `STORAGE_TYPE` | No | `local` (default); `s3` is not implemented yet and falls back to local |
 | `STORAGE_LOCAL_PATH` | No | Upload directory (default: `./uploads`) |
@@ -500,7 +500,7 @@ Tests use:
 | `pnpm start:debug` | Start with debugger |
 | `pnpm build` | Build for production |
 | `pnpm start:prod` | Run production build |
-| `pnpm lint` | Lint and auto-fix (currently fails: ESLint 9 expects `eslint.config.js`, the repo has `.eslintrc.js`) |
+| `pnpm lint` | Lint and auto-fix, including Prettier formatting (config: `eslint.config.mjs`) |
 | `pnpm format` | Format with Prettier |
 | `pnpm test` | Run unit tests |
 | `pnpm test:watch` | Unit tests in watch mode |

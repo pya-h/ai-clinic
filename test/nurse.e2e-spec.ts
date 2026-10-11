@@ -35,7 +35,6 @@ import {
 import {
   createMockUser,
   createMockDoctorUser,
-  createMockAdminUser,
   createMockNurseUser,
   MockUser,
 } from './helpers/mock-session.helper';
@@ -77,7 +76,6 @@ describe('Nurse (e2e)', () => {
 
   const patientUser = createMockUser();
   const doctorUser = createMockDoctorUser();
-  const adminUser = createMockAdminUser();
   const nurseUser = createMockNurseUser();
 
   const doctorProfileId = 42;

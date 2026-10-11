@@ -18,7 +18,6 @@ const mockConfig = new Map<string, string>([
   ['calendly.apiKey', 'test-api-key'],
   ['calendly.organizationUri', 'https://api.calendly.com/organizations/test-org'],
   ['calendly.webhookSigningKey', 'test-signing-key'],
-  ['calendly.userUri', 'https://api.calendly.com/users/test-user'],
 ]);
 
 const mockCache = {
