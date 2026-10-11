@@ -1,5 +1,6 @@
+import { randomInt } from 'crypto';
 import { Test, TestingModule } from '@nestjs/testing';
-import { NurseService } from './nurse.service';
+import { NurseService, REINVITE_COOLDOWN_MS } from './nurse.service';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   createMockPrismaService,
@@ -181,11 +182,22 @@ describe('NurseService', () => {
       expect(notificationService.onNurseInvitation).not.toHaveBeenCalled();
     });
 
+    const ago = (ms: number) => new Date(Date.now() - ms);
+
     it.each([
-      ['declined', NurseAssignmentStatusEnum.DECLINED],
-      ['removed', NurseAssignmentStatusEnum.ACCEPTED],
-    ])('should turn a %s assignment back into a pending invitation', async (_case, status) => {
-      const existing = { id: randomId(), doctorId: doctorProfile.id, nurseId: nurseUser.id, isActive: false, status };
+      // A removal is the doctor's own doing, so no cooldown follows it.
+      ['removed, even just now,', NurseAssignmentStatusEnum.ACCEPTED, () => ago(randomInt(0, REINVITE_COOLDOWN_MS))],
+      ['declined, past the cooldown,', NurseAssignmentStatusEnum.DECLINED, () => ago(REINVITE_COOLDOWN_MS + randomInt(1, 1e10))],
+      ['declined before answers were dated', NurseAssignmentStatusEnum.DECLINED, () => null],
+    ])('should turn a %s assignment back into a pending invitation', async (_case, status, respondedAt) => {
+      const existing = {
+        id: randomId(),
+        doctorId: doctorProfile.id,
+        nurseId: nurseUser.id,
+        isActive: false,
+        status,
+        respondedAt: respondedAt(),
+      };
       givenInvitee(nurseUser, existing);
       const permissions = [NursePermissionEnum.VIEW_SOAPS];
 
@@ -196,6 +208,7 @@ describe('NurseService', () => {
           id: existing.id,
           isActive: false,
           status: { not: NurseAssignmentStatusEnum.PENDING },
+          respondedAt: existing.respondedAt,
         },
         data: {
           permissions,
@@ -205,6 +218,49 @@ describe('NurseService', () => {
         },
       });
       expect(prisma.doctorNurseAssignment.create).not.toHaveBeenCalled();
+      expect(notificationService.onNurseInvitation).toHaveBeenCalledTimes(1);
+    });
+
+    it('should refuse to re-invite within 7 days of a decline (409), saying from when', async () => {
+      const now = Date.now();
+      jest.spyOn(Date, 'now').mockReturnValue(now);
+      const respondedAt = new Date(now - randomInt(0, REINVITE_COOLDOWN_MS));
+      givenInvitee(nurseUser, {
+        id: randomId(),
+        isActive: false,
+        status: NurseAssignmentStatusEnum.DECLINED,
+        respondedAt,
+      });
+
+      try {
+        await expect(service.assignNurse(doctorUser as any, { nurseId: nurseUser.id })).rejects.toThrow(
+          new ConflictException(
+            'This user declined your invitation recently. You can invite them again from ' +
+              `${new Date(respondedAt.getTime() + 7 * 24 * 3600_000).toISOString()}.`,
+          ),
+        );
+      } finally {
+        jest.restoreAllMocks();
+      }
+      expect(prisma.doctorNurseAssignment.updateMany).not.toHaveBeenCalled();
+      expect(notificationService.onNurseInvitation).not.toHaveBeenCalled();
+    });
+
+    it('should allow a re-invite exactly when the cooldown ends', async () => {
+      const now = Date.now();
+      jest.spyOn(Date, 'now').mockReturnValue(now);
+      givenInvitee(nurseUser, {
+        id: randomId(),
+        isActive: false,
+        status: NurseAssignmentStatusEnum.DECLINED,
+        respondedAt: new Date(now - REINVITE_COOLDOWN_MS),
+      });
+
+      try {
+        await service.assignNurse(doctorUser as any, { nurseId: nurseUser.id });
+      } finally {
+        jest.restoreAllMocks();
+      }
       expect(notificationService.onNurseInvitation).toHaveBeenCalledTimes(1);
     });
 

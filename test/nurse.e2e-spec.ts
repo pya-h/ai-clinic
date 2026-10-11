@@ -256,6 +256,40 @@ describe('Nurse (e2e)', () => {
       expect(prisma.notification.create).not.toHaveBeenCalled();
     });
 
+    it.each([
+      ['within 7 days of a decline', 1, HttpStatus.CONFLICT],
+      ['once 7 days have passed since a decline', -1, HttpStatus.CREATED],
+    ])('should answer a re-invite %s with %s', async (_case, sign, status) => {
+      sessionUser = doctorUser;
+      const week = 7 * 24 * 3600_000;
+      const respondedAt = new Date(Date.now() - week + sign * (60_000 + Math.floor(Math.random() * 3 * 24 * 3600_000)));
+      const declined = buildAssignment({ isActive: false, status: NurseAssignmentStatusEnum.DECLINED, respondedAt });
+      prisma.doctorProfile.findUnique.mockResolvedValue(doctorProfile);
+      prisma.user.findUnique.mockResolvedValue(createMockUser());
+      prisma.doctorNurseAssignment.findUnique.mockResolvedValue(declined);
+      prisma.doctorNurseAssignment.updateMany.mockResolvedValue({ count: 1 });
+      prisma.doctorNurseAssignment.findUniqueOrThrow.mockResolvedValue({ ...declined, status: 'PENDING' });
+      prisma.notification.create.mockResolvedValue({ id: 1 });
+
+      const res = await app.inject({
+        method: 'POST',
+        url: '/nurse/assign',
+        payload: { nurseId: declined.nurseId },
+      });
+
+      expect(res.statusCode).toBe(status);
+      if (status === HttpStatus.CONFLICT) {
+        expect(JSON.parse(res.body).message).toBe(
+          'This user declined your invitation recently. You can invite them again from ' +
+            `${new Date(respondedAt.getTime() + week).toISOString()}.`,
+        );
+        expect(prisma.doctorNurseAssignment.updateMany).not.toHaveBeenCalled();
+        expect(prisma.notification.create).not.toHaveBeenCalled();
+      } else {
+        expect(prisma.doctorNurseAssignment.updateMany).toHaveBeenCalledTimes(1);
+      }
+    });
+
     it('should return 401 when not authenticated', async () => {
       sessionUser = null;
 

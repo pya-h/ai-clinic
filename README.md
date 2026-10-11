@@ -210,7 +210,7 @@ Auth column: **—** = no login needed, **Optional** = works as guest or logged 
 
 | Method | Endpoint | Auth | Description |
 |--------|----------|------|-------------|
-| POST | `/nurse/assign` | DOCTOR | Invite a user to the doctor's team (verified doctors only); creates a pending invitation |
+| POST | `/nurse/assign` | DOCTOR | Invite a user to the doctor's team (verified doctors only); creates a pending invitation. After a decline, the same doctor can invite that user again only after 7 days (409 until then) |
 | PATCH | `/nurse/assignment/:id/permissions` | DOCTOR | Update an assignment's permissions |
 | DELETE | `/nurse/assignment/:id` | DOCTOR | Cancel a pending invitation or deactivate an assignment |
 | GET | `/nurse/invitations` | PATIENT, NURSE, NONE | List pending invitations sent to me |

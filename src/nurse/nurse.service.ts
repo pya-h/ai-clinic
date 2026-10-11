@@ -22,6 +22,9 @@ import {
 import { AssignNurseDto } from './dto/assign-nurse.dto';
 import { UpdatePermissionsDto } from './dto/update-permissions.dto';
 
+/** How long after a decline the same doctor can't invite that user again. */
+export const REINVITE_COOLDOWN_MS = 7 * 24 * 60 * 60 * 1000;
+
 @Injectable()
 export class NurseService {
   private readonly logger = new Logger(NurseService.name);
@@ -71,6 +74,14 @@ export class NurseService {
     if (existing?.status === NurseAssignmentStatusEnum.PENDING) {
       throw new ConflictException('This user already has a pending invitation from you.');
     }
+    if (existing?.status === NurseAssignmentStatusEnum.DECLINED && existing.respondedAt) {
+      const invitableFrom = new Date(existing.respondedAt.getTime() + REINVITE_COOLDOWN_MS);
+      if (invitableFrom.getTime() > Date.now()) {
+        throw new ConflictException(
+          `This user declined your invitation recently. You can invite them again from ${invitableFrom.toISOString()}.`,
+        );
+      }
+    }
 
     const invitation = {
       permissions: dto.permissions ?? [NursePermissionEnum.VIEW_PATIENTS],
@@ -79,7 +90,8 @@ export class NurseService {
       respondedAt: null,
     };
     // A declined or removed assignment is reused as the new invitation. Both writes
-    // are conditional so that a concurrent invite can't send a second one.
+    // are conditional so that a concurrent invite can't send a second one, and a
+    // decline in between can't skip the cooldown.
     try {
       if (existing) {
         const { count } = await this.prisma.doctorNurseAssignment.updateMany({
@@ -87,6 +99,7 @@ export class NurseService {
             id: existing.id,
             isActive: false,
             status: { not: NurseAssignmentStatusEnum.PENDING },
+            respondedAt: existing.respondedAt,
           },
           data: invitation,
         });
