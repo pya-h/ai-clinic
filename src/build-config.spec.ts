@@ -4,7 +4,9 @@ import * as path from 'path';
 import * as ts from 'typescript';
 
 /** `importers['.']` of pnpm-lock.yaml as name → specifier, per dependency section. */
-function lockfileImporter(lockfile: string): Record<string, Record<string, string>> {
+function lockfileImporter(
+  lockfile: string,
+): Record<string, Record<string, string>> {
   // pnpm 11+ puts a separate document (the pinned package manager) first.
   const doc = lockfile
     .split(/^---$/m)
@@ -157,7 +159,9 @@ describe('build configuration', () => {
 
   it('should run production under dumb-init, installed in that stage', () => {
     const dockerfile = read('Dockerfile');
-    const production = dockerfile.slice(dockerfile.search(/^FROM .* AS production$/m));
+    const production = dockerfile.slice(
+      dockerfile.search(/^FROM .* AS production$/m),
+    );
 
     // Without an init process, `node` as PID 1 ignores SIGTERM and isn't reaped properly.
     expect(production).toMatch(/apt-get install[^\n]*\bdumb-init\b/);
@@ -178,9 +182,14 @@ describe('build configuration', () => {
       .map((line) => line.trim())
       .filter((line) => line && !line.startsWith('#'));
     const exists = (source: string) => {
-      if (!source.includes('*')) return existsSync(path.join(serverRoot, source));
-      const name = new RegExp(`^${path.basename(source).replace(/\./g, '\\.').replace(/\*/g, '.*')}$`);
-      return readdirSync(path.join(serverRoot, path.dirname(source))).some((f) => name.test(f));
+      if (!source.includes('*'))
+        return existsSync(path.join(serverRoot, source));
+      const name = new RegExp(
+        `^${path.basename(source).replace(/\./g, '\\.').replace(/\*/g, '.*')}$`,
+      );
+      return readdirSync(path.join(serverRoot, path.dirname(source))).some(
+        (f) => name.test(f),
+      );
     };
     const sources = read('Dockerfile')
       .split('\n')
@@ -189,7 +198,11 @@ describe('build configuration', () => {
 
     expect(sources.length).toBeGreaterThan(0);
     for (const source of sources) {
-      expect({ source, exists: exists(source), ignored: dockerIgnored(source, ignore) }).toEqual({
+      expect({
+        source,
+        exists: exists(source),
+        ignored: dockerIgnored(source, ignore),
+      }).toEqual({
         source,
         exists: true,
         ignored: false,
@@ -199,19 +212,27 @@ describe('build configuration', () => {
 
   /** Environment variables the server and its seed read. */
   const envVarsRead = () => {
-    const sources = readdirSync(path.join(serverRoot, 'src'), { recursive: true, encoding: 'utf8' })
+    const sources = readdirSync(path.join(serverRoot, 'src'), {
+      recursive: true,
+      encoding: 'utf8',
+    })
       .filter((file) => file.endsWith('.ts') && !file.endsWith('.spec.ts'))
       .map((file) => read(path.join('src', file)))
       .concat(read('prisma/seed.ts'));
     const names = sources.flatMap((source) =>
       [...source.matchAll(/process\.env\.([A-Z][A-Z0-9_]*)/g)].map((m) => m[1]),
     );
-    for (const m of read('prisma/schema.prisma').matchAll(/env\("([A-Z][A-Z0-9_]*)"\)/g)) names.push(m[1]);
+    for (const m of read('prisma/schema.prisma').matchAll(
+      /env\("([A-Z][A-Z0-9_]*)"\)/g,
+    ))
+      names.push(m[1]);
     return [...new Set(names)].sort();
   };
 
   it('should list in .env.example exactly the variables the server reads', () => {
-    const listed = [...read('.env.example').matchAll(/^#?\s*([A-Z][A-Z0-9_]*)=/gm)].map((m) => m[1]);
+    const listed = [
+      ...read('.env.example').matchAll(/^#?\s*([A-Z][A-Z0-9_]*)=/gm),
+    ].map((m) => m[1]);
 
     expect(envVarsRead()).toContain('DATABASE_URL');
     expect([...new Set(listed)].sort()).toEqual(envVarsRead());
@@ -219,16 +240,22 @@ describe('build configuration', () => {
 
   describe('ESLint', () => {
     const eslint = (args: string[], input?: string) =>
-      spawnSync(process.execPath, [path.join(serverRoot, 'node_modules/eslint/bin/eslint.js'), ...args], {
-        cwd: serverRoot,
-        input,
-        encoding: 'utf8',
-      });
+      spawnSync(
+        process.execPath,
+        [path.join(serverRoot, 'node_modules/eslint/bin/eslint.js'), ...args],
+        {
+          cwd: serverRoot,
+          input,
+          encoding: 'utf8',
+        },
+      );
 
     it('should have only a flat config, which ESLint 9 loads', () => {
       const result = eslint(['--print-config', 'src/main.ts']);
 
-      expect(readdirSync(serverRoot).filter((file) => file.startsWith('.eslintrc'))).toEqual([]);
+      expect(
+        readdirSync(serverRoot).filter((file) => file.startsWith('.eslintrc')),
+      ).toEqual([]);
       expect(result.stderr).toBe('');
       expect(result.status).toBe(0);
       const { rules } = JSON.parse(result.stdout);
@@ -238,7 +265,13 @@ describe('build configuration', () => {
 
     it('should report unused variables, except _-prefixed ones and rest siblings', () => {
       const name = () => `v${Math.random().toString(36).slice(2, 8)}`;
-      const [arg, used, omitted, underscored, unused] = [name(), name(), name(), name(), name()];
+      const [arg, used, omitted, underscored, unused] = [
+        name(),
+        name(),
+        name(),
+        name(),
+        name(),
+      ];
       const source = [
         `export function f(_${arg}: number, ${used}: number): number {`,
         `  const { ${omitted}, ...rest } = { ${omitted}: 1, kept: 2 };`,
@@ -249,11 +282,30 @@ describe('build configuration', () => {
         ``,
       ].join('\n');
 
-      const result = eslint(['--format', 'json', '--stdin', '--stdin-filename', 'src/lint-check.ts'], source);
+      const result = eslint(
+        [
+          '--format',
+          'json',
+          '--stdin',
+          '--stdin-filename',
+          'src/lint-check.ts',
+        ],
+        source,
+      );
       const [{ messages }] = JSON.parse(result.stdout);
 
-      expect(messages.map((m: { ruleId: string; message: string }) => [m.ruleId, m.message])).toEqual([
-        ['@typescript-eslint/no-unused-vars', expect.stringContaining(`'${unused}' is assigned a value but never used.`)],
+      expect(
+        messages.map((m: { ruleId: string; message: string }) => [
+          m.ruleId,
+          m.message,
+        ]),
+      ).toEqual([
+        [
+          '@typescript-eslint/no-unused-vars',
+          expect.stringContaining(
+            `'${unused}' is assigned a value but never used.`,
+          ),
+        ],
       ]);
     });
   });

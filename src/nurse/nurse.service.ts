@@ -72,10 +72,17 @@ export class NurseService {
       throw new ConflictException('This nurse is already assigned to you.');
     }
     if (existing?.status === NurseAssignmentStatusEnum.PENDING) {
-      throw new ConflictException('This user already has a pending invitation from you.');
+      throw new ConflictException(
+        'This user already has a pending invitation from you.',
+      );
     }
-    if (existing?.status === NurseAssignmentStatusEnum.DECLINED && existing.respondedAt) {
-      const invitableFrom = new Date(existing.respondedAt.getTime() + REINVITE_COOLDOWN_MS);
+    if (
+      existing?.status === NurseAssignmentStatusEnum.DECLINED &&
+      existing.respondedAt
+    ) {
+      const invitableFrom = new Date(
+        existing.respondedAt.getTime() + REINVITE_COOLDOWN_MS,
+      );
       if (invitableFrom.getTime() > Date.now()) {
         throw new ConflictException(
           `This user declined your invitation recently. You can invite them again from ${invitableFrom.toISOString()}.`,
@@ -104,29 +111,48 @@ export class NurseService {
           data: invitation,
         });
         if (count === 0) {
-          throw new ConflictException('This user already has a pending invitation from you.');
+          throw new ConflictException(
+            'This user already has a pending invitation from you.',
+          );
         }
       } else {
         await this.prisma.doctorNurseAssignment.create({
-          data: { doctorId: doctorProfile.id, nurseId: dto.nurseId, ...invitation },
+          data: {
+            doctorId: doctorProfile.id,
+            nurseId: dto.nurseId,
+            ...invitation,
+          },
         });
       }
     } catch (err) {
-      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
-        throw new ConflictException('This user already has a pending invitation from you.');
+      if (
+        err instanceof Prisma.PrismaClientKnownRequestError &&
+        err.code === 'P2002'
+      ) {
+        throw new ConflictException(
+          'This user already has a pending invitation from you.',
+        );
       }
       throw err;
     }
 
-    const assignment = await this.prisma.doctorNurseAssignment.findUniqueOrThrow({
-      where: {
-        doctorId_nurseId: { doctorId: doctorProfile.id, nurseId: dto.nurseId },
-      },
-      include: this.assignmentInclude(),
-    });
+    const assignment =
+      await this.prisma.doctorNurseAssignment.findUniqueOrThrow({
+        where: {
+          doctorId_nurseId: {
+            doctorId: doctorProfile.id,
+            nurseId: dto.nurseId,
+          },
+        },
+        include: this.assignmentInclude(),
+      });
 
     this.notificationService
-      .onNurseInvitation(targetUser.id, assignment.id, `${doctorUser.firstname} ${doctorUser.lastname}`)
+      .onNurseInvitation(
+        targetUser.id,
+        assignment.id,
+        `${doctorUser.firstname} ${doctorUser.lastname}`,
+      )
       .catch((e) => this.logger.error(`Notification failed: ${e.message}`));
     this.logger.log(
       `Doctor ${doctorProfile.id} invited user ${dto.nurseId} as a nurse`,
@@ -157,7 +183,11 @@ export class NurseService {
     if (!invitee) {
       throw new NotFoundException('User not found.');
     }
-    if (invitee.role === UserRolesEnum.DOCTOR || invitee.isAdmin || invitee.isSuperAdmin) {
+    if (
+      invitee.role === UserRolesEnum.DOCTOR ||
+      invitee.isAdmin ||
+      invitee.isSuperAdmin
+    ) {
       throw new BadRequestException('Doctors and admins cannot become nurses.');
     }
     const becomesNurse = invitee.role !== UserRolesEnum.NURSE;
@@ -170,11 +200,18 @@ export class NurseService {
       if (becomesNurse) {
         // Conditional on the role checked above, so a concurrent admin change isn't overwritten.
         const { count } = await tx.user.updateMany({
-          where: { id: user.id, role: invitee.role, isAdmin: false, isSuperAdmin: false },
+          where: {
+            id: user.id,
+            role: invitee.role,
+            isAdmin: false,
+            isSuperAdmin: false,
+          },
           data: { role: UserRolesEnum.NURSE },
         });
         if (count === 0) {
-          throw new ConflictException('Your account changed while accepting; please try again.');
+          throw new ConflictException(
+            'Your account changed while accepting; please try again.',
+          );
         }
       }
       return tx.doctorNurseAssignment.findUniqueOrThrow({
@@ -185,7 +222,9 @@ export class NurseService {
 
     if (becomesNurse) {
       UserStatusCache.invalidate(user.id);
-      this.logger.log(`User ${user.id} became a NURSE by accepting assignment ${assignmentId}`);
+      this.logger.log(
+        `User ${user.id} became a NURSE by accepting assignment ${assignmentId}`,
+      );
     }
     this.notifyDoctorOfAnswer(accepted, user, true);
     return accepted;
@@ -226,7 +265,9 @@ export class NurseService {
       throw new ForbiddenException('You do not own this assignment.');
     }
     if (!assignment.isActive) {
-      throw new BadRequestException('Cannot update permissions on an inactive assignment.');
+      throw new BadRequestException(
+        'Cannot update permissions on an inactive assignment.',
+      );
     }
 
     return this.prisma.doctorNurseAssignment.update({
@@ -275,7 +316,10 @@ export class NurseService {
       return this.prisma.doctorNurseAssignment.findMany({
         where: {
           doctorId: doctorProfile.id,
-          OR: [{ isActive: true }, { status: NurseAssignmentStatusEnum.PENDING }],
+          OR: [
+            { isActive: true },
+            { status: NurseAssignmentStatusEnum.PENDING },
+          ],
         },
         include: this.assignmentInclude(),
         orderBy: { createdAt: 'desc' },
@@ -290,7 +334,9 @@ export class NurseService {
       });
     }
 
-    throw new ForbiddenException('Only doctors and nurses can view assignments.');
+    throw new ForbiddenException(
+      'Only doctors and nurses can view assignments.',
+    );
   }
 
   async getAssignment(
@@ -310,14 +356,18 @@ export class NurseService {
     if (user.role === UserRolesEnum.DOCTOR) {
       const doctorProfile = await this.getDoctorProfile(user.id);
       if (assignment.doctorId !== doctorProfile.id) {
-        throw new ForbiddenException('You do not have access to this assignment.');
+        throw new ForbiddenException(
+          'You do not have access to this assignment.',
+        );
       }
       return assignment;
     }
 
     if (user.role === UserRolesEnum.NURSE) {
       if (assignment.nurseId !== user.id) {
-        throw new ForbiddenException('You do not have access to this assignment.');
+        throw new ForbiddenException(
+          'You do not have access to this assignment.',
+        );
       }
       return assignment;
     }
@@ -434,7 +484,10 @@ export class NurseService {
   // ──────────────── Private Helpers ────────────────
 
   /** Someone else's invitation is reported as missing, so ids can't be probed. */
-  private async findPendingInvitation(user: User, assignmentId: number): Promise<void> {
+  private async findPendingInvitation(
+    user: User,
+    assignmentId: number,
+  ): Promise<void> {
     const invitation = await this.prisma.doctorNurseAssignment.findUnique({
       where: { id: assignmentId },
       select: { nurseId: true, status: true },
@@ -455,7 +508,11 @@ export class NurseService {
     data: Prisma.DoctorNurseAssignmentUpdateManyMutationInput,
   ): Promise<void> {
     const { count } = await client.doctorNurseAssignment.updateMany({
-      where: { id: assignmentId, nurseId: user.id, status: NurseAssignmentStatusEnum.PENDING },
+      where: {
+        id: assignmentId,
+        nurseId: user.id,
+        status: NurseAssignmentStatusEnum.PENDING,
+      },
       data: { ...data, respondedAt: new Date() },
     });
     if (count === 0) {

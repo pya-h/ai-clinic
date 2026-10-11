@@ -221,7 +221,11 @@ export function createMockPrismaService(): MockPrismaService {
 
   const mock: MockPrismaService = {
     user: createModelMock(['count', 'updateMany']) as any,
-    doctorProfile: createModelMock(['count', 'updateMany', 'findUniqueOrThrow']) as any,
+    doctorProfile: createModelMock([
+      'count',
+      'updateMany',
+      'findUniqueOrThrow',
+    ]) as any,
     patientProfile: createModelMock() as any,
     doctorReview: createModelMock(['aggregate', 'groupBy', 'count']) as any,
     chat: createModelMock(['count']) as any,
@@ -229,8 +233,16 @@ export function createMockPrismaService(): MockPrismaService {
     message: createModelMock(['count']) as any,
     aiConversation: createModelMock(['count']) as any,
     patientSOAP: createModelMock(['upsert', 'count']) as any,
-    consultation: createModelMock(['count', 'updateMany', 'findUniqueOrThrow']) as any,
-    appointment: createModelMock(['count', 'updateMany', 'findUniqueOrThrow']) as any,
+    consultation: createModelMock([
+      'count',
+      'updateMany',
+      'findUniqueOrThrow',
+    ]) as any,
+    appointment: createModelMock([
+      'count',
+      'updateMany',
+      'findUniqueOrThrow',
+    ]) as any,
     doctorAvailability: createModelMock() as any,
     slotDuration: createModelMock() as any,
     availabilityException: createModelMock() as any,
@@ -238,9 +250,18 @@ export function createMockPrismaService(): MockPrismaService {
     matchRequest: createModelMock(['findUniqueOrThrow', 'updateMany']) as any,
     notification: createModelMock(['count', 'updateMany']) as any,
     pushSubscription: createModelMock(['upsert', 'updateMany']) as any,
-    payment: createModelMock(['count', 'updateMany', 'findUniqueOrThrow']) as any,
+    payment: createModelMock([
+      'count',
+      'updateMany',
+      'findUniqueOrThrow',
+    ]) as any,
     call: createModelMock(['count']) as any,
-    doctorNurseAssignment: createModelMock(['count', 'findUniqueOrThrow', 'updateMany', 'deleteMany']) as any,
+    doctorNurseAssignment: createModelMock([
+      'count',
+      'findUniqueOrThrow',
+      'updateMany',
+      'deleteMany',
+    ]) as any,
     $transaction: jest.fn(),
     $connect: jest.fn(),
     $disconnect: jest.fn(),

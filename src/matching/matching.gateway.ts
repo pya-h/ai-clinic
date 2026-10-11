@@ -9,13 +9,23 @@ import {
   WebSocketServer,
   WsException,
 } from '@nestjs/websockets';
-import { Inject, Logger, OnApplicationBootstrap, OnModuleDestroy, forwardRef } from '@nestjs/common';
+import {
+  Inject,
+  Logger,
+  OnApplicationBootstrap,
+  OnModuleDestroy,
+  forwardRef,
+} from '@nestjs/common';
 import { Server, Socket } from 'socket.io';
 import { ConfigService } from '@nestjs/config';
 import { HttpAdapterHost } from '@nestjs/core';
 import type { FastifyInstance } from 'fastify';
 import { MatchingService } from './matching.service';
-import { DoctorSpecialtiesEnum, MatchRequest, MatchStatusEnum } from '@prisma/client';
+import {
+  DoctorSpecialtiesEnum,
+  MatchRequest,
+  MatchStatusEnum,
+} from '@prisma/client';
 import { NotificationService } from '../notification/notification.service';
 import { WsRateLimiter } from '../common/tools/ws-rate-limiter';
 import { PrismaService } from '../prisma/prisma.service';
@@ -27,7 +37,9 @@ const EXPIRY_SWEEP_INTERVAL_MS = 60_000;
 @WebSocketGateway({
   namespace: '/matching',
   cors: {
-    origin: (process.env.CORS_ORIGIN || 'http://localhost:5173').split(',').map(o => o.trim()),
+    origin: (process.env.CORS_ORIGIN || 'http://localhost:5173')
+      .split(',')
+      .map((o) => o.trim()),
     credentials: true,
   },
 })
@@ -60,7 +72,10 @@ export class MatchingGateway
 
   onApplicationBootstrap(): void {
     void this.expireStaleRequests();
-    this.expirySweep = setInterval(() => void this.expireStaleRequests(), EXPIRY_SWEEP_INTERVAL_MS);
+    this.expirySweep = setInterval(
+      () => void this.expireStaleRequests(),
+      EXPIRY_SWEEP_INTERVAL_MS,
+    );
     this.expirySweep.unref();
   }
 
@@ -78,15 +93,20 @@ export class MatchingGateway
     server.use(async (socket: Socket, next) => {
       try {
         const sessionUser = this.extractUserFromSocket(socket);
-        if (!sessionUser) return next(new Error('Unauthorized: No valid session'));
+        if (!sessionUser)
+          return next(new Error('Unauthorized: No valid session'));
         const status = await UserStatusCache.get(this.prisma, sessionUser.id);
         if (!status) return next(new Error('Unauthorized: No valid session'));
-        if (status.isBanned) return next(new Error('Unauthorized: Account banned'));
-        if (!status.isActive) return next(new Error('Unauthorized: Account deactivated'));
+        if (status.isBanned)
+          return next(new Error('Unauthorized: Account banned'));
+        if (!status.isActive)
+          return next(new Error('Unauthorized: Account deactivated'));
         socket.data.user = { ...sessionUser, ...status };
         next();
       } catch (err) {
-        this.logger.warn(`WS auth failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+        this.logger.warn(
+          `WS auth failed: ${err instanceof Error ? err.message : 'Unknown error'}`,
+        );
         next(new Error('Unauthorized'));
       }
     });
@@ -123,7 +143,12 @@ export class MatchingGateway
     const user = await this.currentUser(client);
 
     try {
-      if (payload.specialty && !Object.values(DoctorSpecialtiesEnum).includes(payload.specialty as DoctorSpecialtiesEnum)) {
+      if (
+        payload.specialty &&
+        !Object.values(DoctorSpecialtiesEnum).includes(
+          payload.specialty as DoctorSpecialtiesEnum,
+        )
+      ) {
         throw new WsException(`Invalid specialty: ${payload.specialty}`);
       }
 
@@ -141,8 +166,12 @@ export class MatchingGateway
 
       await this.dispatchMatchRequest(matchRequest, doctors);
     } catch (err) {
-      this.logger.error(`match:request error: ${err instanceof Error ? err.message : 'Unknown error'}`);
-      client.emit('match:error', { message: err instanceof Error ? err.message : 'Unknown error' });
+      this.logger.error(
+        `match:request error: ${err instanceof Error ? err.message : 'Unknown error'}`,
+      );
+      client.emit('match:error', {
+        message: err instanceof Error ? err.message : 'Unknown error',
+      });
     }
   }
 
@@ -156,7 +185,8 @@ export class MatchingGateway
     if (!client.data.user) throw new WsException('Unauthorized');
     this.rateLimit.check(client.data.user.id, 'match:accept');
     const user = await this.currentUser(client);
-    if (!payload.matchRequestId) throw new WsException('matchRequestId is required');
+    if (!payload.matchRequestId)
+      throw new WsException('matchRequestId is required');
 
     try {
       const { matchRequest, consultationId } =
@@ -187,8 +217,12 @@ export class MatchingGateway
         )
         .catch((e) => this.logger.error(`Notification failed: ${e.message}`));
     } catch (err) {
-      this.logger.error(`match:accept error: ${err instanceof Error ? err.message : 'Unknown error'}`);
-      client.emit('match:error', { message: err instanceof Error ? err.message : 'Unknown error' });
+      this.logger.error(
+        `match:accept error: ${err instanceof Error ? err.message : 'Unknown error'}`,
+      );
+      client.emit('match:error', {
+        message: err instanceof Error ? err.message : 'Unknown error',
+      });
     }
   }
 
@@ -202,7 +236,8 @@ export class MatchingGateway
     if (!client.data.user) throw new WsException('Unauthorized');
     this.rateLimit.check(client.data.user.id, 'match:reject');
     const user = await this.currentUser(client);
-    if (!payload.matchRequestId) throw new WsException('matchRequestId is required');
+    if (!payload.matchRequestId)
+      throw new WsException('matchRequestId is required');
 
     try {
       const { matchRequest, nextDoctors } =
@@ -222,8 +257,17 @@ export class MatchingGateway
           .emit('match:timeout', { matchRequestId: matchRequest.id });
       }
     } catch (err) {
-      this.logger.error(`match:reject error: ${err instanceof Error ? err.message : 'Unknown error'}`);
-      client.emit('match:error', { message: err instanceof Error ? err instanceof Error ? err.message : 'Unknown error' : 'Unknown error' });
+      this.logger.error(
+        `match:reject error: ${err instanceof Error ? err.message : 'Unknown error'}`,
+      );
+      client.emit('match:error', {
+        message:
+          err instanceof Error
+            ? err instanceof Error
+              ? err.message
+              : 'Unknown error'
+            : 'Unknown error',
+      });
     }
   }
 
@@ -237,7 +281,8 @@ export class MatchingGateway
     if (!client.data.user) throw new WsException('Unauthorized');
     this.rateLimit.check(client.data.user.id, 'match:cancel');
     const user = await this.currentUser(client);
-    if (!payload.matchRequestId) throw new WsException('matchRequestId is required');
+    if (!payload.matchRequestId)
+      throw new WsException('matchRequestId is required');
 
     try {
       const matchRequest = await this.matchingService.cancelRequest(
@@ -249,8 +294,12 @@ export class MatchingGateway
 
       await this.notifyMatchCancelled(matchRequest);
     } catch (err) {
-      this.logger.error(`match:cancel error: ${err instanceof Error ? err.message : 'Unknown error'}`);
-      client.emit('match:error', { message: err instanceof Error ? err.message : 'Unknown error' });
+      this.logger.error(
+        `match:cancel error: ${err instanceof Error ? err.message : 'Unknown error'}`,
+      );
+      client.emit('match:error', {
+        message: err instanceof Error ? err.message : 'Unknown error',
+      });
     }
   }
 
@@ -258,7 +307,12 @@ export class MatchingGateway
 
   async dispatchMatchRequest(
     matchRequest: MatchRequest,
-    doctors: { doctorId: number; userId: string; firstname: string; lastname: string }[],
+    doctors: {
+      doctorId: number;
+      userId: string;
+      firstname: string;
+      lastname: string;
+    }[],
   ): Promise<MatchRequest> {
     this.startTimeout(matchRequest.id, matchRequest.patientId);
 
@@ -270,7 +324,11 @@ export class MatchingGateway
       this.clearTimeout(matchRequest.id);
       await this.matchingService
         .timeoutRequest(matchRequest.id)
-        .catch((e) => this.logger.error(`Retiring match request ${matchRequest.id} failed: ${e.message}`));
+        .catch((e) =>
+          this.logger.error(
+            `Retiring match request ${matchRequest.id} failed: ${e.message}`,
+          ),
+        );
       throw err;
     }
   }
@@ -281,14 +339,18 @@ export class MatchingGateway
 
     if (!matchRequest.matchedDoctorId) return;
     try {
-      const doctorUserId = await this.getDoctorUserId(matchRequest.matchedDoctorId);
+      const doctorUserId = await this.getDoctorUserId(
+        matchRequest.matchedDoctorId,
+      );
       if (doctorUserId) {
         this.server
           .to(`user:${doctorUserId}`)
           .emit('match:cancelled', { matchRequestId: matchRequest.id });
       }
     } catch (err) {
-      this.logger.error(`Cancel notification failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      this.logger.error(
+        `Cancel notification failed: ${err instanceof Error ? err.message : 'Unknown error'}`,
+      );
     }
   }
 
@@ -301,11 +363,15 @@ export class MatchingGateway
       for (const request of expired) {
         this.clearTimeout(request.id);
         await this.announceTimeout(request).catch((err) =>
-          this.logger.error(`Timeout notice for ${request.id} failed: ${err instanceof Error ? err.message : 'Unknown error'}`),
+          this.logger.error(
+            `Timeout notice for ${request.id} failed: ${err instanceof Error ? err.message : 'Unknown error'}`,
+          ),
         );
       }
     } catch (err) {
-      this.logger.error(`Match request expiry sweep failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      this.logger.error(
+        `Match request expiry sweep failed: ${err instanceof Error ? err.message : 'Unknown error'}`,
+      );
     } finally {
       this.sweeping = false;
     }
@@ -315,11 +381,19 @@ export class MatchingGateway
 
   private async offerToTopDoctor(
     matchRequestId: string,
-    doctors: { doctorId: number; userId: string; firstname: string; lastname: string }[],
+    doctors: {
+      doctorId: number;
+      userId: string;
+      firstname: string;
+      lastname: string;
+    }[],
   ): Promise<MatchRequest> {
     const topDoctor = doctors[0];
 
-    const matchRequest = await this.matchingService.matchDoctor(matchRequestId, topDoctor.doctorId);
+    const matchRequest = await this.matchingService.matchDoctor(
+      matchRequestId,
+      topDoctor.doctorId,
+    );
 
     this.server.to(`user:${topDoctor.userId}`).emit('match:request', {
       matchRequestId,
@@ -337,17 +411,27 @@ export class MatchingGateway
     // A replaced timer would be orphaned and could never be cleared
     this.clearTimeout(matchRequestId);
 
-    const timer = setTimeout(async () => {
-      this.patientTimers.delete(matchRequestId);
-      try {
-        const request = await this.matchingService.timeoutRequest(matchRequestId);
-        if (request.status === MatchStatusEnum.TIMEOUT) {
-          await this.announceTimeout({ id: matchRequestId, patientId, matchedDoctorId: request.matchedDoctorId });
+    const timer = setTimeout(
+      async () => {
+        this.patientTimers.delete(matchRequestId);
+        try {
+          const request =
+            await this.matchingService.timeoutRequest(matchRequestId);
+          if (request.status === MatchStatusEnum.TIMEOUT) {
+            await this.announceTimeout({
+              id: matchRequestId,
+              patientId,
+              matchedDoctorId: request.matchedDoctorId,
+            });
+          }
+        } catch (err) {
+          this.logger.error(
+            `Timeout handler error: ${err instanceof Error ? err.message : 'Unknown error'}`,
+          );
         }
-      } catch (err) {
-        this.logger.error(`Timeout handler error: ${err instanceof Error ? err.message : 'Unknown error'}`);
-      }
-    }, 5 * 60 * 1000);
+      },
+      5 * 60 * 1000,
+    );
 
     this.patientTimers.set(matchRequestId, timer);
   }
@@ -356,13 +440,17 @@ export class MatchingGateway
     request: Pick<MatchRequest, 'id' | 'patientId' | 'matchedDoctorId'>,
   ): Promise<void> {
     const matchRequestId = request.id;
-    this.server.to(`user:${request.patientId}`).emit('match:timeout', { matchRequestId });
+    this.server
+      .to(`user:${request.patientId}`)
+      .emit('match:timeout', { matchRequestId });
     // The doctor holding the offer can no longer accept it.
     const doctorUserId = request.matchedDoctorId
       ? await this.getDoctorUserId(request.matchedDoctorId)
       : null;
     if (doctorUserId) {
-      this.server.to(`user:${doctorUserId}`).emit('match:timeout', { matchRequestId });
+      this.server
+        .to(`user:${doctorUserId}`)
+        .emit('match:timeout', { matchRequestId });
     }
   }
 
@@ -391,11 +479,15 @@ export class MatchingGateway
         this.server.in(`user:${userId}`).disconnectSockets(true);
       }
     } catch (err) {
-      this.logger.error(`Status re-check failed for ${userId}: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      this.logger.error(
+        `Status re-check failed for ${userId}: ${err instanceof Error ? err.message : 'Unknown error'}`,
+      );
     }
   }
 
-  private async getDoctorUserId(doctorProfileId: number): Promise<string | null> {
+  private async getDoctorUserId(
+    doctorProfileId: number,
+  ): Promise<string | null> {
     return this.matchingService.getDoctorUserId(doctorProfileId);
   }
 
@@ -410,7 +502,9 @@ export class MatchingGateway
         this.configService.get<string>('auth.sessionCookieName') || 'sid',
       );
     } catch (err) {
-      this.logger.warn(`Session extraction failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      this.logger.warn(
+        `Session extraction failed: ${err instanceof Error ? err.message : 'Unknown error'}`,
+      );
       return null;
     }
   }

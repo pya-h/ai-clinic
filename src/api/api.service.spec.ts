@@ -119,7 +119,9 @@ describe('ApiService', () => {
       await service.get('/users');
 
       expect(mockAxios.get).toHaveBeenCalledWith('/users', {
-        headers: expect.objectContaining({ 'Content-Type': 'application/json' }),
+        headers: expect.objectContaining({
+          'Content-Type': 'application/json',
+        }),
       });
     });
 
@@ -128,7 +130,10 @@ describe('ApiService', () => {
 
       await service.get('/users', { page: 1 });
 
-      expect(mockAxios.get).toHaveBeenCalledWith('/users?page=1', expect.any(Object));
+      expect(mockAxios.get).toHaveBeenCalledWith(
+        '/users?page=1',
+        expect.any(Object),
+      );
     });
 
     it('should include custom headers', async () => {
@@ -151,14 +156,22 @@ describe('ApiService', () => {
       expect(mockAxios.post).toHaveBeenCalledWith(
         '/users',
         { name: 'John' },
-        { headers: expect.objectContaining({ 'Content-Type': 'application/json' }) },
+        {
+          headers: expect.objectContaining({
+            'Content-Type': 'application/json',
+          }),
+        },
       );
     });
 
     it('should append query params when provided', async () => {
       mockAxios.post.mockResolvedValue({ data: {} });
 
-      await service.post('/users', { name: 'John' }, { queries: { ref: 'abc' } });
+      await service.post(
+        '/users',
+        { name: 'John' },
+        { queries: { ref: 'abc' } },
+      );
 
       expect(mockAxios.post).toHaveBeenCalledWith(
         '/users?ref=abc',
@@ -202,7 +215,10 @@ describe('ApiService', () => {
 
       await service.delete('/users/1');
 
-      expect(mockAxios.delete).toHaveBeenCalledWith('/users/1', expect.any(Object));
+      expect(mockAxios.delete).toHaveBeenCalledWith(
+        '/users/1',
+        expect.any(Object),
+      );
     });
 
     it('should append query params', async () => {
@@ -210,7 +226,10 @@ describe('ApiService', () => {
 
       await service.delete('/users/1', { force: true });
 
-      expect(mockAxios.delete).toHaveBeenCalledWith('/users/1?force=true', expect.any(Object));
+      expect(mockAxios.delete).toHaveBeenCalledWith(
+        '/users/1?force=true',
+        expect.any(Object),
+      );
     });
   });
 

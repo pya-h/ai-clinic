@@ -8,7 +8,10 @@ export function captureHandshake(gateway: { afterInit(server: any): void }) {
   const middleware = server.use.mock.calls[0][0];
 
   return async (headers: Record<string, string> = {}) => {
-    const socket: { data: Record<string, any>; handshake: { headers: Record<string, string> } } = {
+    const socket: {
+      data: Record<string, any>;
+      handshake: { headers: Record<string, string> };
+    } = {
       data: {},
       handshake: { headers },
     };
@@ -18,4 +21,5 @@ export function captureHandshake(gateway: { afterInit(server: any): void }) {
   };
 }
 
-export const flushPromises = () => new Promise((resolve) => setImmediate(resolve));
+export const flushPromises = () =>
+  new Promise((resolve) => setImmediate(resolve));

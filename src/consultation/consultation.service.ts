@@ -86,9 +86,7 @@ export class ConsultationService {
     to: ConsultationStatusEnum,
   ): void {
     if (!ALLOWED_TRANSITIONS[from]?.includes(to)) {
-      throw new BadRequestException(
-        `Cannot transition from ${from} to ${to}.`,
-      );
+      throw new BadRequestException(`Cannot transition from ${from} to ${to}.`);
     }
   }
 
@@ -100,10 +98,7 @@ export class ConsultationService {
    * 2. Optionally validate SOAP exists and belongs to user.
    * 3. Create with status CREATED, then auto-transition to PENDING_DOCTOR_REVIEW.
    */
-  async create(
-    user: User,
-    dto: CreateConsultationDto,
-  ): Promise<Consultation> {
+  async create(user: User, dto: CreateConsultationDto): Promise<Consultation> {
     // Only patients can create consultations
     if (user.role !== UserRolesEnum.PATIENT) {
       throw new ForbiddenException('Only patients can create consultations.');
@@ -288,7 +283,11 @@ export class ConsultationService {
     );
 
     this.notificationService
-      .onPaymentConfirmed(consultationId, updated.doctor.userId, consultation.patientId)
+      .onPaymentConfirmed(
+        consultationId,
+        updated.doctor.userId,
+        consultation.patientId,
+      )
       .catch((e) => this.logger.error(`Notification failed: ${e.message}`));
 
     return updated;
@@ -381,10 +380,7 @@ export class ConsultationService {
    * Either patient or doctor (or admin) can cancel.
    * Transitions any non-terminal state → CANCELLED.
    */
-  async cancel(
-    consultationId: string,
-    user: User,
-  ): Promise<Consultation> {
+  async cancel(consultationId: string, user: User): Promise<Consultation> {
     const consultation = await this.getByIdRaw(consultationId);
     await this.assertParticipantOrAdmin(consultation, user);
 
@@ -483,9 +479,7 @@ export class ConsultationService {
       }
       where.doctorId = { in: doctorIds };
     } else {
-      throw new ForbiddenException(
-        'You do not have access to consultations.',
-      );
+      throw new ForbiddenException('You do not have access to consultations.');
     }
 
     const [data, total] = await Promise.all([
@@ -505,9 +499,7 @@ export class ConsultationService {
   /**
    * Get pending consultations for a specific doctor.
    */
-  async getPendingForDoctor(
-    user: User,
-  ): Promise<Consultation[]> {
+  async getPendingForDoctor(user: User): Promise<Consultation[]> {
     const doctorProfile = await this.prisma.doctorProfile.findUnique({
       where: { userId: user.id },
       select: { id: true },

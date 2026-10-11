@@ -137,7 +137,10 @@ describe('DoctorService', () => {
 
     it('should throw MethodNotAllowedException for non-doctor user', async () => {
       await expect(
-        service.createDoctorProfile(mockPatientUser as any, mockProfileData as any),
+        service.createDoctorProfile(
+          mockPatientUser as any,
+          mockProfileData as any,
+        ),
       ).rejects.toThrow(MethodNotAllowedException);
     });
 
@@ -145,7 +148,10 @@ describe('DoctorService', () => {
       prisma.doctorProfile.findUnique.mockResolvedValue(mockProfile);
 
       await expect(
-        service.createDoctorProfile(mockDoctorUser as any, mockProfileData as any),
+        service.createDoctorProfile(
+          mockDoctorUser as any,
+          mockProfileData as any,
+        ),
       ).rejects.toThrow(ConflictException);
     });
   });
@@ -161,7 +167,10 @@ describe('DoctorService', () => {
       prisma.doctorProfile.findUnique.mockResolvedValue(mockProfile);
       prisma.doctorProfile.update.mockResolvedValue(updatedProfile);
 
-      const result = await service.updateProfile(mockDoctorUser as any, updateData);
+      const result = await service.updateProfile(
+        mockDoctorUser as any,
+        updateData,
+      );
 
       expect(result).toEqual(updatedProfile);
       expect(prisma.doctorProfile.update).toHaveBeenCalledWith({
@@ -213,16 +222,30 @@ describe('DoctorService', () => {
     });
 
     it.each([
-      ['already verified', { verified: true, rejectionReason: null }, 'Your profile is already verified.'],
-      ['awaiting review', { verified: false, rejectionReason: null }, 'Your profile is already awaiting review.'],
-    ])('should throw ConflictException when %s', async (_case, state, message) => {
-      prisma.doctorProfile.findUnique.mockResolvedValue({ ...mockProfile, ...state });
+      [
+        'already verified',
+        { verified: true, rejectionReason: null },
+        'Your profile is already verified.',
+      ],
+      [
+        'awaiting review',
+        { verified: false, rejectionReason: null },
+        'Your profile is already awaiting review.',
+      ],
+    ])(
+      'should throw ConflictException when %s',
+      async (_case, state, message) => {
+        prisma.doctorProfile.findUnique.mockResolvedValue({
+          ...mockProfile,
+          ...state,
+        });
 
-      await expect(
-        service.resubmitForReview(mockDoctorUser as any),
-      ).rejects.toThrow(new ConflictException(message));
-      expect(prisma.doctorProfile.updateMany).not.toHaveBeenCalled();
-    });
+        await expect(
+          service.resubmitForReview(mockDoctorUser as any),
+        ).rejects.toThrow(new ConflictException(message));
+        expect(prisma.doctorProfile.updateMany).not.toHaveBeenCalled();
+      },
+    );
 
     it('should throw ConflictException when the status changed meanwhile', async () => {
       prisma.doctorProfile.findUnique.mockResolvedValue(rejected);
@@ -242,7 +265,12 @@ describe('DoctorService', () => {
       {
         ...mockProfile,
         verified: true,
-        user: { id: mockDoctorUser.id, firstname: mockDoctorUser.firstname, lastname: mockDoctorUser.lastname, avatar: null as null },
+        user: {
+          id: mockDoctorUser.id,
+          firstname: mockDoctorUser.firstname,
+          lastname: mockDoctorUser.lastname,
+          avatar: null as null,
+        },
         _count: { reviewsAbout: 5 },
       },
     ];
@@ -251,13 +279,21 @@ describe('DoctorService', () => {
       prisma.doctorProfile.findMany.mockResolvedValue(mockProfiles);
       prisma.doctorProfile.count.mockResolvedValue(1);
       prisma.doctorReview.groupBy.mockResolvedValue([
-        { doctorId: mockProfiles[0].id, _avg: { rating: 4.2 }, _count: { rating: 5 } },
+        {
+          doctorId: mockProfiles[0].id,
+          _avg: { rating: 4.2 },
+          _count: { rating: 5 },
+        },
       ]);
 
       const result = await service.findAll({});
 
       expect(result).toEqual({
-        data: mockProfiles.map((p) => ({ ...p, averageRating: 4.2, totalReviews: 5 })),
+        data: mockProfiles.map((p) => ({
+          ...p,
+          averageRating: 4.2,
+          totalReviews: 5,
+        })),
         total: 1,
         skip: 0,
         take: 20,
@@ -345,7 +381,12 @@ describe('DoctorService', () => {
       const profileData = {
         ...mockProfile,
         verified: true,
-        user: { id: mockDoctorUser.id, firstname: mockDoctorUser.firstname, lastname: mockDoctorUser.lastname, avatar: null as null },
+        user: {
+          id: mockDoctorUser.id,
+          firstname: mockDoctorUser.firstname,
+          lastname: mockDoctorUser.lastname,
+          avatar: null as null,
+        },
       };
       prisma.doctorProfile.findUnique.mockResolvedValue(profileData);
       prisma.doctorReview.aggregate.mockResolvedValue({
@@ -363,7 +404,12 @@ describe('DoctorService', () => {
       const profileNoReviews = {
         ...mockProfile,
         verified: true,
-        user: { id: mockDoctorUser.id, firstname: mockDoctorUser.firstname, lastname: mockDoctorUser.lastname, avatar: null as null },
+        user: {
+          id: mockDoctorUser.id,
+          firstname: mockDoctorUser.firstname,
+          lastname: mockDoctorUser.lastname,
+          avatar: null as null,
+        },
       };
       prisma.doctorProfile.findUnique.mockResolvedValue(profileNoReviews);
       prisma.doctorReview.aggregate.mockResolvedValue({
@@ -391,7 +437,12 @@ describe('DoctorService', () => {
       const unverified = {
         ...mockProfile,
         verified: false,
-        user: { id: mockDoctorUser.id, firstname: mockDoctorUser.firstname, lastname: mockDoctorUser.lastname, avatar: null as null },
+        user: {
+          id: mockDoctorUser.id,
+          firstname: mockDoctorUser.firstname,
+          lastname: mockDoctorUser.lastname,
+          avatar: null as null,
+        },
       };
       prisma.doctorProfile.findUnique.mockResolvedValue(unverified);
       prisma.doctorReview.aggregate.mockResolvedValue({
@@ -399,7 +450,9 @@ describe('DoctorService', () => {
         _count: { rating: 0 },
       });
 
-      await expect(service.findOne(mockProfile.id)).rejects.toThrow(NotFoundException);
+      await expect(service.findOne(mockProfile.id)).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 
@@ -461,7 +514,11 @@ describe('DoctorService', () => {
       prisma.doctorProfile.findUnique.mockResolvedValue(null);
 
       await expect(
-        service.uploadDocument(mockDoctorUser as any, mockFile, DocumentTypeEnum.LICENSE),
+        service.uploadDocument(
+          mockDoctorUser as any,
+          mockFile,
+          DocumentTypeEnum.LICENSE,
+        ),
       ).rejects.toThrow(NotFoundException);
     });
   });
@@ -471,7 +528,12 @@ describe('DoctorService', () => {
   describe('getDocuments', () => {
     it('should return documents for the doctor', async () => {
       const docs = [
-        { id: 1, doctorId: 1, type: DocumentTypeEnum.LICENSE, fileUrl: '/file.pdf' },
+        {
+          id: 1,
+          doctorId: 1,
+          type: DocumentTypeEnum.LICENSE,
+          fileUrl: '/file.pdf',
+        },
       ];
       prisma.doctorProfile.findUnique.mockResolvedValue(mockProfile);
       prisma.doctorDocument.findMany.mockResolvedValue(docs);
@@ -488,9 +550,9 @@ describe('DoctorService', () => {
     it('should throw NotFoundException if doctor has no profile', async () => {
       prisma.doctorProfile.findUnique.mockResolvedValue(null);
 
-      await expect(
-        service.getDocuments(mockDoctorUser as any),
-      ).rejects.toThrow(NotFoundException);
+      await expect(service.getDocuments(mockDoctorUser as any)).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 });

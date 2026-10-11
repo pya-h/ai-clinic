@@ -119,7 +119,10 @@ describe('ReviewService', () => {
           overview: 'Very professional and caring.',
         },
       });
-      expect(cache.del).toHaveBeenCalledWith('ratings', String(mockDoctorProfile.id));
+      expect(cache.del).toHaveBeenCalledWith(
+        'ratings',
+        String(mockDoctorProfile.id),
+      );
     });
 
     it('should throw ForbiddenException if user is not a PATIENT', async () => {
@@ -190,12 +193,19 @@ describe('ReviewService', () => {
       prisma.doctorReview.findUnique.mockResolvedValue(mockReview);
       prisma.doctorReview.update.mockResolvedValue(updated);
 
-      const result = await service.update(mockPatientUser as any, mockReview.id, {
-        rating: 5,
-      });
+      const result = await service.update(
+        mockPatientUser as any,
+        mockReview.id,
+        {
+          rating: 5,
+        },
+      );
 
       expect(result.rating).toBe(5);
-      expect(cache.del).toHaveBeenCalledWith('ratings', String(mockDoctorProfile.id));
+      expect(cache.del).toHaveBeenCalledWith(
+        'ratings',
+        String(mockDoctorProfile.id),
+      );
     });
 
     it('should throw NotFoundException if review not found', async () => {
@@ -230,7 +240,10 @@ describe('ReviewService', () => {
       expect(prisma.doctorReview.delete).toHaveBeenCalledWith({
         where: { id: mockReview.id },
       });
-      expect(cache.del).toHaveBeenCalledWith('ratings', String(mockDoctorProfile.id));
+      expect(cache.del).toHaveBeenCalledWith(
+        'ratings',
+        String(mockDoctorProfile.id),
+      );
     });
 
     it('should allow admin to delete any review', async () => {
@@ -247,9 +260,9 @@ describe('ReviewService', () => {
     it('should throw NotFoundException if review not found', async () => {
       prisma.doctorReview.findUnique.mockResolvedValue(null);
 
-      await expect(
-        service.delete(999, mockPatientUser as any),
-      ).rejects.toThrow(NotFoundException);
+      await expect(service.delete(999, mockPatientUser as any)).rejects.toThrow(
+        NotFoundException,
+      );
     });
 
     it('should throw ForbiddenException if not owner and not admin', async () => {
@@ -274,7 +287,10 @@ describe('ReviewService', () => {
       prisma.doctorReview.findMany.mockResolvedValue([mockReview]);
       prisma.doctorReview.count.mockResolvedValue(1);
 
-      const result = await service.listByDoctor(mockDoctorProfile.id, { skip: 0, take: 20 });
+      const result = await service.listByDoctor(mockDoctorProfile.id, {
+        skip: 0,
+        take: 20,
+      });
 
       expect(result).toEqual({
         data: [mockReview],
@@ -295,7 +311,10 @@ describe('ReviewService', () => {
       prisma.doctorReview.findMany.mockResolvedValue([]);
       prisma.doctorReview.count.mockResolvedValue(0);
 
-      const result = await service.listByDoctor(mockDoctorProfile.id, {} as any);
+      const result = await service.listByDoctor(
+        mockDoctorProfile.id,
+        {} as any,
+      );
       expect(result).toEqual({ data: [], total: 0, skip: 0, take: 20 });
     });
   });

@@ -24,22 +24,21 @@ import { PaymentFilterDto } from './dto/payment-filter.dto';
 export class PaymentController {
   constructor(private readonly paymentService: PaymentService) {}
 
-  @ApiOperation({ description: 'Create a new payment record (stub — no real provider).' })
+  @ApiOperation({
+    description: 'Create a new payment record (stub — no real provider).',
+  })
   @HttpCode(HttpStatus.CREATED)
   @Post()
-  async create(
-    @CurrentUser() user: User,
-    @Body() dto: CreatePaymentDto,
-  ) {
+  async create(@CurrentUser() user: User, @Body() dto: CreatePaymentDto) {
     return this.paymentService.create(user, dto);
   }
 
-  @ApiOperation({ description: 'List current user\'s payments (paginated, optional status filter).' })
+  @ApiOperation({
+    description:
+      "List current user's payments (paginated, optional status filter).",
+  })
   @Get()
-  async list(
-    @CurrentUser() user: User,
-    @Query() filters: PaymentFilterDto,
-  ) {
+  async list(@CurrentUser() user: User, @Query() filters: PaymentFilterDto) {
     return this.paymentService.getUserPayments(user, filters);
   }
 
@@ -52,7 +51,10 @@ export class PaymentController {
     return this.paymentService.getById(id, user);
   }
 
-  @ApiOperation({ description: 'Confirm a payment (stub — marks as COMPLETED without real provider).' })
+  @ApiOperation({
+    description:
+      'Confirm a payment (stub — marks as COMPLETED without real provider).',
+  })
   @HttpCode(HttpStatus.OK)
   @Post(':id/confirm')
   async confirm(

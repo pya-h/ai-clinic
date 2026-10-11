@@ -29,10 +29,7 @@ import { UserRolesEnum } from '@prisma/client';
 import { ScheduleModule } from '@nestjs/schedule';
 import authConfigs from '../src/configs/auth';
 import generalConfigs from '../src/configs/general';
-import {
-  createMockUser,
-  MockUser,
-} from './helpers/mock-session.helper';
+import { createMockUser, MockUser } from './helpers/mock-session.helper';
 import { hash as bcryptHash } from 'bcrypt';
 import {
   randomEmail,
@@ -285,25 +282,32 @@ describe('Auth (e2e)', () => {
     });
 
     it.each([
-      ['banned', { isBanned: true, banReason: 'Fake documents' }, 'Your account has been banned. Reason: Fake documents'],
+      [
+        'banned',
+        { isBanned: true, banReason: 'Fake documents' },
+        'Your account has been banned. Reason: Fake documents',
+      ],
       ['deactivated', { isActive: false }, 'Account is deactivated'],
-    ])('should refuse a %s user with the right password and start no session', async (_label, state, message) => {
-      prisma.user.findFirst.mockResolvedValue({
-        ...createMockUser({ email: loginPayload.email }),
-        password: hashedPassword,
-        ...state,
-      });
+    ])(
+      'should refuse a %s user with the right password and start no session',
+      async (_label, state, message) => {
+        prisma.user.findFirst.mockResolvedValue({
+          ...createMockUser({ email: loginPayload.email }),
+          password: hashedPassword,
+          ...state,
+        });
 
-      const res = await app.inject({
-        method: 'POST',
-        url: '/auth/login',
-        payload: loginPayload,
-      });
+        const res = await app.inject({
+          method: 'POST',
+          url: '/auth/login',
+          payload: loginPayload,
+        });
 
-      expect(res.statusCode).toBe(HttpStatus.FORBIDDEN);
-      expect(JSON.parse(res.body).message).toContain(message);
-      expect(sessionUser).toBeNull();
-    });
+        expect(res.statusCode).toBe(HttpStatus.FORBIDDEN);
+        expect(JSON.parse(res.body).message).toContain(message);
+        expect(sessionUser).toBeNull();
+      },
+    );
 
     it('should answer a banned user with a wrong password like any wrong password', async () => {
       prisma.user.findFirst.mockResolvedValue({

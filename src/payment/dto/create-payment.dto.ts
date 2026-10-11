@@ -1,4 +1,12 @@
-import { IsNumber, IsOptional, IsString, IsUUID, Max, MaxLength, Min } from 'class-validator';
+import {
+  IsNumber,
+  IsOptional,
+  IsString,
+  IsUUID,
+  Max,
+  MaxLength,
+  Min,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
@@ -10,7 +18,10 @@ export class CreatePaymentDto {
   @Type(() => Number)
   amount: number;
 
-  @ApiPropertyOptional({ description: 'Currency code (ISO 4217)', default: 'USD' })
+  @ApiPropertyOptional({
+    description: 'Currency code (ISO 4217)',
+    default: 'USD',
+  })
   @IsString()
   @IsOptional()
   @MaxLength(3)

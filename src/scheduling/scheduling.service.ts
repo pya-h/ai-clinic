@@ -83,7 +83,9 @@ export class SchedulingService {
       }
       return doctorIds[0];
     }
-    throw new ForbiddenException('Only doctors and nurses can manage schedules.');
+    throw new ForbiddenException(
+      'Only doctors and nurses can manage schedules.',
+    );
   }
 
   // ──────────────── Availability CRUD ────────────────
@@ -138,9 +140,7 @@ export class SchedulingService {
       throw new NotFoundException('Availability slot not found.');
     }
     if (existing.doctorId !== doctorId) {
-      throw new ForbiddenException(
-        'You do not own this availability slot.',
-      );
+      throw new ForbiddenException('You do not own this availability slot.');
     }
 
     const startTime = dto.startTime ?? existing.startTime;
@@ -177,9 +177,7 @@ export class SchedulingService {
       throw new NotFoundException('Availability slot not found.');
     }
     if (existing.doctorId !== doctorId) {
-      throw new ForbiddenException(
-        'You do not own this availability slot.',
-      );
+      throw new ForbiddenException('You do not own this availability slot.');
     }
 
     await this.prisma.doctorAvailability.delete({ where: { id } });
@@ -366,7 +364,12 @@ export class SchedulingService {
       where: {
         doctorId,
         dateTime: { gte: from, lt: until },
-        status: { notIn: [AppointmentStatusEnum.CANCELLED, AppointmentStatusEnum.NO_SHOW] },
+        status: {
+          notIn: [
+            AppointmentStatusEnum.CANCELLED,
+            AppointmentStatusEnum.NO_SHOW,
+          ],
+        },
       },
     });
 
@@ -389,7 +392,9 @@ export class SchedulingService {
     const slots: AvailableSlot[] = [];
     const now = new Date();
     // Past days can't be booked, so they have no available slots.
-    const current = new Date(Math.max(from.getTime(), this.utcDayRange(now, now).from.getTime()));
+    const current = new Date(
+      Math.max(from.getTime(), this.utcDayRange(now, now).from.getTime()),
+    );
     const todayStr = this.dateToString(now);
     const nowMinutes = now.getUTCHours() * 60 + now.getUTCMinutes();
 
@@ -408,7 +413,12 @@ export class SchedulingService {
       // Get time windows for this day
       let timeWindows: { startTime: string; endTime: string }[];
 
-      if (exception && !exception.isBlocked && exception.startTime && exception.endTime) {
+      if (
+        exception &&
+        !exception.isBlocked &&
+        exception.startTime &&
+        exception.endTime
+      ) {
         // Partial override: use exception's times instead of regular schedule
         timeWindows = [
           { startTime: exception.startTime, endTime: exception.endTime },
@@ -550,9 +560,7 @@ export class SchedulingService {
     }
 
     if (timeWindows.length === 0) {
-      throw new BadRequestException(
-        'Doctor has no availability on this day.',
-      );
+      throw new BadRequestException('Doctor has no availability on this day.');
     }
 
     const fitsWindow = timeWindows.some((w) => {
@@ -567,64 +575,83 @@ export class SchedulingService {
     }
 
     // Overlap check + create in a serializable transaction to prevent double-booking
-    const bookingEndTime = new Date(bookingDateTime.getTime() + dto.durationMinutes * 60000);
+    const bookingEndTime = new Date(
+      bookingDateTime.getTime() + dto.durationMinutes * 60000,
+    );
     let appointment: Appointment;
 
     try {
-      appointment = await this.prisma.$transaction(async (tx) => {
-        const candidates = await tx.appointment.findMany({
-          where: {
-            doctorId: dto.doctorId,
-            status: { notIn: [AppointmentStatusEnum.CANCELLED, AppointmentStatusEnum.NO_SHOW] },
-            dateTime: { lt: bookingEndTime },
-          },
-          select: { dateTime: true, durationMinutes: true },
-        });
-        const hasOverlap = candidates.some((apt) => {
-          const aptEnd = new Date(apt.dateTime.getTime() + apt.durationMinutes * 60000);
-          return aptEnd > bookingDateTime;
-        });
-        if (hasOverlap) {
-          throw new ConflictException('This time slot is no longer available.');
-        }
-
-        if (dto.consultationId) {
-          const consultation = await tx.consultation.findUnique({
-            where: { id: dto.consultationId },
+      appointment = await this.prisma.$transaction(
+        async (tx) => {
+          const candidates = await tx.appointment.findMany({
+            where: {
+              doctorId: dto.doctorId,
+              status: {
+                notIn: [
+                  AppointmentStatusEnum.CANCELLED,
+                  AppointmentStatusEnum.NO_SHOW,
+                ],
+              },
+              dateTime: { lt: bookingEndTime },
+            },
+            select: { dateTime: true, durationMinutes: true },
           });
-          if (!consultation) {
-            throw new NotFoundException('Consultation not found.');
-          }
-          if (consultation.patientId !== user.id) {
-            throw new ForbiddenException(
-              'This consultation does not belong to you.',
+          const hasOverlap = candidates.some((apt) => {
+            const aptEnd = new Date(
+              apt.dateTime.getTime() + apt.durationMinutes * 60000,
+            );
+            return aptEnd > bookingDateTime;
+          });
+          if (hasOverlap) {
+            throw new ConflictException(
+              'This time slot is no longer available.',
             );
           }
-          if (consultation.doctorId !== dto.doctorId) {
-            throw new BadRequestException(
-              'Consultation doctor does not match the provided doctorId.',
-            );
-          }
-        }
 
-        return tx.appointment.create({
-          data: {
-            patientId: user.id,
-            doctorId: dto.doctorId,
-            consultationId: dto.consultationId ?? null,
-            dateTime: new Date(dto.dateTime),
-            durationMinutes: dto.durationMinutes,
-            price: slotDuration.price,
-            method: dto.method,
-            notes: dto.notes ?? null,
-            status: AppointmentStatusEnum.PENDING,
-          },
-          include: this.appointmentInclude(),
-        });
-      }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+          if (dto.consultationId) {
+            const consultation = await tx.consultation.findUnique({
+              where: { id: dto.consultationId },
+            });
+            if (!consultation) {
+              throw new NotFoundException('Consultation not found.');
+            }
+            if (consultation.patientId !== user.id) {
+              throw new ForbiddenException(
+                'This consultation does not belong to you.',
+              );
+            }
+            if (consultation.doctorId !== dto.doctorId) {
+              throw new BadRequestException(
+                'Consultation doctor does not match the provided doctorId.',
+              );
+            }
+          }
+
+          return tx.appointment.create({
+            data: {
+              patientId: user.id,
+              doctorId: dto.doctorId,
+              consultationId: dto.consultationId ?? null,
+              dateTime: new Date(dto.dateTime),
+              durationMinutes: dto.durationMinutes,
+              price: slotDuration.price,
+              method: dto.method,
+              notes: dto.notes ?? null,
+              status: AppointmentStatusEnum.PENDING,
+            },
+            include: this.appointmentInclude(),
+          });
+        },
+        { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+      );
     } catch (error) {
-      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2034') {
-        throw new ConflictException('This time slot was just booked. Please try another.');
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2034'
+      ) {
+        throw new ConflictException(
+          'This time slot was just booked. Please try another.',
+        );
       }
       throw error;
     }
@@ -634,7 +661,10 @@ export class SchedulingService {
     );
 
     this.calendlyService.scheduleForAppointment(appointment.id).catch((err) => {
-      this.logger.error(`Failed to create Calendly event for appointment ${appointment.id}:`, err);
+      this.logger.error(
+        `Failed to create Calendly event for appointment ${appointment.id}:`,
+        err,
+      );
     });
 
     return appointment;
@@ -734,7 +764,12 @@ export class SchedulingService {
     const result = await this.prisma.appointment.updateMany({
       where: {
         id,
-        status: { notIn: [AppointmentStatusEnum.CANCELLED, AppointmentStatusEnum.COMPLETED] },
+        status: {
+          notIn: [
+            AppointmentStatusEnum.CANCELLED,
+            AppointmentStatusEnum.COMPLETED,
+          ],
+        },
       },
       data: { status: AppointmentStatusEnum.CANCELLED },
     });
@@ -750,9 +785,14 @@ export class SchedulingService {
 
     this.logger.log(`Appointment ${id} cancelled by user ${user.id}.`);
 
-    this.calendlyService.cancelCalendlyEvent(id, 'Cancelled by user.').catch((err) => {
-      this.logger.error(`Failed to cancel Calendly event for appointment ${id}:`, err);
-    });
+    this.calendlyService
+      .cancelCalendlyEvent(id, 'Cancelled by user.')
+      .catch((err) => {
+        this.logger.error(
+          `Failed to cancel Calendly event for appointment ${id}:`,
+          err,
+        );
+      });
 
     return updated;
   }
@@ -767,7 +807,9 @@ export class SchedulingService {
 
     if (user.role === UserRolesEnum.PATIENT) {
       if (appointment.patientId !== user.id) {
-        throw new ForbiddenException('You do not have access to this appointment.');
+        throw new ForbiddenException(
+          'You do not have access to this appointment.',
+        );
       }
       return;
     }
@@ -775,7 +817,9 @@ export class SchedulingService {
     if (user.role === UserRolesEnum.DOCTOR) {
       const doctorId = await this.getDoctorProfileId(user.id);
       if (appointment.doctorId !== doctorId) {
-        throw new ForbiddenException('You do not have access to this appointment.');
+        throw new ForbiddenException(
+          'You do not have access to this appointment.',
+        );
       }
       return;
     }
@@ -851,7 +895,12 @@ export class SchedulingService {
           where: {
             doctorId: { in: doctorIds },
             dateTime: { gte: from, lt: until },
-            status: { notIn: [AppointmentStatusEnum.CANCELLED, AppointmentStatusEnum.NO_SHOW] },
+            status: {
+              notIn: [
+                AppointmentStatusEnum.CANCELLED,
+                AppointmentStatusEnum.NO_SHOW,
+              ],
+            },
           },
         }),
       ]);
@@ -859,22 +908,26 @@ export class SchedulingService {
     const availByDoctor = new Map<number, typeof allAvailability>();
     for (const a of allAvailability) {
       const arr = availByDoctor.get(a.doctorId);
-      if (arr) arr.push(a); else availByDoctor.set(a.doctorId, [a]);
+      if (arr) arr.push(a);
+      else availByDoctor.set(a.doctorId, [a]);
     }
     const durByDoctor = new Map<number, typeof allDurations>();
     for (const d of allDurations) {
       const arr = durByDoctor.get(d.doctorId);
-      if (arr) arr.push(d); else durByDoctor.set(d.doctorId, [d]);
+      if (arr) arr.push(d);
+      else durByDoctor.set(d.doctorId, [d]);
     }
     const excByDoctor = new Map<number, typeof allExceptions>();
     for (const e of allExceptions) {
       const arr = excByDoctor.get(e.doctorId);
-      if (arr) arr.push(e); else excByDoctor.set(e.doctorId, [e]);
+      if (arr) arr.push(e);
+      else excByDoctor.set(e.doctorId, [e]);
     }
     const aptByDoctor = new Map<number, typeof allAppointments>();
     for (const a of allAppointments) {
       const arr = aptByDoctor.get(a.doctorId);
-      if (arr) arr.push(a); else aptByDoctor.set(a.doctorId, [a]);
+      if (arr) arr.push(a);
+      else aptByDoctor.set(a.doctorId, [a]);
     }
 
     for (const doctorId of doctorIds) {
@@ -969,8 +1022,16 @@ export class SchedulingService {
   /** Whole UTC days covering both dates; `until` is exclusive (midnight after `end`'s day). */
   private utcDayRange(start: Date, end: Date): { from: Date; until: Date } {
     return {
-      from: new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), start.getUTCDate())),
-      until: new Date(Date.UTC(end.getUTCFullYear(), end.getUTCMonth(), end.getUTCDate() + 1)),
+      from: new Date(
+        Date.UTC(
+          start.getUTCFullYear(),
+          start.getUTCMonth(),
+          start.getUTCDate(),
+        ),
+      ),
+      until: new Date(
+        Date.UTC(end.getUTCFullYear(), end.getUTCMonth(), end.getUTCDate() + 1),
+      ),
     };
   }
 

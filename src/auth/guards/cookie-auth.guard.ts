@@ -1,7 +1,20 @@
-import { CanActivate, ExecutionContext, ForbiddenException, Injectable, Logger, Optional, UnauthorizedException } from '@nestjs/common';
+import {
+  CanActivate,
+  ExecutionContext,
+  ForbiddenException,
+  Injectable,
+  Logger,
+  Optional,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { FastifyRequest } from 'fastify';
 import { PrismaService } from '../../prisma/prisma.service';
-import { UserStatus, UserStatusCache, accountBlockReason, withCurrentRole } from '../user-status';
+import {
+  UserStatus,
+  UserStatusCache,
+  accountBlockReason,
+  withCurrentRole,
+} from '../user-status';
 
 @Injectable()
 export class CookieAuthGuard implements CanActivate {
@@ -39,12 +52,18 @@ export class CookieAuthGuard implements CanActivate {
     return true;
   }
 
-  private async verifyUserStatus(user: any, session: any, request: any): Promise<boolean> {
+  private async verifyUserStatus(
+    user: any,
+    session: any,
+    request: any,
+  ): Promise<boolean> {
     let status: UserStatus | null;
     try {
       status = await UserStatusCache.get(this.prisma!, user.id);
     } catch (error) {
-      this.logger.warn(`Failed to verify user status from DB for ${user.id}: ${error}`);
+      this.logger.warn(
+        `Failed to verify user status from DB for ${user.id}: ${error}`,
+      );
       return true;
     }
 

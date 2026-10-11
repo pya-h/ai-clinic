@@ -40,7 +40,12 @@ describe('LocalStorageProvider', () => {
   describe('upload', () => {
     it('should write file and return url + key', async () => {
       const buffer = Buffer.from('hello world');
-      const result = await provider.upload(buffer, 'test.txt', 'text/plain', 'docs');
+      const result = await provider.upload(
+        buffer,
+        'test.txt',
+        'text/plain',
+        'docs',
+      );
 
       expect(result.key).toBe('docs/test.txt');
       expect(result.url).toBe('/uploads/docs/test.txt');
@@ -65,7 +70,10 @@ describe('LocalStorageProvider', () => {
       await provider.upload(buffer1, 'file.txt', 'text/plain', 'docs');
       await provider.upload(buffer2, 'file.txt', 'text/plain', 'docs');
 
-      const content = await fs.readFile(path.join(testDir, 'docs', 'file.txt'), 'utf-8');
+      const content = await fs.readFile(
+        path.join(testDir, 'docs', 'file.txt'),
+        'utf-8',
+      );
       expect(content).toBe('second');
     });
   });
@@ -75,7 +83,12 @@ describe('LocalStorageProvider', () => {
   describe('read', () => {
     it('should stream the stored file', async () => {
       const content = Buffer.from(randomUUID());
-      const { key } = await provider.upload(content, `${randomUUID()}.png`, 'image/png', 'avatars');
+      const { key } = await provider.upload(
+        content,
+        `${randomUUID()}.png`,
+        'image/png',
+        'avatars',
+      );
 
       const stream = await provider.read(key);
 
@@ -84,11 +97,18 @@ describe('LocalStorageProvider', () => {
     });
 
     it('should return null for a missing file', async () => {
-      await expect(provider.read(`avatars/${randomUUID()}.png`)).resolves.toBeNull();
+      await expect(
+        provider.read(`avatars/${randomUUID()}.png`),
+      ).resolves.toBeNull();
     });
 
     it('should return null when a path segment is a file', async () => {
-      const { key } = await provider.upload(Buffer.from('x'), 'f.png', 'image/png', 'avatars');
+      const { key } = await provider.upload(
+        Buffer.from('x'),
+        'f.png',
+        'image/png',
+        'avatars',
+      );
 
       await expect(provider.read(`${key}/nested.png`)).resolves.toBeNull();
     });
@@ -133,12 +153,16 @@ describe('LocalStorageProvider', () => {
       for (const key of escapingKeys()) {
         await expect(provider.delete(key)).rejects.toThrow(BadRequestException);
       }
-      await expect(fs.readFile(path.join(siblingDir, 'secret.png'), 'utf-8')).resolves.toBe('secret');
+      await expect(
+        fs.readFile(path.join(siblingDir, 'secret.png'), 'utf-8'),
+      ).resolves.toBe('secret');
     });
 
     it('should reject them on getSignedUrl', async () => {
       for (const key of escapingKeys()) {
-        await expect(provider.getSignedUrl(key)).rejects.toThrow(BadRequestException);
+        await expect(provider.getSignedUrl(key)).rejects.toThrow(
+          BadRequestException,
+        );
       }
     });
 
@@ -148,7 +172,9 @@ describe('LocalStorageProvider', () => {
       await expect(
         provider.upload(Buffer.from('x'), 'f.png', 'image/png', folder),
       ).rejects.toThrow(BadRequestException);
-      await expect(fs.access(path.join(siblingDir, 'created'))).rejects.toThrow();
+      await expect(
+        fs.access(path.join(siblingDir, 'created')),
+      ).rejects.toThrow();
     });
   });
 
@@ -167,7 +193,9 @@ describe('LocalStorageProvider', () => {
     });
 
     it('should not throw for a missing file', async () => {
-      await expect(provider.delete('nonexistent/file.txt')).resolves.not.toThrow();
+      await expect(
+        provider.delete('nonexistent/file.txt'),
+      ).resolves.not.toThrow();
     });
   });
 

@@ -29,7 +29,10 @@ export class MatchingController {
     private readonly matchingGateway: MatchingGateway,
   ) {}
 
-  @ApiOperation({ description: 'Create a match request (patient only). Optionally provide soapId for auto-specialty.' })
+  @ApiOperation({
+    description:
+      'Create a match request (patient only). Optionally provide soapId for auto-specialty.',
+  })
   @UseGuards(RolesGuard)
   @Roles(UserRolesEnum.PATIENT)
   @HttpCode(HttpStatus.CREATED)
@@ -46,7 +49,10 @@ export class MatchingController {
       );
 
     return {
-      matchRequest: await this.matchingGateway.dispatchMatchRequest(matchRequest, doctors),
+      matchRequest: await this.matchingGateway.dispatchMatchRequest(
+        matchRequest,
+        doctors,
+      ),
       doctors,
     };
   }
@@ -62,7 +68,9 @@ export class MatchingController {
     return this.matchingService.getStatus(id, user);
   }
 
-  @ApiOperation({ description: 'Get active match request for current patient.' })
+  @ApiOperation({
+    description: 'Get active match request for current patient.',
+  })
   @UseGuards(RolesGuard)
   @Roles(UserRolesEnum.PATIENT)
   @Get('active')
@@ -70,7 +78,9 @@ export class MatchingController {
     return this.matchingService.getActiveForPatient(user.id);
   }
 
-  @ApiOperation({ description: 'Get pending match requests assigned to the current doctor.' })
+  @ApiOperation({
+    description: 'Get pending match requests assigned to the current doctor.',
+  })
   @UseGuards(RolesGuard)
   @Roles(UserRolesEnum.DOCTOR)
   @Get('pending')
@@ -78,7 +88,9 @@ export class MatchingController {
     return this.matchingService.getPendingForDoctor(user);
   }
 
-  @ApiOperation({ description: 'Cancel an active match request (patient or admin).' })
+  @ApiOperation({
+    description: 'Cancel an active match request (patient or admin).',
+  })
   @UseGuards(RolesGuard)
   @Roles(UserRolesEnum.PATIENT)
   @Patch(':id/cancel')
@@ -91,7 +103,9 @@ export class MatchingController {
     return matchRequest;
   }
 
-  @ApiOperation({ description: 'Transition a timed-out match to manual browse.' })
+  @ApiOperation({
+    description: 'Transition a timed-out match to manual browse.',
+  })
   @UseGuards(RolesGuard)
   @Roles(UserRolesEnum.PATIENT)
   @Patch(':id/browse')

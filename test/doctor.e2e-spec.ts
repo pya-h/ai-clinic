@@ -325,7 +325,10 @@ describe('Doctor (e2e)', () => {
   // ───────────────── GET /doctor (public listing) ─────────────────
 
   describe('POST /doctor/profile/resubmit', () => {
-    function profileOf(user: MockUser, overrides: Record<string, unknown> = {}) {
+    function profileOf(
+      user: MockUser,
+      overrides: Record<string, unknown> = {},
+    ) {
       return {
         id: Math.floor(Math.random() * 10_000) + 1,
         userId: user.id,
@@ -368,21 +371,30 @@ describe('Doctor (e2e)', () => {
     });
 
     it.each([
-      ['already verified', { verified: true, rejectionReason: null }, 'already verified'],
+      [
+        'already verified',
+        { verified: true, rejectionReason: null },
+        'already verified',
+      ],
       ['awaiting review', { rejectionReason: null }, 'already awaiting review'],
-    ])('should return 409 when the profile is %s', async (_case, state, message) => {
-      sessionUser = createMockDoctorUser();
-      prisma.doctorProfile.findUnique.mockResolvedValue(profileOf(sessionUser, state));
+    ])(
+      'should return 409 when the profile is %s',
+      async (_case, state, message) => {
+        sessionUser = createMockDoctorUser();
+        prisma.doctorProfile.findUnique.mockResolvedValue(
+          profileOf(sessionUser, state),
+        );
 
-      const res = await app.inject({
-        method: 'POST',
-        url: '/doctor/profile/resubmit',
-      });
+        const res = await app.inject({
+          method: 'POST',
+          url: '/doctor/profile/resubmit',
+        });
 
-      expect(res.statusCode).toBe(HttpStatus.CONFLICT);
-      expect(JSON.parse(res.body).message).toContain(message);
-      expect(prisma.doctorProfile.updateMany).not.toHaveBeenCalled();
-    });
+        expect(res.statusCode).toBe(HttpStatus.CONFLICT);
+        expect(JSON.parse(res.body).message).toContain(message);
+        expect(prisma.doctorProfile.updateMany).not.toHaveBeenCalled();
+      },
+    );
 
     it('should return 409 when the profile was reviewed again meanwhile', async () => {
       sessionUser = createMockDoctorUser();
@@ -441,7 +453,12 @@ describe('Doctor (e2e)', () => {
         specialty: DoctorSpecialtiesEnum.GENERAL,
         verified: true,
         bio: 'GP',
-        user: { id: 'doc-1', firstname: 'John', lastname: 'Doe', avatar: null as null },
+        user: {
+          id: 'doc-1',
+          firstname: 'John',
+          lastname: 'Doe',
+          avatar: null as null,
+        },
         _count: { reviewsAbout: 3 },
       },
     ];
@@ -516,7 +533,12 @@ describe('Doctor (e2e)', () => {
       specialty: DoctorSpecialtiesEnum.CARDIOLOGY,
       verified: true,
       bio: 'Heart doctor',
-      user: { id: 'doc-1', firstname: 'Jane', lastname: 'Doe', avatar: null as null },
+      user: {
+        id: 'doc-1',
+        firstname: 'Jane',
+        lastname: 'Doe',
+        avatar: null as null,
+      },
     };
 
     it('should return a verified doctor profile with ratings', async () => {

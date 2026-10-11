@@ -528,7 +528,9 @@ describe('Admin (e2e)', () => {
       const body = JSON.parse(res.body);
       expect(body.contents).toBeDefined();
       expect(body.contents.verified).toBe(true);
-      expect(mockNotificationService.onDoctorVerified).toHaveBeenCalledWith(doctorProfile.userId);
+      expect(mockNotificationService.onDoctorVerified).toHaveBeenCalledWith(
+        doctorProfile.userId,
+      );
       expect(mockNotificationService.onDoctorRejected).not.toHaveBeenCalled();
     });
 
@@ -554,7 +556,10 @@ describe('Admin (e2e)', () => {
       expect(body.contents.rejectionReason).toBe('Incomplete documents');
       expect(prisma.doctorProfile.update).toHaveBeenCalledWith(
         expect.objectContaining({
-          data: expect.objectContaining({ verified: false, rejectionReason: 'Incomplete documents' }),
+          data: expect.objectContaining({
+            verified: false,
+            rejectionReason: 'Incomplete documents',
+          }),
         }),
       );
       expect(mockNotificationService.onDoctorRejected).toHaveBeenCalledWith(
@@ -572,7 +577,9 @@ describe('Admin (e2e)', () => {
         verified: false,
         rejectionReason: 'Expired license',
       });
-      mockNotificationService.onDoctorRejected.mockRejectedValueOnce(new Error('smtp down'));
+      mockNotificationService.onDoctorRejected.mockRejectedValueOnce(
+        new Error('smtp down'),
+      );
 
       const res = await app.inject({
         method: 'PATCH',
@@ -581,7 +588,9 @@ describe('Admin (e2e)', () => {
       });
 
       expect(res.statusCode).toBe(HttpStatus.OK);
-      expect(JSON.parse(res.body).contents.rejectionReason).toBe('Expired license');
+      expect(JSON.parse(res.body).contents.rejectionReason).toBe(
+        'Expired license',
+      );
     });
 
     it('should return 400 when id is not an integer', async () => {
@@ -856,18 +865,20 @@ describe('Admin (e2e)', () => {
       sessionUser = adminUser;
 
       prisma.user.count
-        .mockResolvedValueOnce(100)  // totalUsers
-        .mockResolvedValueOnce(2)    // bannedUsers
-        .mockResolvedValueOnce(5);   // newUsersThisMonth
+        .mockResolvedValueOnce(100) // totalUsers
+        .mockResolvedValueOnce(2) // bannedUsers
+        .mockResolvedValueOnce(5); // newUsersThisMonth
       prisma.doctorProfile.count
         .mockResolvedValueOnce(20)
         .mockResolvedValueOnce(3);
       (prisma.patientProfile as any).count = jest.fn().mockResolvedValue(75);
       prisma.consultation.count
-        .mockResolvedValueOnce(200)  // totalConsultations
-        .mockResolvedValueOnce(8);   // activeConsultations
+        .mockResolvedValueOnce(200) // totalConsultations
+        .mockResolvedValueOnce(8); // activeConsultations
       (prisma.appointment as any).count = jest.fn().mockResolvedValue(40);
-      (prisma.payment as any).aggregate = jest.fn().mockResolvedValue({ _sum: { amount: 500 } });
+      (prisma.payment as any).aggregate = jest
+        .fn()
+        .mockResolvedValue({ _sum: { amount: 500 } });
 
       const res = await app.inject({
         method: 'GET',
@@ -921,7 +932,10 @@ describe('Admin (e2e)', () => {
     it('should ban a user (admin)', async () => {
       sessionUser = adminUser;
 
-      prisma.user.findUnique.mockResolvedValue({ ...targetUser, isBanned: false });
+      prisma.user.findUnique.mockResolvedValue({
+        ...targetUser,
+        isBanned: false,
+      });
       prisma.user.update.mockResolvedValue({
         ...safeUserSelect,
         isBanned: true,
@@ -957,7 +971,10 @@ describe('Admin (e2e)', () => {
     it('should return 400 when user is already banned', async () => {
       sessionUser = adminUser;
 
-      prisma.user.findUnique.mockResolvedValue({ ...targetUser, isBanned: true });
+      prisma.user.findUnique.mockResolvedValue({
+        ...targetUser,
+        isBanned: true,
+      });
 
       const res = await app.inject({
         method: 'PATCH',
@@ -999,7 +1016,10 @@ describe('Admin (e2e)', () => {
     it('should unban a user (admin)', async () => {
       sessionUser = adminUser;
 
-      prisma.user.findUnique.mockResolvedValue({ ...targetUser, isBanned: true });
+      prisma.user.findUnique.mockResolvedValue({
+        ...targetUser,
+        isBanned: true,
+      });
       prisma.user.update.mockResolvedValue({
         ...safeUserSelect,
         isBanned: false,
@@ -1021,7 +1041,10 @@ describe('Admin (e2e)', () => {
     it('should return 400 when user is not banned', async () => {
       sessionUser = adminUser;
 
-      prisma.user.findUnique.mockResolvedValue({ ...targetUser, isBanned: false });
+      prisma.user.findUnique.mockResolvedValue({
+        ...targetUser,
+        isBanned: false,
+      });
 
       const res = await app.inject({
         method: 'PATCH',
@@ -1083,7 +1106,9 @@ describe('Admin (e2e)', () => {
         const u = db.get(where.id);
         return u ? statusOf(u) : null;
       });
-      prisma.user.findUnique.mockImplementation(async ({ where }: any) => db.get(where.id) ?? null);
+      prisma.user.findUnique.mockImplementation(
+        async ({ where }: any) => db.get(where.id) ?? null,
+      );
       prisma.user.update.mockImplementation(async ({ where, data }: any) => {
         const updated = { ...db.get(where.id)!, ...data };
         db.set(where.id, updated);
@@ -1127,7 +1152,10 @@ describe('Admin (e2e)', () => {
       db.set(former.id, { ...former, isSuperAdmin: false });
       sessionUser = former;
 
-      const res = await app.inject({ method: 'PATCH', url: `/admin/users/${randomUuid()}/promote` });
+      const res = await app.inject({
+        method: 'PATCH',
+        url: `/admin/users/${randomUuid()}/promote`,
+      });
 
       expect(res.statusCode).toBe(HttpStatus.FORBIDDEN);
       expect(prisma.user.update).not.toHaveBeenCalled();
@@ -1144,7 +1172,10 @@ describe('Admin (e2e)', () => {
       const adminSession = sessionUser;
 
       sessionUser = superAdmin;
-      const demote = await app.inject({ method: 'PATCH', url: `/admin/users/${admin.id}/demote` });
+      const demote = await app.inject({
+        method: 'PATCH',
+        url: `/admin/users/${admin.id}/demote`,
+      });
       expect(demote.statusCode).toBe(HttpStatus.OK);
 
       sessionUser = adminSession;
@@ -1160,7 +1191,9 @@ describe('Admin (e2e)', () => {
         db.set(patient.id, patient);
 
         sessionUser = patient;
-        expect((await app.inject({ method: 'GET', url: '/user' })).statusCode).toBe(HttpStatus.OK);
+        expect(
+          (await app.inject({ method: 'GET', url: '/user' })).statusCode,
+        ).toBe(HttpStatus.OK);
         const patientSession = sessionUser;
 
         sessionUser = admin;
@@ -1172,7 +1205,9 @@ describe('Admin (e2e)', () => {
         expect(update.statusCode).toBe(HttpStatus.OK);
 
         sessionUser = patientSession;
-        expect((await app.inject({ method: 'GET', url: '/user' })).statusCode).toBe(HttpStatus.OK);
+        expect(
+          (await app.inject({ method: 'GET', url: '/user' })).statusCode,
+        ).toBe(HttpStatus.OK);
         expect(sessionUser?.role).toBe(role);
         expect(sessionUser?.id).toBe(patient.id);
       },
@@ -1185,7 +1220,9 @@ describe('Admin (e2e)', () => {
       db.set(doctor.id, doctor);
 
       sessionUser = doctor;
-      expect((await app.inject({ method: 'GET', url: '/user' })).statusCode).toBe(HttpStatus.OK);
+      expect(
+        (await app.inject({ method: 'GET', url: '/user' })).statusCode,
+      ).toBe(HttpStatus.OK);
       const doctorSession = sessionUser;
 
       sessionUser = admin;

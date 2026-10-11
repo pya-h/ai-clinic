@@ -27,7 +27,9 @@ describe('UserStatusCache', () => {
     it('should read only the status fields of the user', async () => {
       const userId = randomUUID();
 
-      await expect(UserStatusCache.get(prisma as any, userId)).resolves.toEqual(status());
+      await expect(UserStatusCache.get(prisma as any, userId)).resolves.toEqual(
+        status(),
+      );
       expect(prisma.user.findFirst).toHaveBeenCalledWith({
         where: { id: userId },
         select: {
@@ -55,7 +57,9 @@ describe('UserStatusCache', () => {
       const userId = randomUUID();
       await UserStatusCache.get(prisma as any, userId);
 
-      await expect(UserStatusCache.get(prisma as any, userId)).resolves.toStrictEqual(status());
+      await expect(
+        UserStatusCache.get(prisma as any, userId),
+      ).resolves.toStrictEqual(status());
       expect(prisma.user.findFirst).toHaveBeenCalledTimes(1);
     });
 
@@ -70,7 +74,9 @@ describe('UserStatusCache', () => {
 
       jest.setSystemTime(new Date('2026-10-08T10:01:00Z'));
       prisma.user.findFirst.mockResolvedValue(status({ isBanned: true }));
-      await expect(UserStatusCache.get(prisma as any, userId)).resolves.toMatchObject({ isBanned: true });
+      await expect(
+        UserStatusCache.get(prisma as any, userId),
+      ).resolves.toMatchObject({ isBanned: true });
       expect(prisma.user.findFirst).toHaveBeenCalledTimes(2);
     });
 
@@ -78,15 +84,21 @@ describe('UserStatusCache', () => {
       const userId = randomUUID();
       prisma.user.findFirst.mockResolvedValueOnce(null);
 
-      await expect(UserStatusCache.get(prisma as any, userId)).resolves.toBeNull();
-      await expect(UserStatusCache.get(prisma as any, userId)).resolves.toEqual(status());
+      await expect(
+        UserStatusCache.get(prisma as any, userId),
+      ).resolves.toBeNull();
+      await expect(UserStatusCache.get(prisma as any, userId)).resolves.toEqual(
+        status(),
+      );
     });
 
     it('should propagate DB errors without caching anything', async () => {
       const userId = randomUUID();
       prisma.user.findFirst.mockRejectedValueOnce(new Error('db down'));
 
-      await expect(UserStatusCache.get(prisma as any, userId)).rejects.toThrow('db down');
+      await expect(UserStatusCache.get(prisma as any, userId)).rejects.toThrow(
+        'db down',
+      );
       await UserStatusCache.get(prisma as any, userId);
       expect(prisma.user.findFirst).toHaveBeenCalledTimes(2);
     });
@@ -100,13 +112,17 @@ describe('UserStatusCache', () => {
       UserStatusCache.invalidate(userId);
       prisma.user.findFirst.mockResolvedValue(status({ isAdmin: true }));
 
-      await expect(UserStatusCache.get(prisma as any, userId)).resolves.toMatchObject({ isAdmin: true });
+      await expect(
+        UserStatusCache.get(prisma as any, userId),
+      ).resolves.toMatchObject({ isAdmin: true });
     });
 
     it('should not cache a read that was in flight when the user was invalidated', async () => {
       const userId = randomUUID();
       let finishRead!: (value: unknown) => void;
-      prisma.user.findFirst.mockReturnValueOnce(new Promise((resolve) => (finishRead = resolve)));
+      prisma.user.findFirst.mockReturnValueOnce(
+        new Promise((resolve) => (finishRead = resolve)),
+      );
 
       const inFlight = UserStatusCache.get(prisma as any, userId);
       UserStatusCache.invalidate(userId);
@@ -114,14 +130,18 @@ describe('UserStatusCache', () => {
       await expect(inFlight).resolves.toMatchObject({ isAdmin: true });
 
       prisma.user.findFirst.mockResolvedValue(status({ isAdmin: false }));
-      await expect(UserStatusCache.get(prisma as any, userId)).resolves.toMatchObject({ isAdmin: false });
+      await expect(
+        UserStatusCache.get(prisma as any, userId),
+      ).resolves.toMatchObject({ isAdmin: false });
       expect(prisma.user.findFirst).toHaveBeenCalledTimes(2);
     });
 
     it('should cache again once a read no longer overlaps an invalidation', async () => {
       const [userId, other] = [randomUUID(), randomUUID()];
       let finishRead!: (value: unknown) => void;
-      prisma.user.findFirst.mockReturnValueOnce(new Promise((resolve) => (finishRead = resolve)));
+      prisma.user.findFirst.mockReturnValueOnce(
+        new Promise((resolve) => (finishRead = resolve)),
+      );
 
       const inFlight = UserStatusCache.get(prisma as any, userId);
       UserStatusCache.invalidate(other);
@@ -167,10 +187,22 @@ describe('UserStatusCache', () => {
 describe('accountBlockReason', () => {
   it.each([
     [{ isActive: true, isBanned: false, banReason: null }, null],
-    [{ isActive: true, isBanned: true, banReason: 'Spam' }, 'Your account has been banned. Reason: Spam'],
-    [{ isActive: true, isBanned: true, banReason: null }, 'Your account has been banned.'],
-    [{ isActive: false, isBanned: false, banReason: null }, 'Account is deactivated'],
-    [{ isActive: false, isBanned: true, banReason: 'Fraud' }, 'Your account has been banned. Reason: Fraud'],
+    [
+      { isActive: true, isBanned: true, banReason: 'Spam' },
+      'Your account has been banned. Reason: Spam',
+    ],
+    [
+      { isActive: true, isBanned: true, banReason: null },
+      'Your account has been banned.',
+    ],
+    [
+      { isActive: false, isBanned: false, banReason: null },
+      'Account is deactivated',
+    ],
+    [
+      { isActive: false, isBanned: true, banReason: 'Fraud' },
+      'Your account has been banned. Reason: Fraud',
+    ],
   ])('%o → %p', (status, expected) => {
     expect(accountBlockReason(status)).toBe(expected);
   });

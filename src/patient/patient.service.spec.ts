@@ -30,10 +30,7 @@ describe('PatientService', () => {
     };
 
     const module: TestingModule = await Test.createTestingModule({
-      providers: [
-        PatientService,
-        { provide: PrismaService, useValue: prisma },
-      ],
+      providers: [PatientService, { provide: PrismaService, useValue: prisma }],
     }).compile();
 
     service = module.get<PatientService>(PatientService);

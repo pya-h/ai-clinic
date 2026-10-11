@@ -14,12 +14,15 @@ describe('general config', () => {
     else process.env.APP_NAME = saved;
   });
 
-  it.each([undefined, ''])('should name the app AI-Clinic when APP_NAME is %p', (value) => {
-    if (value === undefined) delete process.env.APP_NAME;
-    else process.env.APP_NAME = value;
+  it.each([undefined, ''])(
+    'should name the app AI-Clinic when APP_NAME is %p',
+    (value) => {
+      if (value === undefined) delete process.env.APP_NAME;
+      else process.env.APP_NAME = value;
 
-    expect(general().general.appName).toBe('AI-Clinic');
-  });
+      expect(general().general.appName).toBe('AI-Clinic');
+    },
+  );
 
   it('should use APP_NAME when it is set', () => {
     const name = randomName();
@@ -34,8 +37,12 @@ describe('setupSwagger', () => {
   let setup: jest.SpyInstance;
 
   beforeEach(() => {
-    createDocument = jest.spyOn(SwaggerModule, 'createDocument').mockReturnValue({} as OpenAPIObject);
-    setup = jest.spyOn(SwaggerModule, 'setup').mockImplementation(() => undefined);
+    createDocument = jest
+      .spyOn(SwaggerModule, 'createDocument')
+      .mockReturnValue({} as OpenAPIObject);
+    setup = jest
+      .spyOn(SwaggerModule, 'setup')
+      .mockImplementation(() => undefined);
   });
 
   afterEach(() => jest.restoreAllMocks());
@@ -44,7 +51,10 @@ describe('setupSwagger', () => {
     ({
       get: () =>
         new ConfigService({
-          general: { appPort: 1024 + Math.floor(Math.random() * 60000), ...config },
+          general: {
+            appPort: 1024 + Math.floor(Math.random() * 60000),
+            ...config,
+          },
         }),
     }) as unknown as INestApplication;
 
@@ -63,7 +73,10 @@ describe('setupSwagger', () => {
     expect(createDocument).toHaveBeenCalledWith(
       app,
       expect.objectContaining({
-        info: expect.objectContaining({ title: appName, description: `${appName} API` }),
+        info: expect.objectContaining({
+          title: appName,
+          description: `${appName} API`,
+        }),
       }),
     );
     expect(setup).toHaveBeenCalledWith('docs', app, {});

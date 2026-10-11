@@ -43,12 +43,18 @@ const viewingRoom = (chatId: string) => `chat-open:${chatId}`;
 @WebSocketGateway({
   namespace: '/chat',
   cors: {
-    origin: (process.env.CORS_ORIGIN || 'http://localhost:5173').split(',').map(o => o.trim()),
+    origin: (process.env.CORS_ORIGIN || 'http://localhost:5173')
+      .split(',')
+      .map((o) => o.trim()),
     credentials: true,
   },
 })
 export class ChatGateway
-  implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect, OnModuleDestroy
+  implements
+    OnGatewayInit,
+    OnGatewayConnection,
+    OnGatewayDisconnect,
+    OnModuleDestroy
 {
   @WebSocketServer()
   server: Server;
@@ -97,7 +103,9 @@ export class ChatGateway
         socket.data.user = { ...sessionUser, ...status };
         next();
       } catch (err) {
-        this.logger.warn(`WS auth failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+        this.logger.warn(
+          `WS auth failed: ${err instanceof Error ? err.message : 'Unknown error'}`,
+        );
         next(new Error('Unauthorized'));
       }
     });
@@ -135,11 +143,13 @@ export class ChatGateway
         client.join(`chat:${chatId}`);
       }
     } catch (err) {
-      this.logger.error(`Failed to join chat rooms for ${user.id}: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      this.logger.error(
+        `Failed to join chat rooms for ${user.id}: ${err instanceof Error ? err.message : 'Unknown error'}`,
+      );
     }
 
     if (!wasOnline && chatIds.length > 0) {
-      const rooms = chatIds.map(id => `chat:${id}`);
+      const rooms = chatIds.map((id) => `chat:${id}`);
       this.server.to(rooms).emit('user:online', {
         userId: user.id,
         isOnline: true,
@@ -162,14 +172,16 @@ export class ChatGateway
       try {
         const chatIds = await this.chatService.getUserChatIds(user.id);
         if (chatIds.length > 0) {
-          const rooms = chatIds.map(id => `chat:${id}`);
+          const rooms = chatIds.map((id) => `chat:${id}`);
           this.server.to(rooms).emit('user:online', {
             userId: user.id,
             isOnline: false,
           });
         }
       } catch (err) {
-        this.logger.error(`Failed to broadcast offline for ${user.id}: ${err instanceof Error ? err.message : 'Unknown error'}`);
+        this.logger.error(
+          `Failed to broadcast offline for ${user.id}: ${err instanceof Error ? err.message : 'Unknown error'}`,
+        );
       }
     }
   }
@@ -205,7 +217,10 @@ export class ChatGateway
     const { chatId: _chatId, ...message } = payload;
     const [invalid] = await validate(plainToInstance(SendMessageDto, message));
     if (invalid) {
-      throw new WsException(Object.values(invalid.constraints ?? {})[0] ?? `Invalid ${invalid.property}`);
+      throw new WsException(
+        Object.values(invalid.constraints ?? {})[0] ??
+          `Invalid ${invalid.property}`,
+      );
     }
 
     await this.checkUserStatus(user.id);
@@ -224,7 +239,9 @@ export class ChatGateway
 
       this.announceNewMessage(message, `${user.firstname} ${user.lastname}`);
     } catch (err) {
-      this.logger.error(`chat:message error: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      this.logger.error(
+        `chat:message error: ${err instanceof Error ? err.message : 'Unknown error'}`,
+      );
       client.emit('chat:error', {
         event: 'chat:message',
         message: err instanceof Error ? err.message : 'Unknown error',
@@ -280,7 +297,9 @@ export class ChatGateway
         chatId: payload.chatId,
       });
     } catch (err) {
-      this.logger.error(`chat:read error: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      this.logger.error(
+        `chat:read error: ${err instanceof Error ? err.message : 'Unknown error'}`,
+      );
       client.emit('chat:error', {
         event: 'chat:read',
         message: err instanceof Error ? err.message : 'Unknown error',
@@ -319,7 +338,9 @@ export class ChatGateway
         message: serialized,
       });
     } catch (err) {
-      this.logger.error(`chat:edit error: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      this.logger.error(
+        `chat:edit error: ${err instanceof Error ? err.message : 'Unknown error'}`,
+      );
       client.emit('chat:error', {
         event: 'chat:edit',
         message: err instanceof Error ? err.message : 'Unknown error',
@@ -354,7 +375,9 @@ export class ChatGateway
         message: serialized,
       });
     } catch (err) {
-      this.logger.error(`chat:delete error: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      this.logger.error(
+        `chat:delete error: ${err instanceof Error ? err.message : 'Unknown error'}`,
+      );
       client.emit('chat:error', {
         event: 'chat:delete',
         message: err instanceof Error ? err.message : 'Unknown error',
@@ -377,7 +400,8 @@ export class ChatGateway
 
     // chat:leave is handled at once, while this awaits the DB: a quick open-close
     // must not leave the socket marked as viewing, so the intent is tracked here.
-    const openChats: Set<string> = (client.data.openChats ??= new Set<string>());
+    const openChats: Set<string> = (client.data.openChats ??=
+      new Set<string>());
     openChats.add(payload.chatId);
     try {
       await this.chatService.assertChatParticipant(payload.chatId, user.id);
@@ -392,7 +416,11 @@ export class ChatGateway
 
     this.notificationService
       .markChatMessagesRead(user.id, payload.chatId)
-      .catch((e) => this.logger.error(`Marking chat notifications read failed: ${e.message}`));
+      .catch((e) =>
+        this.logger.error(
+          `Marking chat notifications read failed: ${e.message}`,
+        ),
+      );
   }
 
   @SubscribeMessage('chat:leave')
@@ -427,16 +455,16 @@ export class ChatGateway
         message: this.chatService.serializeMessage(message),
       });
     } catch (err) {
-      this.logger.error(`Chat broadcast failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      this.logger.error(
+        `Chat broadcast failed: ${err instanceof Error ? err.message : 'Unknown error'}`,
+      );
     }
 
     this.notifyParticipantsNotViewing(
       message.chatId,
       message.senderId,
       senderName,
-    ).catch((e) =>
-      this.logger.error(`Chat notification failed: ${e.message}`),
-    );
+    ).catch((e) => this.logger.error(`Chat notification failed: ${e.message}`));
   }
 
   addUserToRoom(userId: string, chatId: string): void {
@@ -460,7 +488,9 @@ export class ChatGateway
         this.server.in(`user:${userId}`).disconnectSockets(true);
       }
     } catch (err) {
-      this.logger.error(`Status re-check failed for ${userId}: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      this.logger.error(
+        `Status re-check failed for ${userId}: ${err instanceof Error ? err.message : 'Unknown error'}`,
+      );
     }
   }
 
@@ -469,13 +499,17 @@ export class ChatGateway
     senderId: string,
     senderName: string,
   ): Promise<void> {
-    const participantIds = await this.chatService.getChatParticipantUserIds(chatId);
+    const participantIds =
+      await this.chatService.getChatParticipantUserIds(chatId);
     const viewers = new Set(
-      (await this.server.in(viewingRoom(chatId)).fetchSockets()).map((socket) => socket.data.user?.id),
+      (await this.server.in(viewingRoom(chatId)).fetchSockets()).map(
+        (socket) => socket.data.user?.id,
+      ),
     );
 
     for (const participantUserId of participantIds) {
-      if (participantUserId === senderId || viewers.has(participantUserId)) continue;
+      if (participantUserId === senderId || viewers.has(participantUserId))
+        continue;
       await this.notificationService.onNewChatMessage(
         chatId,
         senderId,
@@ -496,7 +530,9 @@ export class ChatGateway
         this.configService.get<string>('auth.sessionCookieName') || 'sid',
       );
     } catch (err) {
-      this.logger.warn(`Session extraction failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      this.logger.warn(
+        `Session extraction failed: ${err instanceof Error ? err.message : 'Unknown error'}`,
+      );
       return null;
     }
   }

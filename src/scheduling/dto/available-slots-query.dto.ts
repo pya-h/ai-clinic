@@ -1,5 +1,13 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsDateString, IsOptional, IsNumberString, Validate, ValidatorConstraint, ValidatorConstraintInterface, ValidationArguments } from 'class-validator';
+import {
+  IsDateString,
+  IsOptional,
+  IsNumberString,
+  Validate,
+  ValidatorConstraint,
+  ValidatorConstraintInterface,
+  ValidationArguments,
+} from 'class-validator';
 
 @ValidatorConstraint({ name: 'dateRangeLimit', async: false })
 class DateRangeLimitConstraint implements ValidatorConstraintInterface {
@@ -37,7 +45,8 @@ export class AvailableSlotsQueryDto {
   end: string;
 
   @ApiPropertyOptional({
-    description: 'Preferred slot duration in minutes. Filters by doctor slot durations.',
+    description:
+      'Preferred slot duration in minutes. Filters by doctor slot durations.',
   })
   @IsOptional()
   @IsNumberString()

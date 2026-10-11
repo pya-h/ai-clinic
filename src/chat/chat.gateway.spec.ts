@@ -7,8 +7,14 @@ import { WsException } from '@nestjs/websockets';
 import { MessageTypeEnum } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { UserStatusCache } from '../auth/user-status';
-import { captureHandshake, flushPromises } from '../../test/helpers/ws-handshake.helper';
-import { createSessionApp, loginCookie } from '../../test/helpers/session-cookie.helper';
+import {
+  captureHandshake,
+  flushPromises,
+} from '../../test/helpers/ws-handshake.helper';
+import {
+  createSessionApp,
+  loginCookie,
+} from '../../test/helpers/session-cookie.helper';
 import type { FastifyInstance } from 'fastify';
 import { randomUUID } from 'crypto';
 
@@ -82,7 +88,9 @@ describe('ChatGateway', () => {
       getChatParticipantUserIds: jest.fn().mockResolvedValue([]),
     };
 
-    prisma = { user: { findFirst: jest.fn().mockResolvedValue(activeStatus()) } };
+    prisma = {
+      user: { findFirst: jest.fn().mockResolvedValue(activeStatus()) },
+    };
     (UserStatusCache as any).entries.clear();
 
     notificationService = {
@@ -129,11 +137,17 @@ describe('ChatGateway', () => {
       expect(client.join).toHaveBeenCalledWith('user:user-1');
       expect(client.join).toHaveBeenCalledWith('chat:chat-1');
       expect(client.join).toHaveBeenCalledWith('chat:chat-2');
-      expect(gateway.server.to).toHaveBeenCalledWith(['chat:chat-1', 'chat:chat-2']);
-      expect((gateway.server as any)._toEmit).toHaveBeenCalledWith('user:online', {
-        userId: 'user-1',
-        isOnline: true,
-      });
+      expect(gateway.server.to).toHaveBeenCalledWith([
+        'chat:chat-1',
+        'chat:chat-2',
+      ]);
+      expect((gateway.server as any)._toEmit).toHaveBeenCalledWith(
+        'user:online',
+        {
+          userId: 'user-1',
+          isOnline: true,
+        },
+      );
     });
 
     it('should not broadcast when user has no chats', async () => {
@@ -144,7 +158,10 @@ describe('ChatGateway', () => {
       await gateway.handleConnection(client as any);
 
       expect(gateway.server.emit).not.toHaveBeenCalled();
-      expect((gateway.server as any)._toEmit).not.toHaveBeenCalledWith('user:online', expect.anything());
+      expect((gateway.server as any)._toEmit).not.toHaveBeenCalledWith(
+        'user:online',
+        expect.anything(),
+      );
     });
 
     it('should not broadcast online if user was already online', async () => {
@@ -177,11 +194,17 @@ describe('ChatGateway', () => {
       await gateway.handleDisconnect(client as any);
 
       expect(chatService.setOffline).toHaveBeenCalledWith('user-1', 'socket-1');
-      expect(gateway.server.to).toHaveBeenCalledWith(['chat:chat-1', 'chat:chat-2']);
-      expect((gateway.server as any)._toEmit).toHaveBeenCalledWith('user:online', {
-        userId: 'user-1',
-        isOnline: false,
-      });
+      expect(gateway.server.to).toHaveBeenCalledWith([
+        'chat:chat-1',
+        'chat:chat-2',
+      ]);
+      expect((gateway.server as any)._toEmit).toHaveBeenCalledWith(
+        'user:online',
+        {
+          userId: 'user-1',
+          isOnline: false,
+        },
+      );
     });
 
     it('should not broadcast offline if user has remaining sockets', async () => {
@@ -235,33 +258,59 @@ describe('ChatGateway', () => {
     });
 
     it.each([
-      ['a javascript: fileUrl', { fileUrl: 'javascript:alert(document.cookie)' }],
-      ['a plain-http fileUrl', { fileUrl: `http://example.com/${randomUUID()}.png` }],
+      [
+        'a javascript: fileUrl',
+        { fileUrl: 'javascript:alert(document.cookie)' },
+      ],
+      [
+        'a plain-http fileUrl',
+        { fileUrl: `http://example.com/${randomUUID()}.png` },
+      ],
       ['a SYSTEM type', { type: MessageTypeEnum.SYSTEM }],
       ['a non-numeric repliedToId', { repliedToId: 'abc' }],
       ['a non-string content', { content: { $ne: null } }],
-    ])('should refuse %s, as POST /chat/:id/message does, without saving', async (_case, extra) => {
-      const client = createMockSocket();
-
-      await expect(
-        gateway.handleMessage(client as any, { chatId: 'chat-1', content: 'Hello', ...(extra as any) }),
-      ).rejects.toThrow(WsException);
-
-      expect(chatService.sendMessage).not.toHaveBeenCalled();
-      expect(gateway.server.to).not.toHaveBeenCalled();
-    });
-
-    it.each([`/uploads/doctor-documents/${randomUUID()}.pdf`, `https://cdn.example.com/${randomUUID()}.png`])(
-      'should accept the file URL %s',
-      async (fileUrl) => {
+    ])(
+      'should refuse %s, as POST /chat/:id/message does, without saving',
+      async (_case, extra) => {
         const client = createMockSocket();
-        chatService.sendMessage.mockResolvedValue({ id: BigInt(1), chatId: 'chat-1', senderId: 'user-1' });
 
-        await gateway.handleMessage(client as any, { chatId: 'chat-1', content: 'File', type: MessageTypeEnum.FILE, fileUrl });
+        await expect(
+          gateway.handleMessage(client as any, {
+            chatId: 'chat-1',
+            content: 'Hello',
+            ...(extra as any),
+          }),
+        ).rejects.toThrow(WsException);
 
-        expect(chatService.sendMessage).toHaveBeenCalledWith('chat-1', 'user-1', expect.objectContaining({ fileUrl }));
+        expect(chatService.sendMessage).not.toHaveBeenCalled();
+        expect(gateway.server.to).not.toHaveBeenCalled();
       },
     );
+
+    it.each([
+      `/uploads/doctor-documents/${randomUUID()}.pdf`,
+      `https://cdn.example.com/${randomUUID()}.png`,
+    ])('should accept the file URL %s', async (fileUrl) => {
+      const client = createMockSocket();
+      chatService.sendMessage.mockResolvedValue({
+        id: BigInt(1),
+        chatId: 'chat-1',
+        senderId: 'user-1',
+      });
+
+      await gateway.handleMessage(client as any, {
+        chatId: 'chat-1',
+        content: 'File',
+        type: MessageTypeEnum.FILE,
+        fileUrl,
+      });
+
+      expect(chatService.sendMessage).toHaveBeenCalledWith(
+        'chat-1',
+        'user-1',
+        expect.objectContaining({ fileUrl }),
+      );
+    });
 
     it('should throw WsException when chatId is missing', async () => {
       const client = createMockSocket();
@@ -389,7 +438,10 @@ describe('ChatGateway', () => {
       (gateway.server.in as jest.Mock).mockImplementation((room: string) => ({
         fetchSockets: jest.fn().mockResolvedValue(
           room === `chat-open:${chatId}`
-            ? viewing.map((id) => ({ id: randomUUID(), data: { user: { id } } }))
+            ? viewing.map((id) => ({
+                id: randomUUID(),
+                data: { user: { id } },
+              }))
             : [{ id: randomUUID(), data: { user: { id: 'whoever' } } }],
         ),
       }));
@@ -401,23 +453,38 @@ describe('ChatGateway', () => {
       gateway.announceNewMessage(message as any, 'Jane Roe');
 
       expect(gateway.server.to).toHaveBeenCalledWith(`chat:${message.chatId}`);
-      expect((gateway.server as any)._toEmit).toHaveBeenCalledWith('chat:message', {
-        message: { ...message, id: String(message.id) },
-      });
+      expect((gateway.server as any)._toEmit).toHaveBeenCalledWith(
+        'chat:message',
+        {
+          message: { ...message, id: String(message.id) },
+        },
+      );
     });
 
     it("should notify the participants who don't have the chat open, other than the sender", async () => {
-      const [sender, notViewing, viewing] = [randomUUID(), randomUUID(), randomUUID()];
+      const [sender, notViewing, viewing] = [
+        randomUUID(),
+        randomUUID(),
+        randomUUID(),
+      ];
       const message = buildMessage(sender);
       const senderName = `Name ${randomUUID().slice(0, 6)}`;
-      chatService.getChatParticipantUserIds.mockResolvedValue([sender, notViewing, viewing]);
+      chatService.getChatParticipantUserIds.mockResolvedValue([
+        sender,
+        notViewing,
+        viewing,
+      ]);
       withViewers(message.chatId, [sender, viewing]);
 
       gateway.announceNewMessage(message as any, senderName);
       await flushPromises();
 
-      expect(chatService.getChatParticipantUserIds).toHaveBeenCalledWith(message.chatId);
-      expect(gateway.server.in).toHaveBeenCalledWith(`chat-open:${message.chatId}`);
+      expect(chatService.getChatParticipantUserIds).toHaveBeenCalledWith(
+        message.chatId,
+      );
+      expect(gateway.server.in).toHaveBeenCalledWith(
+        `chat-open:${message.chatId}`,
+      );
       expect(notificationService.onNewChatMessage).toHaveBeenCalledTimes(1);
       expect(notificationService.onNewChatMessage).toHaveBeenCalledWith(
         message.chatId,
@@ -436,7 +503,12 @@ describe('ChatGateway', () => {
       gateway.announceNewMessage(message as any, 'Jane Roe');
       await flushPromises();
 
-      expect(notificationService.onNewChatMessage).toHaveBeenCalledWith(message.chatId, sender, other, 'Jane Roe');
+      expect(notificationService.onNewChatMessage).toHaveBeenCalledWith(
+        message.chatId,
+        sender,
+        other,
+        'Jane Roe',
+      );
     });
 
     it('should notify nobody when every other participant has the chat open', async () => {
@@ -454,7 +526,10 @@ describe('ChatGateway', () => {
     it('should log, not throw, and still notify when the room emit fails', async () => {
       const [sender, offline] = [randomUUID(), randomUUID()];
       const message = buildMessage(sender);
-      chatService.getChatParticipantUserIds.mockResolvedValue([sender, offline]);
+      chatService.getChatParticipantUserIds.mockResolvedValue([
+        sender,
+        offline,
+      ]);
       withViewers(message.chatId, [sender]);
       (gateway.server.to as jest.Mock).mockImplementation(() => {
         throw new Error('adapter down');
@@ -463,10 +538,14 @@ describe('ChatGateway', () => {
         .spyOn((gateway as any).logger, 'error')
         .mockImplementation(() => undefined);
 
-      expect(() => gateway.announceNewMessage(message as any, 'Jane Roe')).not.toThrow();
+      expect(() =>
+        gateway.announceNewMessage(message as any, 'Jane Roe'),
+      ).not.toThrow();
       await flushPromises();
 
-      expect(logError).toHaveBeenCalledWith('Chat broadcast failed: adapter down');
+      expect(logError).toHaveBeenCalledWith(
+        'Chat broadcast failed: adapter down',
+      );
       expect(notificationService.onNewChatMessage).toHaveBeenCalledWith(
         message.chatId,
         sender,
@@ -476,15 +555,21 @@ describe('ChatGateway', () => {
     });
 
     it('should log, not throw, when notifying fails', async () => {
-      chatService.getChatParticipantUserIds.mockRejectedValue(new Error('DB down'));
+      chatService.getChatParticipantUserIds.mockRejectedValue(
+        new Error('DB down'),
+      );
       const logError = jest
         .spyOn((gateway as any).logger, 'error')
         .mockImplementation(() => undefined);
 
-      expect(() => gateway.announceNewMessage(buildMessage() as any, 'Jane Roe')).not.toThrow();
+      expect(() =>
+        gateway.announceNewMessage(buildMessage() as any, 'Jane Roe'),
+      ).not.toThrow();
       await flushPromises();
 
-      expect(logError).toHaveBeenCalledWith('Chat notification failed: DB down');
+      expect(logError).toHaveBeenCalledWith(
+        'Chat notification failed: DB down',
+      );
       expect((gateway.server as any)._toEmit).toHaveBeenCalled();
     });
   });
@@ -624,7 +709,10 @@ describe('ChatGateway', () => {
       const longContent = 'x'.repeat(5001);
 
       await expect(
-        gateway.handleEdit(client as any, { messageId: '1', content: longContent }),
+        gateway.handleEdit(client as any, {
+          messageId: '1',
+          content: longContent,
+        }),
       ).rejects.toThrow(WsException);
     });
 
@@ -649,7 +737,11 @@ describe('ChatGateway', () => {
   describe('handleDelete (chat:delete)', () => {
     it('should delete message and broadcast chat:deleted', async () => {
       const client = createMockSocket();
-      const deleted = { id: BigInt(1), chatId: 'chat-1', deletedAt: new Date() };
+      const deleted = {
+        id: BigInt(1),
+        chatId: 'chat-1',
+        deletedAt: new Date(),
+      };
       chatService.deleteMessage.mockResolvedValue(deleted);
 
       await gateway.handleDelete(client as any, { messageId: '1' });
@@ -704,26 +796,41 @@ describe('ChatGateway', () => {
       await gateway.handleJoin(createMockSocket() as any, { chatId });
       await flushPromises();
 
-      expect(notificationService.markChatMessagesRead).toHaveBeenCalledWith('user-1', chatId);
+      expect(notificationService.markChatMessagesRead).toHaveBeenCalledWith(
+        'user-1',
+        chatId,
+      );
     });
 
     it('should still join, and log, when marking the notifications read fails', async () => {
       const client = createMockSocket();
-      notificationService.markChatMessagesRead.mockRejectedValue(new Error('DB down'));
-      const logError = jest.spyOn((gateway as any).logger, 'error').mockImplementation(() => undefined);
+      notificationService.markChatMessagesRead.mockRejectedValue(
+        new Error('DB down'),
+      );
+      const logError = jest
+        .spyOn((gateway as any).logger, 'error')
+        .mockImplementation(() => undefined);
 
-      await expect(gateway.handleJoin(client as any, { chatId: 'chat-1' })).resolves.toBeUndefined();
+      await expect(
+        gateway.handleJoin(client as any, { chatId: 'chat-1' }),
+      ).resolves.toBeUndefined();
       await flushPromises();
 
       expect(client.join).toHaveBeenCalledWith('chat-open:chat-1');
-      expect(logError).toHaveBeenCalledWith('Marking chat notifications read failed: DB down');
+      expect(logError).toHaveBeenCalledWith(
+        'Marking chat notifications read failed: DB down',
+      );
     });
 
     it('should neither join nor mark anything read for a non-participant', async () => {
       const client: any = createMockSocket();
-      chatService.assertChatParticipant.mockRejectedValue(new Error('not a participant'));
+      chatService.assertChatParticipant.mockRejectedValue(
+        new Error('not a participant'),
+      );
 
-      await expect(gateway.handleJoin(client, { chatId: 'chat-1' })).rejects.toThrow('not a participant');
+      await expect(
+        gateway.handleJoin(client, { chatId: 'chat-1' }),
+      ).rejects.toThrow('not a participant');
 
       expect(client.join).not.toHaveBeenCalled();
       expect(notificationService.markChatMessagesRead).not.toHaveBeenCalled();
@@ -742,7 +849,7 @@ describe('ChatGateway', () => {
   // ─── handleLeave ───
 
   describe('handleLeave (chat:leave)', () => {
-    it("should stop viewing the chat but keep its live events (the chat: room)", () => {
+    it('should stop viewing the chat but keep its live events (the chat: room)', () => {
       const client = createMockSocket();
 
       gateway.handleLeave(client as any, { chatId: 'chat-1' });
@@ -755,7 +862,9 @@ describe('ChatGateway', () => {
       const client = createMockSocket();
       const chatId = randomUUID();
       let finishCheck!: () => void;
-      chatService.assertChatParticipant.mockReturnValue(new Promise<void>((resolve) => (finishCheck = resolve)));
+      chatService.assertChatParticipant.mockReturnValue(
+        new Promise<void>((resolve) => (finishCheck = resolve)),
+      );
 
       const joining = gateway.handleJoin(client as any, { chatId });
       gateway.handleLeave(client as any, { chatId });
@@ -771,7 +880,9 @@ describe('ChatGateway', () => {
     it('should not mark viewing for a socket that disconnected during the check', async () => {
       const client: any = createMockSocket();
       let finishCheck!: () => void;
-      chatService.assertChatParticipant.mockReturnValue(new Promise<void>((resolve) => (finishCheck = resolve)));
+      chatService.assertChatParticipant.mockReturnValue(
+        new Promise<void>((resolve) => (finishCheck = resolve)),
+      );
 
       const joining = gateway.handleJoin(client, { chatId: 'chat-1' });
       client.disconnected = true;
@@ -786,7 +897,9 @@ describe('ChatGateway', () => {
       const chatId = randomUUID();
       let finishFirst!: () => void;
       chatService.assertChatParticipant
-        .mockReturnValueOnce(new Promise<void>((resolve) => (finishFirst = resolve)))
+        .mockReturnValueOnce(
+          new Promise<void>((resolve) => (finishFirst = resolve)),
+        )
         .mockResolvedValueOnce(undefined);
 
       const first = gateway.handleJoin(client as any, { chatId });
@@ -801,9 +914,9 @@ describe('ChatGateway', () => {
     it('should throw WsException when chatId is missing', () => {
       const client = createMockSocket();
 
-      expect(() =>
-        gateway.handleLeave(client as any, { chatId: '' }),
-      ).toThrow(WsException);
+      expect(() => gateway.handleLeave(client as any, { chatId: '' })).toThrow(
+        WsException,
+      );
     });
   });
 
@@ -845,7 +958,9 @@ describe('ChatGateway', () => {
     });
 
     beforeEach(() => {
-      (gateway as any).adapterHost = { httpAdapter: { getInstance: () => sessionApp } };
+      (gateway as any).adapterHost = {
+        httpAdapter: { getInstance: () => sessionApp },
+      };
       connect = captureHandshake(gateway);
     });
 
@@ -854,7 +969,9 @@ describe('ChatGateway', () => {
       prisma.user.findFirst.mockResolvedValue(activeStatus());
       const cookie = await loginCookie(sessionApp, cookieName, user);
 
-      const { socket, next } = await connect({ cookie: `csrf-token=abc; ${cookie}` });
+      const { socket, next } = await connect({
+        cookie: `csrf-token=abc; ${cookie}`,
+      });
 
       expect(next).toHaveBeenCalledWith();
       expect(socket.data.user.id).toBe(user.id);
@@ -864,32 +981,51 @@ describe('ChatGateway', () => {
     });
 
     it('should reject a tampered session cookie without querying the DB', async () => {
-      const cookie = await loginCookie(sessionApp, cookieName, { ...mockUser, id: randomUUID() });
-      const tampered = cookie.slice(0, -4) + (cookie.endsWith('AAAA') ? 'BBBB' : 'AAAA');
+      const cookie = await loginCookie(sessionApp, cookieName, {
+        ...mockUser,
+        id: randomUUID(),
+      });
+      const tampered =
+        cookie.slice(0, -4) + (cookie.endsWith('AAAA') ? 'BBBB' : 'AAAA');
 
       const { socket, next } = await connect({ cookie: tampered });
 
-      expect(next).toHaveBeenCalledWith(new Error('Unauthorized: No valid session'));
+      expect(next).toHaveBeenCalledWith(
+        new Error('Unauthorized: No valid session'),
+      );
       expect(socket.data.user).toBeUndefined();
       expect(prisma.user.findFirst).not.toHaveBeenCalled();
     });
 
     it('should reject a session cookie under another name', async () => {
-      const cookie = await loginCookie(sessionApp, cookieName, { ...mockUser, id: randomUUID() });
+      const cookie = await loginCookie(sessionApp, cookieName, {
+        ...mockUser,
+        id: randomUUID(),
+      });
 
-      const { next } = await connect({ cookie: cookie.replace(/^sid=/, 'other=') });
+      const { next } = await connect({
+        cookie: cookie.replace(/^sid=/, 'other='),
+      });
 
-      expect(next).toHaveBeenCalledWith(new Error('Unauthorized: No valid session'));
+      expect(next).toHaveBeenCalledWith(
+        new Error('Unauthorized: No valid session'),
+      );
     });
 
     it('should reject, and log, when the session cannot be decoded at all', async () => {
       (gateway as any).adapterHost = { httpAdapter: undefined };
-      const warn = jest.spyOn((gateway as any).logger, 'warn').mockImplementation(() => undefined);
+      const warn = jest
+        .spyOn((gateway as any).logger, 'warn')
+        .mockImplementation(() => undefined);
 
       const { next } = await connect({ cookie: 'sid=whatever' });
 
-      expect(next).toHaveBeenCalledWith(new Error('Unauthorized: No valid session'));
-      expect(warn).toHaveBeenCalledWith(expect.stringContaining('Session extraction failed'));
+      expect(next).toHaveBeenCalledWith(
+        new Error('Unauthorized: No valid session'),
+      );
+      expect(warn).toHaveBeenCalledWith(
+        expect.stringContaining('Session extraction failed'),
+      );
     });
   });
 
@@ -899,7 +1035,9 @@ describe('ChatGateway', () => {
 
     beforeEach(() => {
       sessionUser = { ...mockUser, id: randomUUID(), isBanned: false };
-      jest.spyOn(gateway as any, 'extractUserFromSocket').mockImplementation(() => sessionUser);
+      jest
+        .spyOn(gateway as any, 'extractUserFromSocket')
+        .mockImplementation(() => sessionUser);
       connect = captureHandshake(gateway);
     });
 
@@ -907,30 +1045,43 @@ describe('ChatGateway', () => {
       const { socket, next } = await connect();
 
       expect(next).toHaveBeenCalledWith();
-      expect(socket.data.user).toMatchObject({ id: sessionUser.id, isActive: true, isBanned: false });
+      expect(socket.data.user).toMatchObject({
+        id: sessionUser.id,
+        isActive: true,
+        isBanned: false,
+      });
       expect(prisma.user.findFirst).toHaveBeenCalledWith(
         expect.objectContaining({ where: { id: sessionUser.id } }),
       );
     });
 
     it.each([
-      ['banned', { isBanned: true, banReason: 'Spam' }, 'Unauthorized: Account banned'],
+      [
+        'banned',
+        { isBanned: true, banReason: 'Spam' },
+        'Unauthorized: Account banned',
+      ],
       ['deactivated', { isActive: false }, 'Unauthorized: Account deactivated'],
-    ])('should reject a %s user whose session predates it', async (_label, dbState, message) => {
-      prisma.user.findFirst.mockResolvedValue(activeStatus(dbState));
+    ])(
+      'should reject a %s user whose session predates it',
+      async (_label, dbState, message) => {
+        prisma.user.findFirst.mockResolvedValue(activeStatus(dbState));
 
-      const { socket, next } = await connect();
+        const { socket, next } = await connect();
 
-      expect(next).toHaveBeenCalledWith(new Error(message));
-      expect(socket.data.user).toBeUndefined();
-    });
+        expect(next).toHaveBeenCalledWith(new Error(message));
+        expect(socket.data.user).toBeUndefined();
+      },
+    );
 
     it('should reject a session whose user no longer exists', async () => {
       prisma.user.findFirst.mockResolvedValue(null);
 
       const { next } = await connect();
 
-      expect(next).toHaveBeenCalledWith(new Error('Unauthorized: No valid session'));
+      expect(next).toHaveBeenCalledWith(
+        new Error('Unauthorized: No valid session'),
+      );
     });
 
     it('should reject when the account cannot be checked', async () => {
@@ -950,16 +1101,21 @@ describe('ChatGateway', () => {
     it.each([
       ['banned', { isBanned: true }],
       ['deactivated', { isActive: false }],
-    ])("should disconnect a user's open sockets once they are %s", async (_label, dbState) => {
-      const userId = randomUUID();
-      prisma.user.findFirst.mockResolvedValue(activeStatus(dbState));
+    ])(
+      "should disconnect a user's open sockets once they are %s",
+      async (_label, dbState) => {
+        const userId = randomUUID();
+        prisma.user.findFirst.mockResolvedValue(activeStatus(dbState));
 
-      UserStatusCache.invalidate(userId);
-      await flushPromises();
+        UserStatusCache.invalidate(userId);
+        await flushPromises();
 
-      expect(gateway.server.in).toHaveBeenCalledWith(`user:${userId}`);
-      expect((gateway.server as any)._disconnectSockets).toHaveBeenCalledWith(true);
-    });
+        expect(gateway.server.in).toHaveBeenCalledWith(`user:${userId}`);
+        expect((gateway.server as any)._disconnectSockets).toHaveBeenCalledWith(
+          true,
+        );
+      },
+    );
 
     it('should keep the sockets of a user who is still allowed in', async () => {
       UserStatusCache.invalidate(randomUUID());
@@ -971,29 +1127,53 @@ describe('ChatGateway', () => {
 
   describe('per-action account check', () => {
     it.each([
-      ['chat:message', (g: ChatGateway, c: any) => g.handleMessage(c, { chatId: 'chat-1', content: 'Hi' })],
-      ['chat:edit', (g: ChatGateway, c: any) => g.handleEdit(c, { messageId: '1', content: 'Hi' })],
-      ['chat:delete', (g: ChatGateway, c: any) => g.handleDelete(c, { messageId: '1' })],
-    ])('should refuse %s from a user deactivated while connected', async (_event, act) => {
-      const client = createMockSocket({ ...mockUser, id: randomUUID() });
-      prisma.user.findFirst.mockResolvedValue(activeStatus({ isActive: false }));
+      [
+        'chat:message',
+        (g: ChatGateway, c: any) =>
+          g.handleMessage(c, { chatId: 'chat-1', content: 'Hi' }),
+      ],
+      [
+        'chat:edit',
+        (g: ChatGateway, c: any) =>
+          g.handleEdit(c, { messageId: '1', content: 'Hi' }),
+      ],
+      [
+        'chat:delete',
+        (g: ChatGateway, c: any) => g.handleDelete(c, { messageId: '1' }),
+      ],
+    ])(
+      'should refuse %s from a user deactivated while connected',
+      async (_event, act) => {
+        const client = createMockSocket({ ...mockUser, id: randomUUID() });
+        prisma.user.findFirst.mockResolvedValue(
+          activeStatus({ isActive: false }),
+        );
 
-      await expect(act(gateway, client)).rejects.toThrow(new WsException('Account suspended'));
-      expect(chatService.sendMessage).not.toHaveBeenCalled();
-      expect(chatService.editMessage).not.toHaveBeenCalled();
-      expect(chatService.deleteMessage).not.toHaveBeenCalled();
-    });
+        await expect(act(gateway, client)).rejects.toThrow(
+          new WsException('Account suspended'),
+        );
+        expect(chatService.sendMessage).not.toHaveBeenCalled();
+        expect(chatService.editMessage).not.toHaveBeenCalled();
+        expect(chatService.deleteMessage).not.toHaveBeenCalled();
+      },
+    );
 
     it('should see a ban made after an earlier check once the status is invalidated', async () => {
       const client = createMockSocket({ ...mockUser, id: randomUUID() });
       chatService.sendMessage.mockResolvedValue({ id: 1 });
-      await gateway.handleMessage(client as any, { chatId: 'chat-1', content: 'Hi' });
+      await gateway.handleMessage(client as any, {
+        chatId: 'chat-1',
+        content: 'Hi',
+      });
 
       prisma.user.findFirst.mockResolvedValue(activeStatus({ isBanned: true }));
       UserStatusCache.invalidate(client.data.user.id);
 
       await expect(
-        gateway.handleMessage(client as any, { chatId: 'chat-1', content: 'Hi again' }),
+        gateway.handleMessage(client as any, {
+          chatId: 'chat-1',
+          content: 'Hi again',
+        }),
       ).rejects.toThrow(new WsException('Account suspended'));
     });
   });

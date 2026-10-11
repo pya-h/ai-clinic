@@ -16,7 +16,10 @@ import * as crypto from 'crypto';
 
 const mockConfig = new Map<string, string>([
   ['calendly.apiKey', 'test-api-key'],
-  ['calendly.organizationUri', 'https://api.calendly.com/organizations/test-org'],
+  [
+    'calendly.organizationUri',
+    'https://api.calendly.com/organizations/test-org',
+  ],
   ['calendly.webhookSigningKey', 'test-signing-key'],
 ]);
 
@@ -145,7 +148,12 @@ describe('CalendlyService', () => {
         status: 200,
         json: async () => ({
           collection: sampleEventTypes,
-          pagination: { count: 5, next_page: null as null, previous_page: null as null, next_page_token: null as null },
+          pagination: {
+            count: 5,
+            next_page: null as null,
+            previous_page: null as null,
+            next_page_token: null as null,
+          },
         }),
       });
 
@@ -182,33 +190,51 @@ describe('CalendlyService', () => {
     });
 
     it('should match VIDEO_CALL to video event type by keyword + duration', async () => {
-      const result = await service.findMatchingEventType(VisitMethodsEnum.VIDEO_CALL, 30);
+      const result = await service.findMatchingEventType(
+        VisitMethodsEnum.VIDEO_CALL,
+        30,
+      );
       expect(result?.slug).toBe('video-30');
     });
 
     it('should match VOICE_CALL to phone event type by keyword + duration', async () => {
-      const result = await service.findMatchingEventType(VisitMethodsEnum.VOICE_CALL, 15);
+      const result = await service.findMatchingEventType(
+        VisitMethodsEnum.VOICE_CALL,
+        15,
+      );
       expect(result?.slug).toBe('phone-15');
     });
 
     it('should match ON_SITE to office event type by keyword + duration', async () => {
-      const result = await service.findMatchingEventType(VisitMethodsEnum.ON_SITE, 60);
+      const result = await service.findMatchingEventType(
+        VisitMethodsEnum.ON_SITE,
+        60,
+      );
       expect(result?.slug).toBe('office-60');
     });
 
     it('should fall back to duration-only match when no keyword matches', async () => {
-      const result = await service.findMatchingEventType(VisitMethodsEnum.CHAT, 30);
+      const result = await service.findMatchingEventType(
+        VisitMethodsEnum.CHAT,
+        30,
+      );
       expect(result).not.toBeNull();
       expect(result!.duration).toBe(30);
     });
 
     it('should return null when no matching duration exists', async () => {
-      const result = await service.findMatchingEventType(VisitMethodsEnum.VIDEO_CALL, 120);
+      const result = await service.findMatchingEventType(
+        VisitMethodsEnum.VIDEO_CALL,
+        120,
+      );
       expect(result).toBeNull();
     });
 
     it('should not match inactive event types by keyword', async () => {
-      const result = await service.findMatchingEventType(VisitMethodsEnum.VIDEO_CALL, 30);
+      const result = await service.findMatchingEventType(
+        VisitMethodsEnum.VIDEO_CALL,
+        30,
+      );
       expect(result?.slug).not.toBe('inactive');
     });
   });
@@ -221,8 +247,15 @@ describe('CalendlyService', () => {
       method: VisitMethodsEnum.VIDEO_CALL,
       durationMinutes: 30,
       calendlyEventUri: null as null,
-      patient: { id: 'p1', email: 'patient@test.com', firstname: 'John', lastname: 'Doe' },
-      doctor: { user: { email: 'doc@test.com', firstname: 'Dr', lastname: 'Smith' } },
+      patient: {
+        id: 'p1',
+        email: 'patient@test.com',
+        firstname: 'John',
+        lastname: 'Doe',
+      },
+      doctor: {
+        user: { email: 'doc@test.com', firstname: 'Dr', lastname: 'Smith' },
+      },
     };
 
     it('should skip when not configured', async () => {
@@ -298,8 +331,13 @@ describe('CalendlyService', () => {
   // ──────────────── verifyWebhookSignature ────────────────
 
   describe('verifyWebhookSignature', () => {
-    const body = () => JSON.stringify({ event: 'invitee.created', id: crypto.randomUUID() });
-    const sign = (timestamp: string, rawBody: string, key = 'test-signing-key') =>
+    const body = () =>
+      JSON.stringify({ event: 'invitee.created', id: crypto.randomUUID() });
+    const sign = (
+      timestamp: string,
+      rawBody: string,
+      key = 'test-signing-key',
+    ) =>
       `t=${timestamp},v1=${crypto.createHmac('sha256', key).update(`${timestamp}.${rawBody}`).digest('hex')}`;
     // Fixed "now" so the tolerance boundaries are exact.
     const now = 1_800_000_000 + Math.floor(Math.random() * 1_000_000);
@@ -308,12 +346,21 @@ describe('CalendlyService', () => {
     beforeEach(() => jest.spyOn(Date, 'now').mockReturnValue(now * 1000));
     afterEach(() => jest.restoreAllMocks());
 
-    it.each([0, 1, 90, 180, -60, -180])('should verify a valid signature sent %is ago', (age) => {
-      const rawBody = body();
-      const timestamp = secondsAgo(age);
+    it.each([0, 1, 90, 180, -60, -180])(
+      'should verify a valid signature sent %is ago',
+      (age) => {
+        const rawBody = body();
+        const timestamp = secondsAgo(age);
 
-      expect(service.verifyWebhookSignature(rawBody, sign(timestamp, rawBody), timestamp)).toBe(true);
-    });
+        expect(
+          service.verifyWebhookSignature(
+            rawBody,
+            sign(timestamp, rawBody),
+            timestamp,
+          ),
+        ).toBe(true);
+      },
+    );
 
     it.each([181, 600, 86_400, -181, -3600])(
       'should reject a correctly signed webhook whose timestamp is %is old (replay or skew)',
@@ -321,7 +368,13 @@ describe('CalendlyService', () => {
         const rawBody = body();
         const timestamp = secondsAgo(age);
 
-        expect(service.verifyWebhookSignature(rawBody, sign(timestamp, rawBody), timestamp)).toBe(false);
+        expect(
+          service.verifyWebhookSignature(
+            rawBody,
+            sign(timestamp, rawBody),
+            timestamp,
+          ),
+        ).toBe(false);
       },
     );
 
@@ -330,30 +383,66 @@ describe('CalendlyService', () => {
       (timestamp) => {
         const rawBody = body();
 
-        expect(service.verifyWebhookSignature(rawBody, sign(timestamp, rawBody), timestamp)).toBe(false);
+        expect(
+          service.verifyWebhookSignature(
+            rawBody,
+            sign(timestamp, rawBody),
+            timestamp,
+          ),
+        ).toBe(false);
       },
     );
 
     it('should reject a fresh timestamp that is not the signed one', () => {
       const rawBody = body();
 
-      expect(service.verifyWebhookSignature(rawBody, sign(secondsAgo(600), rawBody), secondsAgo(0))).toBe(false);
+      expect(
+        service.verifyWebhookSignature(
+          rawBody,
+          sign(secondsAgo(600), rawBody),
+          secondsAgo(0),
+        ),
+      ).toBe(false);
     });
 
     it('should reject a signature over another body, or made with another key', () => {
       const rawBody = body();
       const timestamp = secondsAgo(0);
 
-      expect(service.verifyWebhookSignature(rawBody, sign(timestamp, body()), timestamp)).toBe(false);
-      expect(service.verifyWebhookSignature(rawBody, sign(timestamp, rawBody, 'other-key'), timestamp)).toBe(false);
+      expect(
+        service.verifyWebhookSignature(
+          rawBody,
+          sign(timestamp, body()),
+          timestamp,
+        ),
+      ).toBe(false);
+      expect(
+        service.verifyWebhookSignature(
+          rawBody,
+          sign(timestamp, rawBody, 'other-key'),
+          timestamp,
+        ),
+      ).toBe(false);
     });
 
     it('should reject an invalid signature', () => {
-      expect(service.verifyWebhookSignature('body', `t=${now},v1=invalid`, String(now))).toBe(false);
+      expect(
+        service.verifyWebhookSignature(
+          'body',
+          `t=${now},v1=invalid`,
+          String(now),
+        ),
+      ).toBe(false);
     });
 
     it('should reject when no v1 prefix in signature', () => {
-      expect(service.verifyWebhookSignature('body', `t=${now},bad=hmac`, String(now))).toBe(false);
+      expect(
+        service.verifyWebhookSignature(
+          'body',
+          `t=${now},bad=hmac`,
+          String(now),
+        ),
+      ).toBe(false);
     });
 
     it('should return false when signing key is empty', async () => {
@@ -376,7 +465,13 @@ describe('CalendlyService', () => {
       const svc = module.get<CalendlyService>(CalendlyService);
 
       const timestamp = String(now);
-      expect(svc.verifyWebhookSignature('body', sign(timestamp, 'body', ''), timestamp)).toBe(false);
+      expect(
+        svc.verifyWebhookSignature(
+          'body',
+          sign(timestamp, 'body', ''),
+          timestamp,
+        ),
+      ).toBe(false);
     });
   });
 
@@ -410,7 +505,9 @@ describe('CalendlyService', () => {
           },
         });
 
-        expect(prisma.appointment.findUnique).toHaveBeenCalledWith({ where: { id: 5 } });
+        expect(prisma.appointment.findUnique).toHaveBeenCalledWith({
+          where: { id: 5 },
+        });
         expect(prisma.appointment.update).toHaveBeenCalledWith({
           where: { id: 5 },
           data: {
@@ -459,33 +556,36 @@ describe('CalendlyService', () => {
         AppointmentStatusEnum.COMPLETED,
         AppointmentStatusEnum.CANCELLED,
         AppointmentStatusEnum.NO_SHOW,
-      ])('should skip if appointment is in terminal state %s', async (status) => {
-        prisma.appointment.findUnique.mockResolvedValue({
-          id: 5,
-          status,
-          calendlyEventUri: 'old-uri',
-        });
+      ])(
+        'should skip if appointment is in terminal state %s',
+        async (status) => {
+          prisma.appointment.findUnique.mockResolvedValue({
+            id: 5,
+            status,
+            calendlyEventUri: 'old-uri',
+          });
 
-        await service.handleWebhookEvent({
-          event: 'invitee.created',
-          created_at: '2026-06-01T00:00:00Z',
-          created_by: 'calendly',
-          payload: {
-            uri: 'inv-uri',
-            email: 'patient@test.com',
-            name: 'John Doe',
-            status: 'active',
-            reschedule_url: '',
-            cancel_url: '',
-            event: 'event-uri',
+          await service.handleWebhookEvent({
+            event: 'invitee.created',
             created_at: '2026-06-01T00:00:00Z',
-            updated_at: '2026-06-01T00:00:00Z',
-            tracking: { utm_content: 'apt_5' },
-          },
-        });
+            created_by: 'calendly',
+            payload: {
+              uri: 'inv-uri',
+              email: 'patient@test.com',
+              name: 'John Doe',
+              status: 'active',
+              reschedule_url: '',
+              cancel_url: '',
+              event: 'event-uri',
+              created_at: '2026-06-01T00:00:00Z',
+              updated_at: '2026-06-01T00:00:00Z',
+              tracking: { utm_content: 'apt_5' },
+            },
+          });
 
-        expect(prisma.appointment.update).not.toHaveBeenCalled();
-      });
+          expect(prisma.appointment.update).not.toHaveBeenCalled();
+        },
+      );
 
       it('should do nothing if no matching appointment found', async () => {
         prisma.appointment.findUnique.mockResolvedValue(null);
@@ -548,32 +648,35 @@ describe('CalendlyService', () => {
         AppointmentStatusEnum.COMPLETED,
         AppointmentStatusEnum.CANCELLED,
         AppointmentStatusEnum.NO_SHOW,
-      ])('should skip if appointment is in terminal state %s', async (status) => {
-        prisma.appointment.findFirst.mockResolvedValue({
-          id: 10,
-          status,
-          calendlyEventUri: 'event-uri',
-        });
+      ])(
+        'should skip if appointment is in terminal state %s',
+        async (status) => {
+          prisma.appointment.findFirst.mockResolvedValue({
+            id: 10,
+            status,
+            calendlyEventUri: 'event-uri',
+          });
 
-        await service.handleWebhookEvent({
-          event: 'invitee.canceled',
-          created_at: '2026-06-01T00:00:00Z',
-          created_by: 'calendly',
-          payload: {
-            uri: 'inv-uri',
-            email: 'patient@test.com',
-            name: 'John Doe',
-            status: 'canceled',
-            reschedule_url: '',
-            cancel_url: '',
-            event: 'event-uri',
+          await service.handleWebhookEvent({
+            event: 'invitee.canceled',
             created_at: '2026-06-01T00:00:00Z',
-            updated_at: '2026-06-01T00:00:00Z',
-          },
-        });
+            created_by: 'calendly',
+            payload: {
+              uri: 'inv-uri',
+              email: 'patient@test.com',
+              name: 'John Doe',
+              status: 'canceled',
+              reschedule_url: '',
+              cancel_url: '',
+              event: 'event-uri',
+              created_at: '2026-06-01T00:00:00Z',
+              updated_at: '2026-06-01T00:00:00Z',
+            },
+          });
 
-        expect(prisma.appointment.update).not.toHaveBeenCalled();
-      });
+          expect(prisma.appointment.update).not.toHaveBeenCalled();
+        },
+      );
     });
 
     it('should handle unknown event types gracefully', async () => {
@@ -637,7 +740,10 @@ describe('CalendlyService', () => {
           ok: true,
           status: 200,
           json: async () => ({
-            resource: { status: 'active', uri: 'https://api.calendly.com/scheduled_events/evt-abc' },
+            resource: {
+              status: 'active',
+              uri: 'https://api.calendly.com/scheduled_events/evt-abc',
+            },
           }),
         })
         .mockResolvedValueOnce({

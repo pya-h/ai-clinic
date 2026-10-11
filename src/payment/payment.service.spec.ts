@@ -199,18 +199,18 @@ describe('PaymentService', () => {
     it('should throw NotFoundException if payment not found', async () => {
       prisma.payment.findUnique.mockResolvedValue(null);
 
-      await expect(
-        service.getById(999, mockUser as any),
-      ).rejects.toThrow(NotFoundException);
+      await expect(service.getById(999, mockUser as any)).rejects.toThrow(
+        NotFoundException,
+      );
     });
 
     it('should throw ForbiddenException if non-owner non-admin requests', async () => {
       prisma.payment.findUnique.mockResolvedValue(mockPayment);
 
       const otherUser = { ...buildUser(), id: randomUuid() };
-      await expect(
-        service.getById(1, otherUser as any),
-      ).rejects.toThrow(ForbiddenException);
+      await expect(service.getById(1, otherUser as any)).rejects.toThrow(
+        ForbiddenException,
+      );
     });
   });
 
@@ -295,9 +295,9 @@ describe('PaymentService', () => {
       prisma.payment.findUnique.mockResolvedValue(mockPayment);
 
       const otherUser = { ...buildUser(), id: randomUuid() };
-      await expect(
-        service.confirmPayment(1, otherUser as any),
-      ).rejects.toThrow(ForbiddenException);
+      await expect(service.confirmPayment(1, otherUser as any)).rejects.toThrow(
+        ForbiddenException,
+      );
     });
 
     it('should throw ConflictException if payment is not PENDING', async () => {
@@ -306,9 +306,9 @@ describe('PaymentService', () => {
         status: PaymentStatusEnum.COMPLETED,
       });
 
-      await expect(
-        service.confirmPayment(1, mockUser as any),
-      ).rejects.toThrow(ConflictException);
+      await expect(service.confirmPayment(1, mockUser as any)).rejects.toThrow(
+        ConflictException,
+      );
     });
 
     it('should allow admin to confirm any payment', async () => {
@@ -403,9 +403,29 @@ describe('PaymentService', () => {
       });
 
       it.each([
-        ['the payment is missing', () => prisma.payment.findUnique.mockResolvedValue(null), NotFoundException],
-        ['the user does not own the payment', () => prisma.payment.findUnique.mockResolvedValue({ ...linkedPayment, userId: randomUuid() }), ForbiddenException],
-        ['the payment is not PENDING', () => prisma.payment.findUnique.mockResolvedValue({ ...linkedPayment, status: PaymentStatusEnum.FAILED }), ConflictException],
+        [
+          'the payment is missing',
+          () => prisma.payment.findUnique.mockResolvedValue(null),
+          NotFoundException,
+        ],
+        [
+          'the user does not own the payment',
+          () =>
+            prisma.payment.findUnique.mockResolvedValue({
+              ...linkedPayment,
+              userId: randomUuid(),
+            }),
+          ForbiddenException,
+        ],
+        [
+          'the payment is not PENDING',
+          () =>
+            prisma.payment.findUnique.mockResolvedValue({
+              ...linkedPayment,
+              status: PaymentStatusEnum.FAILED,
+            }),
+          ConflictException,
+        ],
       ])('should not notify when %s', async (_case, arrange, error) => {
         arrange();
 
@@ -416,7 +436,9 @@ describe('PaymentService', () => {
       });
 
       it('should still confirm when sending the notification fails', async () => {
-        notificationService.onPaymentConfirmed.mockRejectedValue(new Error('push down'));
+        notificationService.onPaymentConfirmed.mockRejectedValue(
+          new Error('push down'),
+        );
         const logError = jest
           .spyOn((service as any).logger, 'error')
           .mockImplementation(() => undefined);
@@ -425,7 +447,9 @@ describe('PaymentService', () => {
         await new Promise((resolve) => setImmediate(resolve));
 
         expect(result.status).toBe(PaymentStatusEnum.COMPLETED);
-        expect(logError).toHaveBeenCalledWith(expect.stringContaining('push down'));
+        expect(logError).toHaveBeenCalledWith(
+          expect.stringContaining('push down'),
+        );
       });
     });
   });

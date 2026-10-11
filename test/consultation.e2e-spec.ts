@@ -35,10 +35,7 @@ import {
   createMockPrismaService,
   MockPrismaService,
 } from './helpers/mock-prisma.helper';
-import {
-  ConsultationStatusEnum,
-  ConsultationModeEnum,
-} from '@prisma/client';
+import { ConsultationStatusEnum, ConsultationModeEnum } from '@prisma/client';
 import authConfigs from '../src/configs/auth';
 import generalConfigs from '../src/configs/general';
 import {
@@ -47,10 +44,7 @@ import {
   createMockAdminUser,
   MockUser,
 } from './helpers/mock-session.helper';
-import {
-  randomUuid,
-  buildDoctorProfile,
-} from './helpers/test-data.factory';
+import { randomUuid, buildDoctorProfile } from './helpers/test-data.factory';
 
 // ── Mock services ────────────────────────────────────────────────────
 
@@ -442,9 +436,7 @@ describe('Consultation (e2e)', () => {
       expect(res.statusCode).toBe(HttpStatus.OK);
       const body = JSON.parse(res.body);
       expect(body.contents).toBeDefined();
-      expect(body.contents.status).toBe(
-        ConsultationStatusEnum.DOCTOR_DECIDED,
-      );
+      expect(body.contents.status).toBe(ConsultationStatusEnum.DOCTOR_DECIDED);
       expect(body.contents.doctorDecision).toBe(ConsultationModeEnum.ONLINE);
     });
 
@@ -616,8 +608,12 @@ describe('Consultation (e2e)', () => {
       const body = JSON.parse(res.body);
       expect(body.contents).toBeDefined();
       expect(body.contents.id).toBe(consultationId);
-      expect(body.contents.status).toBe(ConsultationStatusEnum.PAYMENT_CONFIRMED);
-      expect(mockNotificationService.onPaymentConfirmed).toHaveBeenCalledTimes(1);
+      expect(body.contents.status).toBe(
+        ConsultationStatusEnum.PAYMENT_CONFIRMED,
+      );
+      expect(mockNotificationService.onPaymentConfirmed).toHaveBeenCalledTimes(
+        1,
+      );
       expect(mockNotificationService.onPaymentConfirmed).toHaveBeenCalledWith(
         consultationId,
         doctorUser.id,

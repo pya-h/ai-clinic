@@ -67,7 +67,8 @@ export class UserController {
   }
 
   @ApiOperation({
-    description: 'Change user password. Requires current password verification.',
+    description:
+      'Change user password. Requires current password verification.',
   })
   @UseGuards(CookieAuthGuard)
   @Patch('change-password')
@@ -84,10 +85,7 @@ export class UserController {
   @ApiConsumes('multipart/form-data')
   @UseGuards(CookieAuthGuard)
   @Post('avatar')
-  async uploadAvatar(
-    @CurrentUser() user: User,
-    @Req() req: FastifyRequest,
-  ) {
+  async uploadAvatar(@CurrentUser() user: User, @Req() req: FastifyRequest) {
     const file = await req.file();
     if (!file) {
       throw new BadRequestException('No file provided.');
@@ -101,7 +99,8 @@ export class UserController {
   }
 
   @ApiOperation({
-    description: 'Search users by name or email. Doctors can use this to find nurses to assign.',
+    description:
+      'Search users by name or email. Doctors can use this to find nurses to assign.',
   })
   @UseGuards(CookieAuthGuard, RolesGuard)
   @Roles(UserRolesEnum.DOCTOR)

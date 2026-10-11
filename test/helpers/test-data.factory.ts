@@ -11,15 +11,42 @@ import { UserRolesEnum, DoctorSpecialtiesEnum } from '@prisma/client';
 // ── Primitives ────────────────────────────────────────────────────────
 
 const FIRST_NAMES = [
-  'Aria', 'Darius', 'Shirin', 'Kian', 'Nilou', 'Parsa',
-  'Sara', 'Reza', 'Leila', 'Amir', 'Yara', 'Babak',
-  'Mina', 'Omid', 'Neda', 'Farhad', 'Tara', 'Kaveh',
+  'Aria',
+  'Darius',
+  'Shirin',
+  'Kian',
+  'Nilou',
+  'Parsa',
+  'Sara',
+  'Reza',
+  'Leila',
+  'Amir',
+  'Yara',
+  'Babak',
+  'Mina',
+  'Omid',
+  'Neda',
+  'Farhad',
+  'Tara',
+  'Kaveh',
 ];
 
 const LAST_NAMES = [
-  'Tehrani', 'Shirazi', 'Esfahani', 'Tabatabaei', 'Hosseini',
-  'Mousavi', 'Rezaei', 'Ahmadi', 'Moradi', 'Karimi',
-  'Ghorbani', 'Jafari', 'Rostami', 'Bahrami', 'Sadeghi',
+  'Tehrani',
+  'Shirazi',
+  'Esfahani',
+  'Tabatabaei',
+  'Hosseini',
+  'Mousavi',
+  'Rezaei',
+  'Ahmadi',
+  'Moradi',
+  'Karimi',
+  'Ghorbani',
+  'Jafari',
+  'Rostami',
+  'Bahrami',
+  'Sadeghi',
 ];
 
 const pick = <T>(arr: T[]): T => arr[Math.floor(Math.random() * arr.length)];
@@ -168,7 +195,9 @@ export function buildAdminUser(overrides: Partial<TestUser> = {}): TestUser {
   });
 }
 
-export function buildSuperAdminUser(overrides: Partial<TestUser> = {}): TestUser {
+export function buildSuperAdminUser(
+  overrides: Partial<TestUser> = {},
+): TestUser {
   return buildUser({
     role: UserRolesEnum.NONE,
     isAdmin: true,
@@ -329,7 +358,9 @@ export interface TestMessage {
   updatedAt: Date;
 }
 
-export function buildMessage(overrides: Partial<TestMessage> = {}): TestMessage {
+export function buildMessage(
+  overrides: Partial<TestMessage> = {},
+): TestMessage {
   const now = new Date();
   return {
     id: BigInt(randInt(1, 999999)),

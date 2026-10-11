@@ -8,7 +8,12 @@ import { NotificationModule } from '../notification/notification.module';
 import { NurseModule } from '../nurse/nurse.module';
 
 @Module({
-  imports: [PrismaModule, ConfigModule, forwardRef(() => NotificationModule), NurseModule],
+  imports: [
+    PrismaModule,
+    ConfigModule,
+    forwardRef(() => NotificationModule),
+    NurseModule,
+  ],
   controllers: [ChatController],
   providers: [ChatService, ChatGateway],
   exports: [ChatService, ChatGateway],

@@ -9,7 +9,13 @@ import { MatchingGateway } from './matching.gateway';
 import { NotificationModule } from '../notification/notification.module';
 
 @Module({
-  imports: [PrismaModule, ConfigModule, ReviewModule, SchedulingModule, forwardRef(() => NotificationModule)],
+  imports: [
+    PrismaModule,
+    ConfigModule,
+    ReviewModule,
+    SchedulingModule,
+    forwardRef(() => NotificationModule),
+  ],
   controllers: [MatchingController],
   providers: [MatchingService, MatchingGateway],
   exports: [MatchingService, MatchingGateway],

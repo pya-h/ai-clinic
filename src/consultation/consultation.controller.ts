@@ -34,10 +34,7 @@ export class ConsultationController {
   @Roles(UserRolesEnum.PATIENT)
   @HttpCode(HttpStatus.CREATED)
   @Post()
-  async create(
-    @CurrentUser() user: User,
-    @Body() dto: CreateConsultationDto,
-  ) {
+  async create(@CurrentUser() user: User, @Body() dto: CreateConsultationDto) {
     return this.consultationService.create(user, dto);
   }
 

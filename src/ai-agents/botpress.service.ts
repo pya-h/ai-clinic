@@ -1,6 +1,6 @@
 import {
   BadRequestException,
-    Injectable,
+  Injectable,
   Logger,
   NotFoundException,
   ServiceUnavailableException,
@@ -31,7 +31,10 @@ export class BotpressService {
     }
   >();
   // Deduplicates concurrent getClient() calls for the same user (race-condition guard)
-  private readonly pendingClientCreations = new Map<string, Promise<IUserContext>>();
+  private readonly pendingClientCreations = new Map<
+    string,
+    Promise<IUserContext>
+  >();
 
   // DB conversation ID → replacement Botpress ID (after Botpress-side expiry)
   private readonly renewedConversations = new Map<string, string>();
@@ -43,11 +46,14 @@ export class BotpressService {
   ) {
     this.webhookId = configService.get<string>('botpress.webhookId') ?? '';
     if (!this.webhookId) {
-      this.logger.warn('BOTAGENT_KEY not set — Botpress chat features disabled');
+      this.logger.warn(
+        'BOTAGENT_KEY not set — Botpress chat features disabled',
+      );
       this.deliveryMode = 'sse';
       return;
     }
-    this.deliveryMode = configService.get<'sse' | 'poll'>('botpress.deliveryMode') ?? 'sse';
+    this.deliveryMode =
+      configService.get<'sse' | 'poll'>('botpress.deliveryMode') ?? 'sse';
     this.logger.log(`Botpress delivery mode: ${this.deliveryMode}`);
     this.cacheService.registerDelEvent(
       this.cachingOptions.group,
@@ -59,7 +65,10 @@ export class BotpressService {
     return this.renewedConversations.get(dbConversationId) ?? dbConversationId;
   }
 
-  private async getClient(user: User, updateCacheDeadline?: boolean): Promise<IUserContext> {
+  private async getClient(
+    user: User,
+    updateCacheDeadline?: boolean,
+  ): Promise<IUserContext> {
     if (!this.webhookId) {
       throw new ServiceUnavailableException('Botpress chat is not configured.');
     }
@@ -89,11 +98,18 @@ export class BotpressService {
       if (savedKey) {
         try {
           const rawClient = new chat.Client({ webhookId: this.webhookId });
-          const { user: bpUser } = await rawClient.getUser({ 'x-user-key': savedKey });
+          const { user: bpUser } = await rawClient.getUser({
+            'x-user-key': savedKey,
+          });
           // Private constructor, but the SDK's own connect() uses it the same way
-          client = new (chat.AuthenticatedClient as any)(rawClient, { ...bpUser, key: savedKey }) as chat.AuthenticatedClient;
+          client = new (chat.AuthenticatedClient as any)(rawClient, {
+            ...bpUser,
+            key: savedKey,
+          }) as chat.AuthenticatedClient;
         } catch {
-          this.logger.warn('Saved Botpress key invalid, creating fresh identity');
+          this.logger.warn(
+            'Saved Botpress key invalid, creating fresh identity',
+          );
           client = await chat.Client.connect({ webhookId: this.webhookId });
         }
       } else {
@@ -101,10 +117,14 @@ export class BotpressService {
       }
 
       if (client.user?.key && client.user.key !== savedKey) {
-        await this.prismaService.user.update({
-          where: { id: user.id },
-          data: { botpressUserKey: client.user.key },
-        }).catch((err) => this.logger.warn('Failed to persist botpress userKey:', err));
+        await this.prismaService.user
+          .update({
+            where: { id: user.id },
+            data: { botpressUserKey: client.user.key },
+          })
+          .catch((err) =>
+            this.logger.warn('Failed to persist botpress userKey:', err),
+          );
       }
 
       const ctx: IUserContext = { client };
@@ -125,7 +145,10 @@ export class BotpressService {
     return creationPromise;
   }
 
-  async getConversation(user: User, updateCacheDeadline?: boolean): Promise<AiConversation> {
+  async getConversation(
+    user: User,
+    updateCacheDeadline?: boolean,
+  ): Promise<AiConversation> {
     const ctx = await this.getClient(user, updateCacheDeadline);
 
     if (ctx.conversationId) {
@@ -218,8 +241,13 @@ export class BotpressService {
     try {
       ctx = await this.getClient(user);
     } catch (err) {
-      this.logger.error(`Failed to connect to AI service for user ${user.id}:`, err);
-      throw new ServiceUnavailableException('AI service is temporarily unavailable.');
+      this.logger.error(
+        `Failed to connect to AI service for user ${user.id}:`,
+        err,
+      );
+      throw new ServiceUnavailableException(
+        'AI service is temporarily unavailable.',
+      );
     }
 
     const bpId = this.resolveBotpressId(conversationId);
@@ -243,7 +271,12 @@ export class BotpressService {
     userId: string,
     skip = 0,
     take = 20,
-  ): Promise<{ data: AiConversation[]; total: number; skip: number; take: number }> {
+  ): Promise<{
+    data: AiConversation[];
+    total: number;
+    skip: number;
+    take: number;
+  }> {
     const cappedTake = Math.min(take, 100);
     const [data, total] = await Promise.all([
       this.prismaService.aiConversation.findMany({
@@ -313,7 +346,9 @@ export class BotpressService {
       ctx = await this.getClient(user);
     } catch (err) {
       this.logger.error(`Failed to connect to AI service for send:`, err);
-      throw new ServiceUnavailableException('AI service is temporarily unavailable.');
+      throw new ServiceUnavailableException(
+        'AI service is temporarily unavailable.',
+      );
     }
     const bpId = this.resolveBotpressId(conversationId);
 
@@ -333,7 +368,9 @@ export class BotpressService {
           error?.error?.code === 'EAI_AGAIN' ||
           error?.code === 500;
         if (isTransient && attempt < maxRetries) {
-          this.logger.warn(`Transient error sending message (attempt ${attempt + 1}/${maxRetries + 1}), retrying...`);
+          this.logger.warn(
+            `Transient error sending message (attempt ${attempt + 1}/${maxRetries + 1}), retrying...`,
+          );
           await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)));
           continue;
         }
@@ -378,7 +415,9 @@ export class BotpressService {
       ctx = await this.getClient(user);
     } catch (err) {
       this.logger.error(`Failed to connect to AI service for listen:`, err);
-      throw new ServiceUnavailableException('AI service is temporarily unavailable.');
+      throw new ServiceUnavailableException(
+        'AI service is temporarily unavailable.',
+      );
     }
     const bpId = this.resolveBotpressId(conversationId);
 
@@ -522,13 +561,19 @@ export class BotpressService {
       const allMessages: any[] = [];
       let nextToken: string | undefined;
       do {
-        const page = await ctx.client.listMessages({ conversationId: bpId, ...(nextToken ? { nextToken } : {}) });
+        const page = await ctx.client.listMessages({
+          conversationId: bpId,
+          ...(nextToken ? { nextToken } : {}),
+        });
         allMessages.push(...page.messages);
         nextToken = (page as any).meta?.nextToken;
       } while (nextToken);
 
       const sorted = allMessages
-        .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
+        .sort(
+          (a, b) =>
+            new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+        )
         .map((msg) => {
           const text = BotpressService.extractPayloadText(msg.payload) ?? '';
           const choices = BotpressService.extractPayloadChoices(msg.payload);
@@ -547,10 +592,12 @@ export class BotpressService {
       for (const msg of sorted) {
         const prev = merged[merged.length - 1];
         if (prev && prev.role === 'bot' && msg.role === 'bot') {
-          const oneHasChoices = (!prev.choices && msg.choices) || (prev.choices && !msg.choices);
+          const oneHasChoices =
+            (!prev.choices && msg.choices) || (prev.choices && !msg.choices);
           if (oneHasChoices) {
             if (msg.choices) prev.choices = msg.choices;
-            if (msg.text && msg.text.length > prev.text.length) prev.text = msg.text;
+            if (msg.text && msg.text.length > prev.text.length)
+              prev.text = msg.text;
             continue;
           }
         }

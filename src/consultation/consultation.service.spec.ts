@@ -68,20 +68,48 @@ describe('ConsultationService', () => {
   // ──────────────── State Machine ────────────────
 
   describe('validateTransition', () => {
-    const validTransitions: [ConsultationStatusEnum, ConsultationStatusEnum][] = [
-      [ConsultationStatusEnum.CREATED, ConsultationStatusEnum.PENDING_DOCTOR_REVIEW],
-      [ConsultationStatusEnum.CREATED, ConsultationStatusEnum.CANCELLED],
-      [ConsultationStatusEnum.PENDING_DOCTOR_REVIEW, ConsultationStatusEnum.DOCTOR_DECIDED],
-      [ConsultationStatusEnum.PENDING_DOCTOR_REVIEW, ConsultationStatusEnum.CANCELLED],
-      [ConsultationStatusEnum.DOCTOR_DECIDED, ConsultationStatusEnum.PENDING_PAYMENT],
-      [ConsultationStatusEnum.DOCTOR_DECIDED, ConsultationStatusEnum.CANCELLED],
-      [ConsultationStatusEnum.PENDING_PAYMENT, ConsultationStatusEnum.PAYMENT_CONFIRMED],
-      [ConsultationStatusEnum.PENDING_PAYMENT, ConsultationStatusEnum.CANCELLED],
-      [ConsultationStatusEnum.PAYMENT_CONFIRMED, ConsultationStatusEnum.IN_PROGRESS],
-      [ConsultationStatusEnum.PAYMENT_CONFIRMED, ConsultationStatusEnum.CANCELLED],
-      [ConsultationStatusEnum.IN_PROGRESS, ConsultationStatusEnum.COMPLETED],
-      [ConsultationStatusEnum.IN_PROGRESS, ConsultationStatusEnum.CANCELLED],
-    ];
+    const validTransitions: [ConsultationStatusEnum, ConsultationStatusEnum][] =
+      [
+        [
+          ConsultationStatusEnum.CREATED,
+          ConsultationStatusEnum.PENDING_DOCTOR_REVIEW,
+        ],
+        [ConsultationStatusEnum.CREATED, ConsultationStatusEnum.CANCELLED],
+        [
+          ConsultationStatusEnum.PENDING_DOCTOR_REVIEW,
+          ConsultationStatusEnum.DOCTOR_DECIDED,
+        ],
+        [
+          ConsultationStatusEnum.PENDING_DOCTOR_REVIEW,
+          ConsultationStatusEnum.CANCELLED,
+        ],
+        [
+          ConsultationStatusEnum.DOCTOR_DECIDED,
+          ConsultationStatusEnum.PENDING_PAYMENT,
+        ],
+        [
+          ConsultationStatusEnum.DOCTOR_DECIDED,
+          ConsultationStatusEnum.CANCELLED,
+        ],
+        [
+          ConsultationStatusEnum.PENDING_PAYMENT,
+          ConsultationStatusEnum.PAYMENT_CONFIRMED,
+        ],
+        [
+          ConsultationStatusEnum.PENDING_PAYMENT,
+          ConsultationStatusEnum.CANCELLED,
+        ],
+        [
+          ConsultationStatusEnum.PAYMENT_CONFIRMED,
+          ConsultationStatusEnum.IN_PROGRESS,
+        ],
+        [
+          ConsultationStatusEnum.PAYMENT_CONFIRMED,
+          ConsultationStatusEnum.CANCELLED,
+        ],
+        [ConsultationStatusEnum.IN_PROGRESS, ConsultationStatusEnum.COMPLETED],
+        [ConsultationStatusEnum.IN_PROGRESS, ConsultationStatusEnum.CANCELLED],
+      ];
 
     it.each(validTransitions)(
       'should allow transition from %s to %s',
@@ -90,12 +118,24 @@ describe('ConsultationService', () => {
       },
     );
 
-    const invalidTransitions: [ConsultationStatusEnum, ConsultationStatusEnum][] = [
+    const invalidTransitions: [
+      ConsultationStatusEnum,
+      ConsultationStatusEnum,
+    ][] = [
       [ConsultationStatusEnum.CREATED, ConsultationStatusEnum.COMPLETED],
       [ConsultationStatusEnum.CREATED, ConsultationStatusEnum.IN_PROGRESS],
-      [ConsultationStatusEnum.PENDING_DOCTOR_REVIEW, ConsultationStatusEnum.COMPLETED],
-      [ConsultationStatusEnum.DOCTOR_DECIDED, ConsultationStatusEnum.IN_PROGRESS],
-      [ConsultationStatusEnum.PENDING_PAYMENT, ConsultationStatusEnum.COMPLETED],
+      [
+        ConsultationStatusEnum.PENDING_DOCTOR_REVIEW,
+        ConsultationStatusEnum.COMPLETED,
+      ],
+      [
+        ConsultationStatusEnum.DOCTOR_DECIDED,
+        ConsultationStatusEnum.IN_PROGRESS,
+      ],
+      [
+        ConsultationStatusEnum.PENDING_PAYMENT,
+        ConsultationStatusEnum.COMPLETED,
+      ],
       [ConsultationStatusEnum.COMPLETED, ConsultationStatusEnum.CANCELLED],
       [ConsultationStatusEnum.COMPLETED, ConsultationStatusEnum.IN_PROGRESS],
       [ConsultationStatusEnum.CANCELLED, ConsultationStatusEnum.CREATED],
@@ -267,7 +307,10 @@ describe('ConsultationService', () => {
       expect(result).toEqual(updated);
       expect(prisma.consultation.updateMany).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: { id: consultationId, status: ConsultationStatusEnum.PENDING_DOCTOR_REVIEW },
+          where: {
+            id: consultationId,
+            status: ConsultationStatusEnum.PENDING_DOCTOR_REVIEW,
+          },
           data: expect.objectContaining({
             status: ConsultationStatusEnum.DOCTOR_DECIDED,
             doctorDecision: ConsultationModeEnum.ONLINE,
@@ -347,11 +390,17 @@ describe('ConsultationService', () => {
     });
 
     it('should confirm and notify the doctor and patient', async () => {
-      const result = await service.confirmPayment(consultationId, patient as any);
+      const result = await service.confirmPayment(
+        consultationId,
+        patient as any,
+      );
 
       expect(result.status).toBe(ConsultationStatusEnum.PAYMENT_CONFIRMED);
       expect(prisma.consultation.updateMany).toHaveBeenCalledWith({
-        where: { id: consultationId, status: ConsultationStatusEnum.PENDING_PAYMENT },
+        where: {
+          id: consultationId,
+          status: ConsultationStatusEnum.PENDING_PAYMENT,
+        },
         data: { status: ConsultationStatusEnum.PAYMENT_CONFIRMED },
       });
       expect(notificationService.onPaymentConfirmed).toHaveBeenCalledTimes(1);
@@ -384,7 +433,9 @@ describe('ConsultationService', () => {
       ConsultationStatusEnum.PAYMENT_CONFIRMED,
       ConsultationStatusEnum.CANCELLED,
     ])('should not notify when the consultation is %s', async (status) => {
-      prisma.consultation.findUnique.mockResolvedValue(pendingPayment({ status }));
+      prisma.consultation.findUnique.mockResolvedValue(
+        pendingPayment({ status }),
+      );
 
       await expect(
         service.confirmPayment(consultationId, patient as any),
@@ -403,16 +454,23 @@ describe('ConsultationService', () => {
     });
 
     it('should still confirm when sending the notification fails', async () => {
-      notificationService.onPaymentConfirmed.mockRejectedValue(new Error('push down'));
+      notificationService.onPaymentConfirmed.mockRejectedValue(
+        new Error('push down'),
+      );
       const logError = jest
         .spyOn((service as any).logger, 'error')
         .mockImplementation(() => undefined);
 
-      const result = await service.confirmPayment(consultationId, patient as any);
+      const result = await service.confirmPayment(
+        consultationId,
+        patient as any,
+      );
       await new Promise((resolve) => setImmediate(resolve));
 
       expect(result.status).toBe(ConsultationStatusEnum.PAYMENT_CONFIRMED);
-      expect(logError).toHaveBeenCalledWith(expect.stringContaining('push down'));
+      expect(logError).toHaveBeenCalledWith(
+        expect.stringContaining('push down'),
+      );
     });
   });
 
@@ -454,7 +512,10 @@ describe('ConsultationService', () => {
       expect(result.status).toBe(ConsultationStatusEnum.COMPLETED);
       expect(prisma.consultation.updateMany).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: { id: consultationId, status: ConsultationStatusEnum.IN_PROGRESS },
+          where: {
+            id: consultationId,
+            status: ConsultationStatusEnum.IN_PROGRESS,
+          },
           data: expect.objectContaining({
             status: ConsultationStatusEnum.COMPLETED,
             notes: completeDto.notes,
@@ -658,7 +719,10 @@ describe('ConsultationService', () => {
       await service.cancel(consultationId, patient as any);
 
       expect(prisma.consultation.updateMany).toHaveBeenCalledWith({
-        where: { id: consultationId, status: ConsultationStatusEnum.DOCTOR_DECIDED },
+        where: {
+          id: consultationId,
+          status: ConsultationStatusEnum.DOCTOR_DECIDED,
+        },
         data: { status: ConsultationStatusEnum.CANCELLED },
       });
     });
@@ -827,7 +891,10 @@ describe('ConsultationService', () => {
     });
 
     it('should reject NONE role users (non-admin)', async () => {
-      const noneUser = createMockUser({ role: UserRolesEnum.NONE, isAdmin: false });
+      const noneUser = createMockUser({
+        role: UserRolesEnum.NONE,
+        isAdmin: false,
+      });
 
       await expect(service.list(noneUser as any, filters)).rejects.toThrow(
         ForbiddenException,
@@ -863,9 +930,9 @@ describe('ConsultationService', () => {
     it('should throw NotFoundException if doctor profile not found', async () => {
       prisma.doctorProfile.findUnique.mockResolvedValue(null);
 
-      await expect(
-        service.getPendingForDoctor(doctor as any),
-      ).rejects.toThrow(NotFoundException);
+      await expect(service.getPendingForDoctor(doctor as any)).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 });

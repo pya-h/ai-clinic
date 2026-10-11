@@ -28,12 +28,18 @@ export class UserService {
     if (select) {
       return this.prisma.user.findUnique({ where: { id }, select });
     }
-    return this.prisma.user.findUnique({ where: { id }, omit: { password: true } });
+    return this.prisma.user.findUnique({
+      where: { id },
+      omit: { password: true },
+    });
   }
 
   async userExists(userId: string): Promise<boolean> {
     return Boolean(
-      await this.prisma.user.findUnique({ where: { id: userId }, select: { id: true } }),
+      await this.prisma.user.findUnique({
+        where: { id: userId },
+        select: { id: true },
+      }),
     );
   }
 
@@ -70,7 +76,10 @@ export class UserService {
     if (await this.emailExists(userData.email)) {
       throw new ConflictException('Email is unavailable!');
     }
-    if (userData.role !== undefined && !this.utilsService.isEnumElement(UserRolesEnum, userData.role)) {
+    if (
+      userData.role !== undefined &&
+      !this.utilsService.isEnumElement(UserRolesEnum, userData.role)
+    ) {
       throw new BadRequestException('Invalid role!');
     }
 
@@ -115,7 +124,9 @@ export class UserService {
     }
 
     const previousAvatar =
-      updateUserData.avatar !== undefined ? await this.currentAvatar(user.id) : null;
+      updateUserData.avatar !== undefined
+        ? await this.currentAvatar(user.id)
+        : null;
 
     const updated = await this.prisma.user.update({
       where: { id: user.id },
@@ -176,7 +187,13 @@ export class UserService {
       role: true,
     };
     const [data, total] = await Promise.all([
-      this.prisma.user.findMany({ where, select, skip, take, orderBy: { createdAt: 'desc' as const } }),
+      this.prisma.user.findMany({
+        where,
+        select,
+        skip,
+        take,
+        orderBy: { createdAt: 'desc' as const },
+      }),
       this.prisma.user.count({ where }),
     ]);
     return { data, total, skip, take };
@@ -208,7 +225,10 @@ export class UserService {
   }
 
   /** Deletes the file of an avatar this server stored once it's replaced; a failure only leaves the file behind. */
-  private async removeReplacedAvatar(previous: string | null, current: string | null): Promise<void> {
+  private async removeReplacedAvatar(
+    previous: string | null,
+    current: string | null,
+  ): Promise<void> {
     if (!previous || previous === current) return;
     try {
       // Profile updates only take absolute URLs today, but another account must never lose its file.

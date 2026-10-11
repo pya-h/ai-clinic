@@ -39,7 +39,14 @@ import { FastifyThrottlerGuard } from './common/guards/fastify-throttler.guard';
     PrismaModule,
     ConfigModule.forRoot({
       isGlobal: true,
-      load: [appGeneralConfigs, authConfigs, aiConfigs, notificationConfigs, storageConfigs, calendlyConfigs],
+      load: [
+        appGeneralConfigs,
+        authConfigs,
+        aiConfigs,
+        notificationConfigs,
+        storageConfigs,
+        calendlyConfigs,
+      ],
       validate: validateEnv,
     }),
     CacheModule,

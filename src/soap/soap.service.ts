@@ -7,7 +7,11 @@ import {
   forwardRef,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { NursePermissionEnum, PatientSOAP, UserRolesEnum } from '@prisma/client';
+import {
+  NursePermissionEnum,
+  PatientSOAP,
+  UserRolesEnum,
+} from '@prisma/client';
 import { PaginationOptionsDto } from '../common/dtos/pagination-options.dto';
 import { NotificationService } from '../notification/notification.service';
 import { NurseService } from '../nurse/nurse.service';
@@ -65,9 +69,7 @@ export class SoapService {
     const taggedMatch = text.match(taggedRegex);
     if (taggedMatch) return taggedMatch[1].trim();
 
-    const firstHeading = text.match(
-      /^[ \t]*\*{0,2}[ \t]*Subjective\b/im,
-    );
+    const firstHeading = text.match(/^[ \t]*\*{0,2}[ \t]*Subjective\b/im);
     if (firstHeading && firstHeading.index !== undefined) {
       return text.slice(firstHeading.index).trim();
     }
@@ -81,7 +83,12 @@ export class SoapService {
     plan: string;
     rawNote: string;
   } {
-    const sections = { subjective: '', objective: '', assessment: '', plan: '' };
+    const sections = {
+      subjective: '',
+      objective: '',
+      assessment: '',
+      plan: '',
+    };
 
     const headings: { key: string; start: number; end: number }[] = [];
     const re = new RegExp(SoapService.HEADING_RE.source, 'gim');
@@ -168,9 +175,7 @@ export class SoapService {
   /**
    * Get a single SOAP by conversation ID.
    */
-  async getByConversation(
-    conversationId: string,
-  ): Promise<PatientSOAP | null> {
+  async getByConversation(conversationId: string): Promise<PatientSOAP | null> {
     return this.prisma.patientSOAP.findUnique({
       where: { conversationId },
     });
@@ -182,7 +187,12 @@ export class SoapService {
   async getByUser(
     userId: string,
     pagination: PaginationOptionsDto,
-  ): Promise<{ data: PatientSOAP[]; total: number; skip: number; take: number }> {
+  ): Promise<{
+    data: PatientSOAP[];
+    total: number;
+    skip: number;
+    take: number;
+  }> {
     const skip = +(pagination.skip ?? 0);
     const take = +(pagination.take ?? 20);
 
@@ -202,7 +212,12 @@ export class SoapService {
   async getForNurse(
     nurseUserId: string,
     pagination: PaginationOptionsDto,
-  ): Promise<{ data: PatientSOAP[]; total: number; skip: number; take: number }> {
+  ): Promise<{
+    data: PatientSOAP[];
+    total: number;
+    skip: number;
+    take: number;
+  }> {
     const doctorIds = await this.nurseService.getDoctorIdsForNurse(
       nurseUserId,
       NursePermissionEnum.VIEW_SOAPS,

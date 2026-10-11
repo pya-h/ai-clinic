@@ -184,9 +184,7 @@ export class MatchingService {
       };
     });
 
-    return scored
-      .sort((a, b) => b.score - a.score)
-      .slice(0, this.TOP_N);
+    return scored.sort((a, b) => b.score - a.score).slice(0, this.TOP_N);
   }
 
   // ────────────── Match Request Creation ──────────────
@@ -218,31 +216,39 @@ export class MatchingService {
     // Atomic check-then-create to prevent duplicate active match requests
     let matchRequest: MatchRequest;
     try {
-      matchRequest = await this.prisma.$transaction(async (tx) => {
-        const activeRequest = await tx.matchRequest.findFirst({
-          where: {
-            patientId: user.id,
-            status: { in: [MatchStatusEnum.SEARCHING, MatchStatusEnum.MATCHED] },
-          },
-        });
-        if (activeRequest) {
-          throw new BadRequestException(
-            'You already have an active match request. Cancel it first or wait for it to resolve.',
-          );
-        }
+      matchRequest = await this.prisma.$transaction(
+        async (tx) => {
+          const activeRequest = await tx.matchRequest.findFirst({
+            where: {
+              patientId: user.id,
+              status: {
+                in: [MatchStatusEnum.SEARCHING, MatchStatusEnum.MATCHED],
+              },
+            },
+          });
+          if (activeRequest) {
+            throw new BadRequestException(
+              'You already have an active match request. Cancel it first or wait for it to resolve.',
+            );
+          }
 
-        return tx.matchRequest.create({
-          data: {
-            patientId: user.id,
-            soapId: soapId ?? null,
-            specialty: specialty ?? null,
-            triageLevel: triageLevel ?? null,
-            status: MatchStatusEnum.SEARCHING,
-          },
-        });
-      }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+          return tx.matchRequest.create({
+            data: {
+              patientId: user.id,
+              soapId: soapId ?? null,
+              specialty: specialty ?? null,
+              triageLevel: triageLevel ?? null,
+              status: MatchStatusEnum.SEARCHING,
+            },
+          });
+        },
+        { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+      );
     } catch (error) {
-      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2034') {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2034'
+      ) {
         throw new ConflictException(
           'A match request was just created. Please wait for it to resolve.',
         );
@@ -300,43 +306,48 @@ export class MatchingService {
       throw new NotFoundException('Doctor profile not found.');
     }
 
-    const [consultation, updated] = await this.prisma.$transaction(async (tx) => {
-      const fresh = await tx.matchRequest.findUnique({
-        where: { id: matchRequestId },
-      });
-      if (!fresh) {
-        throw new NotFoundException('Match request not found.');
-      }
+    const [consultation, updated] = await this.prisma.$transaction(
+      async (tx) => {
+        const fresh = await tx.matchRequest.findUnique({
+          where: { id: matchRequestId },
+        });
+        if (!fresh) {
+          throw new NotFoundException('Match request not found.');
+        }
 
-      if (fresh.matchedDoctorId !== doctorProfile.id) {
-        throw new ForbiddenException(
-          'This match request is not assigned to you.',
+        if (fresh.matchedDoctorId !== doctorProfile.id) {
+          throw new ForbiddenException(
+            'This match request is not assigned to you.',
+          );
+        }
+        this.assertNotExpired(fresh);
+
+        this.validateTransition(
+          fresh.status,
+          MatchStatusEnum.CONSULTATION_CREATED,
         );
-      }
-      this.assertNotExpired(fresh);
 
-      this.validateTransition(fresh.status, MatchStatusEnum.CONSULTATION_CREATED);
+        const cons = await tx.consultation.create({
+          data: {
+            patientId: fresh.patientId,
+            doctorId: doctorProfile.id,
+            soapId: fresh.soapId ?? null,
+            status: ConsultationStatusEnum.PENDING_DOCTOR_REVIEW,
+          },
+        });
 
-      const cons = await tx.consultation.create({
-        data: {
-          patientId: fresh.patientId,
-          doctorId: doctorProfile.id,
-          soapId: fresh.soapId ?? null,
-          status: ConsultationStatusEnum.PENDING_DOCTOR_REVIEW,
-        },
-      });
+        const upd = await tx.matchRequest.update({
+          where: { id: matchRequestId },
+          data: {
+            status: MatchStatusEnum.CONSULTATION_CREATED,
+            consultationId: cons.id,
+            resolvedAt: new Date(),
+          },
+        });
 
-      const upd = await tx.matchRequest.update({
-        where: { id: matchRequestId },
-        data: {
-          status: MatchStatusEnum.CONSULTATION_CREATED,
-          consultationId: cons.id,
-          resolvedAt: new Date(),
-        },
-      });
-
-      return [cons, upd];
-    });
+        return [cons, upd];
+      },
+    );
 
     this.logger.log(
       `Match ${matchRequestId} accepted by doctor ${doctorProfile.id}, consultation ${consultation.id} created`,
@@ -395,7 +406,10 @@ export class MatchingService {
       });
     });
 
-    const previouslyRejected = await this.getRejectedDoctorIds(matchRequestId, doctorProfile.id);
+    const previouslyRejected = await this.getRejectedDoctorIds(
+      matchRequestId,
+      doctorProfile.id,
+    );
 
     const nextDoctors = await this.scoreDoctors({
       specialty: updated.specialty ?? undefined,
@@ -467,11 +481,16 @@ export class MatchingService {
 
   // ────────────── Cancel ──────────────
 
-  async cancelRequest(matchRequestId: string, user: User): Promise<MatchRequest> {
+  async cancelRequest(
+    matchRequestId: string,
+    user: User,
+  ): Promise<MatchRequest> {
     const request = await this.getByIdRaw(matchRequestId);
 
     if (request.patientId !== user.id && !user.isAdmin && !user.isSuperAdmin) {
-      throw new ForbiddenException('You can only cancel your own match requests.');
+      throw new ForbiddenException(
+        'You can only cancel your own match requests.',
+      );
     }
 
     this.validateTransition(request.status, MatchStatusEnum.CANCELLED);
@@ -493,11 +512,16 @@ export class MatchingService {
 
   // ────────────── Manual Browse Fallback ──────────────
 
-  async fallbackToManualBrowse(matchRequestId: string, user: User): Promise<MatchRequest> {
+  async fallbackToManualBrowse(
+    matchRequestId: string,
+    user: User,
+  ): Promise<MatchRequest> {
     const request = await this.getByIdRaw(matchRequestId);
 
     if (request.patientId !== user.id && !user.isAdmin && !user.isSuperAdmin) {
-      throw new ForbiddenException('You can only modify your own match requests.');
+      throw new ForbiddenException(
+        'You can only modify your own match requests.',
+      );
     }
 
     this.validateTransition(request.status, MatchStatusEnum.MANUAL_BROWSE);
@@ -526,7 +550,12 @@ export class MatchingService {
         matchedDoctor: {
           include: {
             user: {
-              select: { id: true, firstname: true, lastname: true, avatar: true },
+              select: {
+                id: true,
+                firstname: true,
+                lastname: true,
+                avatar: true,
+              },
             },
           },
         },
@@ -537,16 +566,14 @@ export class MatchingService {
     });
     if (!request) throw new NotFoundException('Match request not found.');
 
-    if (
-      request.patientId !== user.id &&
-      !user.isAdmin &&
-      !user.isSuperAdmin
-    ) {
+    if (request.patientId !== user.id && !user.isAdmin && !user.isSuperAdmin) {
       const doctorProfile = await this.prisma.doctorProfile.findUnique({
         where: { userId: user.id },
       });
       if (!doctorProfile || request.matchedDoctorId !== doctorProfile.id) {
-        throw new ForbiddenException('You do not have access to this match request.');
+        throw new ForbiddenException(
+          'You do not have access to this match request.',
+        );
       }
     }
 
@@ -572,7 +599,12 @@ export class MatchingService {
           matchedDoctor: {
             include: {
               user: {
-                select: { id: true, firstname: true, lastname: true, avatar: true },
+                select: {
+                  id: true,
+                  firstname: true,
+                  lastname: true,
+                  avatar: true,
+                },
               },
             },
           },
@@ -596,7 +628,12 @@ export class MatchingService {
         matchedDoctor: {
           include: {
             user: {
-              select: { id: true, firstname: true, lastname: true, avatar: true },
+              select: {
+                id: true,
+                firstname: true,
+                lastname: true,
+                avatar: true,
+              },
             },
           },
         },
@@ -641,9 +678,10 @@ export class MatchingService {
   }
 
   isExpired(request: MatchRequest): boolean {
-    const created = request.createdAt instanceof Date
-      ? request.createdAt.getTime()
-      : new Date(request.createdAt).getTime();
+    const created =
+      request.createdAt instanceof Date
+        ? request.createdAt.getTime()
+        : new Date(request.createdAt).getTime();
     return Date.now() - created > this.MATCH_TIMEOUT_MS;
   }
 

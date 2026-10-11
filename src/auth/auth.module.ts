@@ -8,12 +8,7 @@ import { UtilsModule } from '../utils/utils.module';
 import { PrismaModule } from '../prisma/prisma.module';
 
 @Module({
-  imports: [
-    UserModule,
-    ConfigModule,
-    UtilsModule,
-    PrismaModule,
-  ],
+  imports: [UserModule, ConfigModule, UtilsModule, PrismaModule],
   providers: [AuthService, CookieAuthGuard],
   controllers: [AuthController],
 })

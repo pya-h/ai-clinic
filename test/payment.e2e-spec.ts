@@ -36,10 +36,7 @@ import {
   MockUser,
 } from './helpers/mock-session.helper';
 import { randomUuid } from './helpers/test-data.factory';
-import {
-  PaymentStatusEnum,
-  ConsultationStatusEnum,
-} from '@prisma/client';
+import { PaymentStatusEnum, ConsultationStatusEnum } from '@prisma/client';
 import authConfigs from '../src/configs/auth';
 import generalConfigs from '../src/configs/general';
 
@@ -194,9 +191,7 @@ describe('Payment (e2e)', () => {
         patientId: patientUser.id,
         status: ConsultationStatusEnum.PENDING_PAYMENT,
       });
-      prisma.payment.create.mockResolvedValue(
-        buildPayment({ consultationId }),
-      );
+      prisma.payment.create.mockResolvedValue(buildPayment({ consultationId }));
 
       const res = await app.inject({
         method: 'POST',
@@ -573,7 +568,9 @@ describe('Payment (e2e)', () => {
           },
           data: { status: ConsultationStatusEnum.PAYMENT_CONFIRMED },
         });
-        expect(mockNotificationService.onPaymentConfirmed).toHaveBeenCalledTimes(1);
+        expect(
+          mockNotificationService.onPaymentConfirmed,
+        ).toHaveBeenCalledTimes(1);
         expect(mockNotificationService.onPaymentConfirmed).toHaveBeenCalledWith(
           consultationId,
           doctorUser.id,
@@ -591,7 +588,9 @@ describe('Payment (e2e)', () => {
         });
 
         expect(res.statusCode).toBe(HttpStatus.OK);
-        expect(mockNotificationService.onPaymentConfirmed).not.toHaveBeenCalled();
+        expect(
+          mockNotificationService.onPaymentConfirmed,
+        ).not.toHaveBeenCalled();
       });
 
       it('should not notify when the payment is no longer PENDING', async () => {
@@ -608,7 +607,9 @@ describe('Payment (e2e)', () => {
 
         expect(res.statusCode).toBe(HttpStatus.CONFLICT);
         expect(prisma.consultation.updateMany).not.toHaveBeenCalled();
-        expect(mockNotificationService.onPaymentConfirmed).not.toHaveBeenCalled();
+        expect(
+          mockNotificationService.onPaymentConfirmed,
+        ).not.toHaveBeenCalled();
       });
 
       it('should still return 200 when the notification fails', async () => {

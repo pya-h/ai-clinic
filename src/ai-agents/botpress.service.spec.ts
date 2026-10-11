@@ -74,9 +74,9 @@ describe('BotpressService', () => {
 
     cache = {
       get: jest.fn().mockResolvedValue(null),
-      set: jest.fn().mockImplementation((_g, _k, value) =>
-        Promise.resolve(value),
-      ),
+      set: jest
+        .fn()
+        .mockImplementation((_g, _k, value) => Promise.resolve(value)),
       registerDelEvent: jest.fn(),
     };
 
@@ -129,20 +129,30 @@ describe('BotpressService', () => {
 
   describe('extractPayloadText (static)', () => {
     it('should extract text from payload', () => {
-      expect(BotpressService.extractPayloadText({ text: 'hello' })).toBe('hello');
+      expect(BotpressService.extractPayloadText({ text: 'hello' })).toBe(
+        'hello',
+      );
     });
 
     it('should extract markdown when text is missing', () => {
-      expect(BotpressService.extractPayloadText({ markdown: '# hi' })).toBe('# hi');
+      expect(BotpressService.extractPayloadText({ markdown: '# hi' })).toBe(
+        '# hi',
+      );
     });
 
     it('should extract title as last fallback', () => {
-      expect(BotpressService.extractPayloadText({ title: 'Title' })).toBe('Title');
+      expect(BotpressService.extractPayloadText({ title: 'Title' })).toBe(
+        'Title',
+      );
     });
 
     it('should prefer text over markdown and title', () => {
       expect(
-        BotpressService.extractPayloadText({ text: 'text', markdown: 'md', title: 'title' }),
+        BotpressService.extractPayloadText({
+          text: 'text',
+          markdown: 'md',
+          title: 'title',
+        }),
       ).toBe('text');
     });
 
@@ -168,7 +178,10 @@ describe('BotpressService', () => {
       const user = buildUser();
       const convo = buildAiConversation({ userId: user.id });
 
-      cache.get.mockResolvedValue({ client: bpClient, conversationId: convo.id });
+      cache.get.mockResolvedValue({
+        client: bpClient,
+        conversationId: convo.id,
+      });
       prisma.aiConversation.findUnique.mockResolvedValue(convo);
 
       const result = await service.start(user as any);
@@ -200,7 +213,9 @@ describe('BotpressService', () => {
       cache.get.mockResolvedValue(null);
       prisma.user.findUnique.mockResolvedValue({ botpressUserKey: null });
       prisma.aiConversation.findFirst.mockResolvedValue(null);
-      bpClient.createConversation.mockResolvedValue({ conversation: { id: newBpId } });
+      bpClient.createConversation.mockResolvedValue({
+        conversation: { id: newBpId },
+      });
       prisma.aiConversation.create.mockResolvedValue(newConvo);
 
       const result = await service.start(user as any);
@@ -215,7 +230,9 @@ describe('BotpressService', () => {
       const user = buildUser();
       cache.get.mockRejectedValue(new Error('cache down'));
 
-      await expect(service.start(user as any)).rejects.toThrow(ServiceUnavailableException);
+      await expect(service.start(user as any)).rejects.toThrow(
+        ServiceUnavailableException,
+      );
     });
   });
 
@@ -227,7 +244,9 @@ describe('BotpressService', () => {
 
       cache.get.mockResolvedValue(null);
       prisma.user.findUnique.mockResolvedValue({ botpressUserKey: null });
-      bpClient.createConversation.mockResolvedValue({ conversation: { id: newBpId } });
+      bpClient.createConversation.mockResolvedValue({
+        conversation: { id: newBpId },
+      });
       prisma.aiConversation.create.mockResolvedValue(newConvo);
 
       const result = await service.startNew(user as any);
@@ -243,7 +262,9 @@ describe('BotpressService', () => {
       prisma.user.findUnique.mockResolvedValue({ botpressUserKey: null });
       bpClient.createConversation.mockRejectedValue(new Error('Botpress down'));
 
-      await expect(service.startNew(user as any)).rejects.toThrow(ServiceUnavailableException);
+      await expect(service.startNew(user as any)).rejects.toThrow(
+        ServiceUnavailableException,
+      );
     });
   });
 
@@ -319,7 +340,10 @@ describe('BotpressService', () => {
   describe('listConversations', () => {
     it('should return paginated conversations with SOAP data', async () => {
       const userId = randomUuid();
-      const convos = [buildAiConversation({ userId }), buildAiConversation({ userId })];
+      const convos = [
+        buildAiConversation({ userId }),
+        buildAiConversation({ userId }),
+      ];
 
       prisma.aiConversation.findMany.mockResolvedValue(convos);
       prisma.aiConversation.count.mockResolvedValue(2);
@@ -333,7 +357,12 @@ describe('BotpressService', () => {
           orderBy: { createdAt: 'desc' },
           include: {
             soap: {
-              select: { id: true, suggestedSpecialty: true, triageLevel: true, createdAt: true },
+              select: {
+                id: true,
+                suggestedSpecialty: true,
+                triageLevel: true,
+                createdAt: true,
+              },
             },
           },
         }),
@@ -406,7 +435,9 @@ describe('BotpressService', () => {
       const transientErr = { error: { code: 'ETIMEDOUT' } };
       bpClient.createMessage.mockRejectedValue(transientErr);
 
-      await expect(service.send(user as any, convoId, 'hello')).rejects.toEqual(transientErr);
+      await expect(service.send(user as any, convoId, 'hello')).rejects.toEqual(
+        transientErr,
+      );
       expect(bpClient.createMessage).toHaveBeenCalledTimes(3);
     });
 
@@ -420,7 +451,9 @@ describe('BotpressService', () => {
       const permanentErr = { code: 400, message: 'Bad request' };
       bpClient.createMessage.mockRejectedValue(permanentErr);
 
-      await expect(service.send(user as any, convoId, 'hello')).rejects.toEqual(permanentErr);
+      await expect(service.send(user as any, convoId, 'hello')).rejects.toEqual(
+        permanentErr,
+      );
       expect(bpClient.createMessage).toHaveBeenCalledTimes(1);
     });
 
@@ -428,19 +461,23 @@ describe('BotpressService', () => {
       const user = buildUser();
       cache.get.mockRejectedValue(new Error('cache error'));
 
-      await expect(service.send(user as any, randomUuid(), 'hello')).rejects.toThrow(
-        ServiceUnavailableException,
-      );
+      await expect(
+        service.send(user as any, randomUuid(), 'hello'),
+      ).rejects.toThrow(ServiceUnavailableException);
     });
   });
 
   describe('sendGuest', () => {
     it('should throw NotFoundException for unknown guest conversation', async () => {
-      await expect(service.sendGuest(randomUuid(), 'hello')).rejects.toThrow(NotFoundException);
+      await expect(service.sendGuest(randomUuid(), 'hello')).rejects.toThrow(
+        NotFoundException,
+      );
     });
 
     it('should throw BadRequestException for empty text', async () => {
-      bpClient.createConversation.mockResolvedValue({ conversation: { id: randomUuid() } });
+      bpClient.createConversation.mockResolvedValue({
+        conversation: { id: randomUuid() },
+      });
       const guestResult = await service.startGuest();
 
       await expect(service.sendGuest(guestResult.id, '   ')).rejects.toThrow(
@@ -449,18 +486,22 @@ describe('BotpressService', () => {
     });
 
     it('should throw BadRequestException for null text', async () => {
-      bpClient.createConversation.mockResolvedValue({ conversation: { id: randomUuid() } });
+      bpClient.createConversation.mockResolvedValue({
+        conversation: { id: randomUuid() },
+      });
       const guestResult = await service.startGuest();
 
-      await expect(service.sendGuest(guestResult.id, null as any)).rejects.toThrow(
-        BadRequestException,
-      );
+      await expect(
+        service.sendGuest(guestResult.id, null as any),
+      ).rejects.toThrow(BadRequestException);
     });
   });
 
   describe('startGuest', () => {
     it('should return a guest conversation with guest flag', async () => {
-      bpClient.createConversation.mockResolvedValue({ conversation: { id: randomUuid() } });
+      bpClient.createConversation.mockResolvedValue({
+        conversation: { id: randomUuid() },
+      });
 
       const result = await service.startGuest();
 
@@ -516,7 +557,11 @@ describe('BotpressService', () => {
       prisma.user.findUnique.mockResolvedValue({ botpressUserKey: null });
       bpClient.listMessages.mockResolvedValue({ messages: [oldMsg, newMsg] });
 
-      const result = await service.pollForNewMessages(user as any, convoId, new Date('2024-01-01'));
+      const result = await service.pollForNewMessages(
+        user as any,
+        convoId,
+        new Date('2024-01-01'),
+      );
 
       expect(result).toHaveLength(1);
       expect(result[0]).toEqual(newMsg);
@@ -526,7 +571,10 @@ describe('BotpressService', () => {
       const user = buildUser();
       cache.get.mockRejectedValue(new Error('fail'));
 
-      const result = await service.pollForNewMessages(user as any, randomUuid());
+      const result = await service.pollForNewMessages(
+        user as any,
+        randomUuid(),
+      );
       expect(result).toEqual([]);
     });
 
@@ -539,11 +587,15 @@ describe('BotpressService', () => {
 
       bpClient.listMessages
         .mockResolvedValueOnce({
-          messages: [{ id: '1', userId: 'bot', createdAt: new Date().toISOString() }],
+          messages: [
+            { id: '1', userId: 'bot', createdAt: new Date().toISOString() },
+          ],
           meta: { nextToken: 'tok' },
         })
         .mockResolvedValueOnce({
-          messages: [{ id: '2', userId: 'bot', createdAt: new Date().toISOString() }],
+          messages: [
+            { id: '2', userId: 'bot', createdAt: new Date().toISOString() },
+          ],
         });
 
       const result = await service.pollForNewMessages(user as any, convoId);
@@ -555,7 +607,9 @@ describe('BotpressService', () => {
 
   describe('pollGuestMessages', () => {
     it('should throw NotFoundException for unknown guest conversation', async () => {
-      await expect(service.pollGuestMessages(randomUuid())).rejects.toThrow(NotFoundException);
+      await expect(service.pollGuestMessages(randomUuid())).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 
@@ -564,7 +618,10 @@ describe('BotpressService', () => {
       const user = buildUser();
       prisma.aiConversation.findFirst.mockResolvedValue(null);
 
-      const result = await service.getConversationHistory(user as any, randomUuid());
+      const result = await service.getConversationHistory(
+        user as any,
+        randomUuid(),
+      );
       expect(result).toEqual([]);
     });
 
@@ -579,8 +636,18 @@ describe('BotpressService', () => {
 
       bpClient.listMessages.mockResolvedValue({
         messages: [
-          { id: '2', userId: bpClient.user.id, createdAt: '2026-01-01T00:01:00Z', payload: { text: 'user msg' } },
-          { id: '1', userId: 'bot-user', createdAt: '2026-01-01T00:00:00Z', payload: { text: 'bot reply' } },
+          {
+            id: '2',
+            userId: bpClient.user.id,
+            createdAt: '2026-01-01T00:01:00Z',
+            payload: { text: 'user msg' },
+          },
+          {
+            id: '1',
+            userId: 'bot-user',
+            createdAt: '2026-01-01T00:00:00Z',
+            payload: { text: 'bot reply' },
+          },
         ],
       });
 
@@ -604,8 +671,18 @@ describe('BotpressService', () => {
 
       bpClient.listMessages.mockResolvedValue({
         messages: [
-          { id: '1', userId: 'bot', createdAt: '2026-01-01T00:00:00Z', payload: {} },
-          { id: '2', userId: 'bot', createdAt: '2026-01-01T00:01:00Z', payload: { text: 'real' } },
+          {
+            id: '1',
+            userId: 'bot',
+            createdAt: '2026-01-01T00:00:00Z',
+            payload: {},
+          },
+          {
+            id: '2',
+            userId: 'bot',
+            createdAt: '2026-01-01T00:01:00Z',
+            payload: { text: 'real' },
+          },
         ],
       });
 
@@ -666,7 +743,9 @@ describe('BotpressService', () => {
   describe('releaseListener', () => {
     it('should disconnect listener and clear from context', async () => {
       const userId = randomUuid();
-      const mockListener = { disconnect: jest.fn().mockResolvedValue(undefined) };
+      const mockListener = {
+        disconnect: jest.fn().mockResolvedValue(undefined),
+      };
       const ctx = { client: bpClient, listener: mockListener };
 
       cache.get.mockResolvedValue(ctx);
@@ -678,7 +757,9 @@ describe('BotpressService', () => {
     });
 
     it('should handle missing ctx gracefully', async () => {
-      const mockListener = { disconnect: jest.fn().mockResolvedValue(undefined) };
+      const mockListener = {
+        disconnect: jest.fn().mockResolvedValue(undefined),
+      };
       cache.get.mockResolvedValue(null);
 
       await expect(
@@ -689,12 +770,16 @@ describe('BotpressService', () => {
     it('should handle missing listener gracefully', async () => {
       cache.get.mockResolvedValue(null);
 
-      await expect(service.releaseListener(randomUuid(), undefined)).resolves.not.toThrow();
+      await expect(
+        service.releaseListener(randomUuid(), undefined),
+      ).resolves.not.toThrow();
     });
 
     it('should disconnect orphaned listener not in ctx', async () => {
       const userId = randomUuid();
-      const orphanListener = { disconnect: jest.fn().mockResolvedValue(undefined) };
+      const orphanListener = {
+        disconnect: jest.fn().mockResolvedValue(undefined),
+      };
       const ctx = { client: bpClient, listener: { other: true } };
 
       cache.get.mockResolvedValue(ctx);
@@ -709,7 +794,10 @@ describe('BotpressService', () => {
       const user = buildUser();
       const convo = buildAiConversation({ userId: user.id });
 
-      cache.get.mockResolvedValue({ client: bpClient, conversationId: convo.id });
+      cache.get.mockResolvedValue({
+        client: bpClient,
+        conversationId: convo.id,
+      });
       prisma.aiConversation.findUnique.mockResolvedValue(convo);
 
       await service.start(user as any);
@@ -742,7 +830,9 @@ describe('BotpressService', () => {
       cache.get.mockResolvedValue(null);
       prisma.user.findUnique.mockResolvedValue({ botpressUserKey: null });
       prisma.aiConversation.findFirst.mockResolvedValue(null);
-      bpClient.createConversation.mockResolvedValue({ conversation: { id: newConvoId } });
+      bpClient.createConversation.mockResolvedValue({
+        conversation: { id: newConvoId },
+      });
       prisma.aiConversation.create.mockResolvedValue(
         buildAiConversation({ id: newConvoId, userId: user.id }),
       );

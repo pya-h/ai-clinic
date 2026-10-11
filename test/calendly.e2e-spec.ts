@@ -187,7 +187,9 @@ describe('Calendly (e2e)', () => {
       const body = JSON.parse(res.body);
       expect(body.contents).toBeDefined();
       expect(body.contents.received).toBe(true);
-      expect(mockCalendlyService.verifyWebhookSignature).toHaveBeenCalledTimes(1);
+      expect(mockCalendlyService.verifyWebhookSignature).toHaveBeenCalledTimes(
+        1,
+      );
       expect(mockCalendlyService.handleWebhookEvent).toHaveBeenCalledTimes(1);
     });
 
@@ -300,7 +302,9 @@ describe('Calendly (e2e)', () => {
       });
 
       expect(res.statusCode).toBe(HttpStatus.FORBIDDEN);
-      expect(JSON.parse(res.body).message).toBe('Invalid or missing CSRF token');
+      expect(JSON.parse(res.body).message).toBe(
+        'Invalid or missing CSRF token',
+      );
     });
 
     it('should accept a webhook carrying unrelated cookies and no CSRF header', async () => {
@@ -325,16 +329,28 @@ describe('Calendly (e2e)', () => {
       const timestamp = String(Math.floor(Date.now() / 1000));
       const signature = `t=${timestamp},v1=${randomBytes(32).toString('hex')}`;
       // Spacing that re-serializing the parsed body would lose.
-      const rawBody = JSON.stringify(validWebhookBody, null, 1 + Math.floor(Math.random() * 4)) + '\n';
+      const rawBody =
+        JSON.stringify(
+          validWebhookBody,
+          null,
+          1 + Math.floor(Math.random() * 4),
+        ) + '\n';
 
       await app.inject({
         method: 'POST',
         url: '/calendly/webhook',
         payload: rawBody,
-        headers: { 'calendly-webhook-signature': signature, 'content-type': 'application/json' },
+        headers: {
+          'calendly-webhook-signature': signature,
+          'content-type': 'application/json',
+        },
       });
 
-      expect(mockCalendlyService.verifyWebhookSignature).toHaveBeenCalledWith(rawBody, signature, timestamp);
+      expect(mockCalendlyService.verifyWebhookSignature).toHaveBeenCalledWith(
+        rawBody,
+        signature,
+        timestamp,
+      );
     });
 
     it('should reject webhook with empty body', async () => {
@@ -444,9 +460,13 @@ describe('Calendly (e2e)', () => {
         invitees_counter: { total: 1, active: 1, limit: 1 },
         created_at: '2026-06-20T12:00:00.000000Z',
         updated_at: '2026-06-20T12:00:00.000000Z',
-        event_memberships: [{ user: 'https://api.calendly.com/users/USER_UUID' }],
+        event_memberships: [
+          { user: 'https://api.calendly.com/users/USER_UUID' },
+        ],
       };
-      mockCalendlyService.getCalendlyEventDetails.mockResolvedValue(mockEventDetails);
+      mockCalendlyService.getCalendlyEventDetails.mockResolvedValue(
+        mockEventDetails,
+      );
 
       const res = await app.inject({
         method: 'GET',
@@ -458,7 +478,10 @@ describe('Calendly (e2e)', () => {
       expect(body.contents).toBeDefined();
       expect(body.contents.status).toBe('active');
       expect(body.contents.start_time).toBe('2026-06-25T10:00:00.000000Z');
-      expect(mockCalendlyService.getCalendlyEventDetails).toHaveBeenCalledWith(42, expect.objectContaining({ id: sessionUser.id }));
+      expect(mockCalendlyService.getCalendlyEventDetails).toHaveBeenCalledWith(
+        42,
+        expect.objectContaining({ id: sessionUser.id }),
+      );
     });
 
     it('should return null contents when no Calendly event is linked', async () => {
@@ -473,7 +496,10 @@ describe('Calendly (e2e)', () => {
       expect(res.statusCode).toBe(HttpStatus.OK);
       const body = JSON.parse(res.body);
       expect(body.contents).toBeNull();
-      expect(mockCalendlyService.getCalendlyEventDetails).toHaveBeenCalledWith(99, expect.objectContaining({ id: sessionUser.id }));
+      expect(mockCalendlyService.getCalendlyEventDetails).toHaveBeenCalledWith(
+        99,
+        expect.objectContaining({ id: sessionUser.id }),
+      );
     });
 
     it('should reject unauthenticated request', async () => {
@@ -485,7 +511,9 @@ describe('Calendly (e2e)', () => {
       });
 
       expect(res.statusCode).toBe(HttpStatus.UNAUTHORIZED);
-      expect(mockCalendlyService.getCalendlyEventDetails).not.toHaveBeenCalled();
+      expect(
+        mockCalendlyService.getCalendlyEventDetails,
+      ).not.toHaveBeenCalled();
     });
 
     it('should reject non-integer appointment ID', async () => {
@@ -497,7 +525,9 @@ describe('Calendly (e2e)', () => {
       });
 
       expect(res.statusCode).toBe(HttpStatus.BAD_REQUEST);
-      expect(mockCalendlyService.getCalendlyEventDetails).not.toHaveBeenCalled();
+      expect(
+        mockCalendlyService.getCalendlyEventDetails,
+      ).not.toHaveBeenCalled();
     });
 
     it('should reject float appointment ID', async () => {
@@ -509,7 +539,9 @@ describe('Calendly (e2e)', () => {
       });
 
       expect(res.statusCode).toBe(HttpStatus.BAD_REQUEST);
-      expect(mockCalendlyService.getCalendlyEventDetails).not.toHaveBeenCalled();
+      expect(
+        mockCalendlyService.getCalendlyEventDetails,
+      ).not.toHaveBeenCalled();
     });
   });
 });

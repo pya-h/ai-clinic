@@ -72,7 +72,12 @@ export class NotificationService {
     userId: string,
     skip = 0,
     take = 20,
-  ): Promise<{ data: Notification[]; total: number; skip: number; take: number }> {
+  ): Promise<{
+    data: Notification[];
+    total: number;
+    skip: number;
+    take: number;
+  }> {
     const cappedTake = Math.min(take, 100);
     const [data, total] = await this.prisma.$transaction([
       this.prisma.notification.findMany({
@@ -87,7 +92,10 @@ export class NotificationService {
     return { data, total, skip, take: cappedTake };
   }
 
-  async markAsRead(notificationId: number, userId: string): Promise<Notification> {
+  async markAsRead(
+    notificationId: number,
+    userId: string,
+  ): Promise<Notification> {
     const notification = await this.prisma.notification.findUnique({
       where: { id: notificationId },
     });
@@ -158,9 +166,7 @@ export class NotificationService {
     patientUserId: string,
     accepted: boolean,
   ): Promise<void> {
-    const title = accepted
-      ? 'Consultation Accepted'
-      : 'Consultation Update';
+    const title = accepted ? 'Consultation Accepted' : 'Consultation Update';
     const body = accepted
       ? 'Your doctor has accepted the consultation. You can proceed with payment.'
       : 'Your doctor has responded to your consultation request. Please check the details.';
@@ -213,12 +219,25 @@ export class NotificationService {
 
     // One write at a time per recipient and chat, so a burst of messages updates a single notification.
     const saved = await this.inChatQueue(recipientUserId, chatId, () =>
-      this.saveChatMessageNotification(chatId, senderId, recipientUserId, senderName),
+      this.saveChatMessageNotification(
+        chatId,
+        senderId,
+        recipientUserId,
+        senderName,
+      ),
     );
     // Outside the queue, so a slow push can't hold up the chat's next notifications.
     try {
-      await this.pushChannel.send(recipientUserId, saved.title, saved.body, saved.data);
-      await this.prisma.notification.update({ where: { id: saved.id }, data: { sentAt: new Date() } });
+      await this.pushChannel.send(
+        recipientUserId,
+        saved.title,
+        saved.body,
+        saved.data,
+      );
+      await this.prisma.notification.update({
+        where: { id: saved.id },
+        data: { sentAt: new Date() },
+      });
     } catch (err) {
       this.logger.error(
         `Notification dispatch failed for user ${recipientUserId}: ${err instanceof Error ? err.message : 'Unknown error'}`,
@@ -230,7 +249,10 @@ export class NotificationService {
    * Marks the user's unread notifications about a chat's messages as read (they opened it).
    * Queued behind notifications still being written for that chat, so none is left unread.
    */
-  async markChatMessagesRead(userId: string, chatId: string): Promise<{ count: number }> {
+  async markChatMessagesRead(
+    userId: string,
+    chatId: string,
+  ): Promise<{ count: number }> {
     return this.inChatQueue(userId, chatId, () =>
       this.prisma.notification.updateMany({
         where: this.unreadChatMessageWhere(userId, chatId),
@@ -239,16 +261,23 @@ export class NotificationService {
     );
   }
 
-  private inChatQueue<T>(userId: string, chatId: string, task: () => Promise<T>): Promise<T> {
+  private inChatQueue<T>(
+    userId: string,
+    chatId: string,
+    task: () => Promise<T>,
+  ): Promise<T> {
     const key = `${userId}:${chatId}`;
-    const result = (this.chatMessageQueue.get(key) ?? Promise.resolve()).then(task);
+    const result = (this.chatMessageQueue.get(key) ?? Promise.resolve()).then(
+      task,
+    );
     const tail = result.then(
       () => undefined,
       () => undefined,
     );
     this.chatMessageQueue.set(key, tail);
     void tail.then(() => {
-      if (this.chatMessageQueue.get(key) === tail) this.chatMessageQueue.delete(key);
+      if (this.chatMessageQueue.get(key) === tail)
+        this.chatMessageQueue.delete(key);
     });
     return result;
   }
@@ -258,14 +287,20 @@ export class NotificationService {
     senderId: string,
     recipientUserId: string,
     senderName: string,
-  ): Promise<{ id: number; title: string; body: string; data: Record<string, unknown> }> {
+  ): Promise<{
+    id: number;
+    title: string;
+    body: string;
+    data: Record<string, unknown>;
+  }> {
     const unread = await this.prisma.notification.findFirst({
       where: this.unreadChatMessageWhere(recipientUserId, chatId),
       orderBy: { createdAt: 'desc' },
     });
 
     if (unread) {
-      const previousCount = Number((unread.data as { count?: unknown } | null)?.count) || 1;
+      const previousCount =
+        Number((unread.data as { count?: unknown } | null)?.count) || 1;
       const content = chatMessageContent(senderName, previousCount + 1);
       const data = { chatId, senderId, count: previousCount + 1 };
       // Conditional: if the user read it meanwhile, a new notification starts below.
@@ -299,10 +334,7 @@ export class NotificationService {
     };
   }
 
-  async onNewReview(
-    doctorUserId: string,
-    reviewerName: string,
-  ): Promise<void> {
+  async onNewReview(doctorUserId: string, reviewerName: string): Promise<void> {
     await this.send(
       doctorUserId,
       NotificationTypeEnum.NEW_REVIEW,
@@ -367,10 +399,7 @@ export class NotificationService {
     );
   }
 
-  async onSoapReady(
-    userId: string,
-    conversationId: string,
-  ): Promise<void> {
+  async onSoapReady(userId: string, conversationId: string): Promise<void> {
     await this.send(
       userId,
       NotificationTypeEnum.SOAP_READY,
@@ -411,8 +440,14 @@ export class NotificationService {
   }
 }
 
-function chatMessageContent(senderName: string, count: number): { title: string; body: string } {
+function chatMessageContent(
+  senderName: string,
+  count: number,
+): { title: string; body: string } {
   return count === 1
     ? { title: 'New Message', body: `${senderName} sent you a message.` }
-    : { title: 'New Messages', body: `${senderName} sent you ${count} messages.` };
+    : {
+        title: 'New Messages',
+        body: `${senderName} sent you ${count} messages.`,
+      };
 }

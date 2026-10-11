@@ -13,7 +13,10 @@ import {
 import { Type } from 'class-transformer';
 
 export class AdminUserFilterDto {
-  @ApiPropertyOptional({ description: 'Filter by user role.', enum: UserRolesEnum })
+  @ApiPropertyOptional({
+    description: 'Filter by user role.',
+    enum: UserRolesEnum,
+  })
   @IsOptional()
   @IsEnum(UserRolesEnum)
   role?: UserRolesEnum;
@@ -33,7 +36,9 @@ export class AdminUserFilterDto {
   @IsBooleanString()
   isBanned?: string;
 
-  @ApiPropertyOptional({ description: 'Search by name or email (case-insensitive).' })
+  @ApiPropertyOptional({
+    description: 'Search by name or email (case-insensitive).',
+  })
   @IsOptional()
   @IsString()
   @MaxLength(200)

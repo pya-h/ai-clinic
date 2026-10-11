@@ -13,13 +13,12 @@ import { OpenAiChatDto } from './dto/openai-chat.dto';
 export class OpenAiAgentController {
   constructor(private readonly openAiService: OpenAiService) {}
 
-  @ApiOperation({ description: 'Start a new OpenAI chat or continue conversation.' })
+  @ApiOperation({
+    description: 'Start a new OpenAI chat or continue conversation.',
+  })
   @Throttle({ default: { limit: 10, ttl: 60000 } })
   @Post()
-  openNewChat(
-    @CurrentUser() user: User,
-    @Body() body: OpenAiChatDto,
-  ) {
+  openNewChat(@CurrentUser() user: User, @Body() body: OpenAiChatDto) {
     return this.openAiService.openNewChat(user.id, body.message);
   }
 }

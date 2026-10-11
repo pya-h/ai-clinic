@@ -72,7 +72,11 @@ export class CacheService {
         });
       });
       return this.cacheManager.mset(
-        items.map((i) => ({ key: `${group}:${i.k}`, value: i.v, ttl: effectiveTtl })),
+        items.map((i) => ({
+          key: `${group}:${i.k}`,
+          value: i.v,
+          ttl: effectiveTtl,
+        })),
       );
     }
     return this.cacheManager.mset(
@@ -109,7 +113,11 @@ export class CacheService {
     if (normals?.length) {
       results.push(
         await this.cacheManager.mset(
-          normals.map((i) => ({ key: `${i.g}:${i.k}`, value: i.v, ttl: i.ttl })),
+          normals.map((i) => ({
+            key: `${i.g}:${i.k}`,
+            value: i.v,
+            ttl: i.ttl,
+          })),
         ),
       );
     }
@@ -152,10 +160,7 @@ export class CacheService {
   }
 
   async mdel2(...items: { g: string; k: string }[]): Promise<boolean> {
-    const [withDelEvents] = splitIn2(
-      items,
-      (item) => item.g in this.delEvents,
-    );
+    const [withDelEvents] = splitIn2(items, (item) => item.g in this.delEvents);
     if (withDelEvents?.length) {
       await Promise.all(
         withDelEvents.map(async (item) => {

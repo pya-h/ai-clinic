@@ -10,7 +10,12 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CacheService } from '../cache/cache.service';
-import { ConsultationStatusEnum, DoctorReview, User, UserRolesEnum } from '@prisma/client';
+import {
+  ConsultationStatusEnum,
+  DoctorReview,
+  User,
+  UserRolesEnum,
+} from '@prisma/client';
 import { CreateReviewDto } from './dto/create-review.dto';
 import { UpdateReviewDto } from './dto/update-review.dto';
 import { PaginationOptionsDto } from '../common/dtos/pagination-options.dto';
@@ -154,9 +159,7 @@ export class ReviewService {
       throw new NotFoundException('Review not found.');
     }
     if (review.reviewerId !== user.id && !user.isAdmin && !user.isSuperAdmin) {
-      throw new ForbiddenException(
-        'You can only delete your own review.',
-      );
+      throw new ForbiddenException('You can only delete your own review.');
     }
 
     await this.prisma.doctorReview.delete({ where: { id: reviewId } });
@@ -169,7 +172,12 @@ export class ReviewService {
   async listByDoctor(
     doctorId: number,
     pagination: PaginationOptionsDto,
-  ): Promise<{ data: DoctorReview[]; total: number; skip: number; take: number }> {
+  ): Promise<{
+    data: DoctorReview[];
+    total: number;
+    skip: number;
+    take: number;
+  }> {
     const skip = +(pagination.skip ?? 0);
     const take = +(pagination.take ?? 20);
 
@@ -196,9 +204,12 @@ export class ReviewService {
   /**
    * List all reviews (admin only, paginated).
    */
-  async listAll(
-    pagination: PaginationOptionsDto,
-  ): Promise<{ data: DoctorReview[]; total: number; skip: number; take: number }> {
+  async listAll(pagination: PaginationOptionsDto): Promise<{
+    data: DoctorReview[];
+    total: number;
+    skip: number;
+    take: number;
+  }> {
     const skip = +(pagination.skip ?? 0);
     const take = +(pagination.take ?? 20);
 
@@ -212,7 +223,11 @@ export class ReviewService {
             select: { id: true, firstname: true, lastname: true, avatar: true },
           },
           doctor: {
-            select: { id: true, specialty: true, user: { select: { firstname: true, lastname: true } } },
+            select: {
+              id: true,
+              specialty: true,
+              user: { select: { firstname: true, lastname: true } },
+            },
           },
         },
       }),
@@ -248,7 +263,11 @@ export class ReviewService {
     ]);
 
     const distribution: Record<1 | 2 | 3 | 4 | 5, number> = {
-      1: 0, 2: 0, 3: 0, 4: 0, 5: 0,
+      1: 0,
+      2: 0,
+      3: 0,
+      4: 0,
+      5: 0,
     };
     for (const g of groups) {
       if (g.rating >= 1 && g.rating <= 5) {
@@ -257,11 +276,14 @@ export class ReviewService {
     }
 
     const totalReviews = agg._count.rating;
-    const averageRating = totalReviews > 0
-      ? Math.round((agg._avg.rating ?? 0) * 10) / 10
-      : null;
+    const averageRating =
+      totalReviews > 0 ? Math.round((agg._avg.rating ?? 0) * 10) / 10 : null;
 
-    const result: AggregateRating = { averageRating, totalReviews, distribution };
+    const result: AggregateRating = {
+      averageRating,
+      totalReviews,
+      distribution,
+    };
 
     // Cache the result
     await this.cacheService.set(
@@ -313,7 +335,8 @@ export class ReviewService {
     const groupMap = new Map<number, typeof groups>();
     for (const g of groups) {
       const arr = groupMap.get(g.doctorId);
-      if (arr) arr.push(g); else groupMap.set(g.doctorId, [g]);
+      if (arr) arr.push(g);
+      else groupMap.set(g.doctorId, [g]);
     }
 
     for (const id of uncachedIds) {
@@ -321,7 +344,11 @@ export class ReviewService {
       const docGroups = groupMap.get(id) ?? [];
 
       const distribution: Record<1 | 2 | 3 | 4 | 5, number> = {
-        1: 0, 2: 0, 3: 0, 4: 0, 5: 0,
+        1: 0,
+        2: 0,
+        3: 0,
+        4: 0,
+        5: 0,
       };
       for (const g of docGroups) {
         if (g.rating >= 1 && g.rating <= 5) {
@@ -331,11 +358,13 @@ export class ReviewService {
 
       const totalReviews = agg?._count.rating ?? 0;
       const averageRating =
-        totalReviews > 0
-          ? Math.round((agg?._avg.rating ?? 0) * 10) / 10
-          : null;
+        totalReviews > 0 ? Math.round((agg?._avg.rating ?? 0) * 10) / 10 : null;
 
-      const data: AggregateRating = { averageRating, totalReviews, distribution };
+      const data: AggregateRating = {
+        averageRating,
+        totalReviews,
+        distribution,
+      };
       result.set(id, data);
       this.cacheService
         .set(this.CACHE_GROUP, String(id), data, this.CACHE_TTL)

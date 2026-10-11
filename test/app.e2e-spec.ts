@@ -24,10 +24,7 @@ import {
 import generalConfigs from '../src/configs/general';
 
 @Module({
-  imports: [
-    PrismaModule,
-    ConfigModule.forRoot({ load: [generalConfigs] }),
-  ],
+  imports: [PrismaModule, ConfigModule.forRoot({ load: [generalConfigs] })],
   controllers: [AppController],
   providers: [AppService],
 })

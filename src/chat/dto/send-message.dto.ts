@@ -1,11 +1,18 @@
-import { IsIn, IsNotEmpty, IsOptional, IsString, Matches, MaxLength } from 'class-validator';
+import {
+  IsIn,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  Matches,
+  MaxLength,
+} from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 import { MessageTypeEnum } from '@prisma/client';
 
 // SYSTEM messages come from the server, never from users.
-export const USER_MESSAGE_TYPES: MessageTypeEnum[] = Object.values(MessageTypeEnum).filter(
-  (type) => type !== MessageTypeEnum.SYSTEM,
-);
+export const USER_MESSAGE_TYPES: MessageTypeEnum[] = Object.values(
+  MessageTypeEnum,
+).filter((type) => type !== MessageTypeEnum.SYSTEM);
 
 export class SendMessageDto {
   @ApiProperty({
@@ -35,7 +42,8 @@ export class SendMessageDto {
   @IsString()
   @MaxLength(2048)
   @Matches(/^(\/uploads\/|https:\/\/)/, {
-    message: 'fileUrl must be a relative path starting with /uploads/ or an absolute HTTPS URL.',
+    message:
+      'fileUrl must be a relative path starting with /uploads/ or an absolute HTTPS URL.',
   })
   fileUrl?: string;
 

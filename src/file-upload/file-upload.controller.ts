@@ -30,7 +30,10 @@ export class FileUploadController {
     @Param('fileName') fileName: string,
     @Res({ passthrough: true }) reply: FastifyReply,
   ) {
-    const { stream, mimeType } = await this.fileUploadService.openFile('avatars', fileName);
+    const { stream, mimeType } = await this.fileUploadService.openFile(
+      'avatars',
+      fileName,
+    );
 
     // The client may run on another origin than the API and embeds these as <img>.
     reply.header('Cross-Origin-Resource-Policy', 'cross-origin');
@@ -38,7 +41,10 @@ export class FileUploadController {
     return new StreamableFile(stream, { type: mimeType });
   }
 
-  @ApiOperation({ description: 'Serve a doctor verification document. Owning doctor and admins only.' })
+  @ApiOperation({
+    description:
+      'Serve a doctor verification document. Owning doctor and admins only.',
+  })
   @UseGuards(CookieAuthGuard)
   @Get('doctor-documents/:fileName')
   async getDoctorDocument(
@@ -53,11 +59,18 @@ export class FileUploadController {
     if (!document) {
       throw new NotFoundException('File not found.');
     }
-    if (!user.isAdmin && !user.isSuperAdmin && document.doctor.userId !== user.id) {
+    if (
+      !user.isAdmin &&
+      !user.isSuperAdmin &&
+      document.doctor.userId !== user.id
+    ) {
       throw new ForbiddenException('You do not have access to this document.');
     }
 
-    const { stream, mimeType } = await this.fileUploadService.openFile('doctor-documents', fileName);
+    const { stream, mimeType } = await this.fileUploadService.openFile(
+      'doctor-documents',
+      fileName,
+    );
 
     reply.header('Cache-Control', 'private, no-store');
     return new StreamableFile(stream, { type: mimeType });

@@ -56,7 +56,9 @@ export function createMockUser(overrides: Partial<MockUser> = {}): MockUser {
   };
 }
 
-export function createMockDoctorUser(overrides: Partial<MockUser> = {}): MockUser {
+export function createMockDoctorUser(
+  overrides: Partial<MockUser> = {},
+): MockUser {
   return createMockUser({
     email: randomEmail('doctor'),
     firstname: randomFirstName(),
@@ -66,7 +68,9 @@ export function createMockDoctorUser(overrides: Partial<MockUser> = {}): MockUse
   });
 }
 
-export function createMockAdminUser(overrides: Partial<MockUser> = {}): MockUser {
+export function createMockAdminUser(
+  overrides: Partial<MockUser> = {},
+): MockUser {
   return createMockUser({
     email: randomEmail('admin'),
     firstname: randomFirstName(),
@@ -77,7 +81,9 @@ export function createMockAdminUser(overrides: Partial<MockUser> = {}): MockUser
   });
 }
 
-export function createMockSuperAdminUser(overrides: Partial<MockUser> = {}): MockUser {
+export function createMockSuperAdminUser(
+  overrides: Partial<MockUser> = {},
+): MockUser {
   return createMockAdminUser({
     email: randomEmail('superadmin'),
     isSuperAdmin: true,
@@ -85,7 +91,9 @@ export function createMockSuperAdminUser(overrides: Partial<MockUser> = {}): Moc
   });
 }
 
-export function createMockNurseUser(overrides: Partial<MockUser> = {}): MockUser {
+export function createMockNurseUser(
+  overrides: Partial<MockUser> = {},
+): MockUser {
   return createMockUser({
     email: randomEmail('nurse'),
     firstname: randomFirstName(),

@@ -72,7 +72,8 @@ export class PatientController {
   // ──────────────── B-29: Patient Consultations & SOAPs ────────────────
 
   @ApiOperation({
-    description: 'List consultations for the current patient (paginated, filterable).',
+    description:
+      'List consultations for the current patient (paginated, filterable).',
   })
   @UseGuards(CookieAuthGuard, RolesGuard)
   @Roles(UserRolesEnum.PATIENT)

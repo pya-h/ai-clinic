@@ -17,10 +17,7 @@ import {
   MockPrismaService,
 } from './helpers/mock-prisma.helper';
 import { createMockUser, MockUser } from './helpers/mock-session.helper';
-import {
-  randomUuid,
-  buildAiConversation,
-} from './helpers/test-data.factory';
+import { randomUuid, buildAiConversation } from './helpers/test-data.factory';
 import aiConfigs from '../src/configs/ai';
 import generalConfigs from '../src/configs/general';
 
@@ -193,22 +190,30 @@ describe('AI Agents (e2e)', () => {
     it.each([
       ['banned', { isBanned: true, banReason: 'abuse' }],
       ['deactivated', { isActive: false }],
-    ])('should start a guest conversation for a user %s since their session began', async (_case, flags) => {
-      sessionUser = createMockUser();
-      prisma.user.findFirst.mockImplementation(async () => activeStatus(flags));
-      bpClient.createConversation.mockResolvedValue({
-        conversation: { id: randomUuid() },
-      });
+    ])(
+      'should start a guest conversation for a user %s since their session began',
+      async (_case, flags) => {
+        sessionUser = createMockUser();
+        prisma.user.findFirst.mockImplementation(async () =>
+          activeStatus(flags),
+        );
+        bpClient.createConversation.mockResolvedValue({
+          conversation: { id: randomUuid() },
+        });
 
-      const res = await app.inject({ method: 'POST', url: '/ai-agents/start' });
+        const res = await app.inject({
+          method: 'POST',
+          url: '/ai-agents/start',
+        });
 
-      expect(res.statusCode).toBe(HttpStatus.OK);
-      expect(JSON.parse(res.body).contents.guest).toBe(true);
-      expect(prisma.user.findFirst).toHaveBeenCalledWith(
-        expect.objectContaining({ where: { id: sessionUser.id } }),
-      );
-      expect(prisma.aiConversation.create).not.toHaveBeenCalled();
-    });
+        expect(res.statusCode).toBe(HttpStatus.OK);
+        expect(JSON.parse(res.body).contents.guest).toBe(true);
+        expect(prisma.user.findFirst).toHaveBeenCalledWith(
+          expect.objectContaining({ where: { id: sessionUser.id } }),
+        );
+        expect(prisma.aiConversation.create).not.toHaveBeenCalled();
+      },
+    );
   });
 
   // ─── POST /ai-agents/message ───
@@ -258,7 +263,9 @@ describe('AI Agents (e2e)', () => {
 
     it('should treat a user banned since their session began as a guest', async () => {
       sessionUser = createMockUser();
-      prisma.user.findFirst.mockImplementation(async () => activeStatus({ isBanned: true }));
+      prisma.user.findFirst.mockImplementation(async () =>
+        activeStatus({ isBanned: true }),
+      );
 
       const res = await app.inject({
         method: 'POST',
@@ -267,7 +274,9 @@ describe('AI Agents (e2e)', () => {
       });
 
       expect(res.statusCode).toBe(HttpStatus.BAD_REQUEST);
-      expect(JSON.parse(res.body).message).toContain('conversationId is required for guest messages');
+      expect(JSON.parse(res.body).message).toContain(
+        'conversationId is required for guest messages',
+      );
       expect(bpClient.createMessage).not.toHaveBeenCalled();
     });
 

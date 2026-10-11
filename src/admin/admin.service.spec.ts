@@ -22,7 +22,10 @@ describe('AdminService', () => {
   let service: AdminService;
   let prisma: Record<string, any>;
   let reviewService: Record<string, jest.Mock>;
-  let notificationService: { onDoctorVerified: jest.Mock; onDoctorRejected: jest.Mock };
+  let notificationService: {
+    onDoctorVerified: jest.Mock;
+    onDoctorRejected: jest.Mock;
+  };
 
   const mockAdminUser = buildAdminUser();
 
@@ -194,9 +197,13 @@ describe('AdminService', () => {
         firstname: updatedName,
       });
 
-      const result = await service.updateUser(mockRegularUser.id, {
-        firstname: updatedName,
-      }, mockSuperAdmin as any);
+      const result = await service.updateUser(
+        mockRegularUser.id,
+        {
+          firstname: updatedName,
+        },
+        mockSuperAdmin as any,
+      );
 
       expect(result.firstname).toBe(updatedName);
       expect(prisma.user.update).toHaveBeenCalledWith(
@@ -212,7 +219,11 @@ describe('AdminService', () => {
       prisma.user.findUnique.mockResolvedValue(null);
 
       await expect(
-        service.updateUser(randomUuid(), { firstname: randomFirstName() }, mockSuperAdmin as any),
+        service.updateUser(
+          randomUuid(),
+          { firstname: randomFirstName() },
+          mockSuperAdmin as any,
+        ),
       ).rejects.toThrow(NotFoundException);
     });
   });
@@ -227,7 +238,10 @@ describe('AdminService', () => {
         isActive: false,
       });
 
-      const result = await service.deactivateUser(mockRegularUser.id, mockSuperAdmin as any);
+      const result = await service.deactivateUser(
+        mockRegularUser.id,
+        mockSuperAdmin as any,
+      );
 
       expect(result.isActive).toBe(false);
       expect(prisma.user.update).toHaveBeenCalledWith(
@@ -242,9 +256,9 @@ describe('AdminService', () => {
     it('should throw NotFoundException if user not found', async () => {
       prisma.user.findUnique.mockResolvedValue(null);
 
-      await expect(service.deactivateUser('nonexistent', mockSuperAdmin as any)).rejects.toThrow(
-        NotFoundException,
-      );
+      await expect(
+        service.deactivateUser('nonexistent', mockSuperAdmin as any),
+      ).rejects.toThrow(NotFoundException);
     });
 
     it('should throw BadRequestException if user already deactivated', async () => {
@@ -356,11 +370,7 @@ describe('AdminService', () => {
         verifiedBy: mockAdminUser.id,
       });
 
-      await service.verifyDoctor(
-        1,
-        { approved: true },
-        mockAdminUser as any,
-      );
+      await service.verifyDoctor(1, { approved: true }, mockAdminUser as any);
 
       expect(prisma.doctorProfile.update).toHaveBeenCalledWith({
         where: { id: 1 },
@@ -371,20 +381,33 @@ describe('AdminService', () => {
           rejectionReason: null,
         },
       });
-      expect(notificationService.onDoctorVerified).toHaveBeenCalledWith(mockDoctorProfile.userId);
+      expect(notificationService.onDoctorVerified).toHaveBeenCalledWith(
+        mockDoctorProfile.userId,
+      );
       expect(notificationService.onDoctorRejected).not.toHaveBeenCalled();
     });
 
     it('should ignore a reason sent with an approval', async () => {
       prisma.doctorProfile.findUnique.mockResolvedValue(mockDoctorProfile);
-      prisma.doctorProfile.update.mockResolvedValue({ ...mockDoctorProfile, verified: true });
+      prisma.doctorProfile.update.mockResolvedValue({
+        ...mockDoctorProfile,
+        verified: true,
+      });
 
-      await service.verifyDoctor(1, { approved: true, reason: 'leftover' }, mockAdminUser as any);
+      await service.verifyDoctor(
+        1,
+        { approved: true, reason: 'leftover' },
+        mockAdminUser as any,
+      );
 
       expect(prisma.doctorProfile.update).toHaveBeenCalledWith(
-        expect.objectContaining({ data: expect.objectContaining({ rejectionReason: null }) }),
+        expect.objectContaining({
+          data: expect.objectContaining({ rejectionReason: null }),
+        }),
       );
-      expect(notificationService.onDoctorVerified).toHaveBeenCalledWith(mockDoctorProfile.userId);
+      expect(notificationService.onDoctorVerified).toHaveBeenCalledWith(
+        mockDoctorProfile.userId,
+      );
       expect(notificationService.onDoctorRejected).not.toHaveBeenCalled();
     });
 
@@ -422,10 +445,16 @@ describe('AdminService', () => {
       prisma.doctorProfile.findUnique.mockResolvedValue(mockDoctorProfile);
       prisma.doctorProfile.update.mockResolvedValue(mockDoctorProfile);
 
-      await service.verifyDoctor(1, { approved: false, reason: '  Blurry scan \n' }, mockAdminUser as any);
+      await service.verifyDoctor(
+        1,
+        { approved: false, reason: '  Blurry scan \n' },
+        mockAdminUser as any,
+      );
 
       expect(prisma.doctorProfile.update).toHaveBeenCalledWith(
-        expect.objectContaining({ data: expect.objectContaining({ rejectionReason: 'Blurry scan' }) }),
+        expect.objectContaining({
+          data: expect.objectContaining({ rejectionReason: 'Blurry scan' }),
+        }),
       );
       expect(notificationService.onDoctorRejected).toHaveBeenCalledWith(
         mockDoctorProfile.userId,
@@ -437,21 +466,33 @@ describe('AdminService', () => {
       ['no reason', undefined],
       ['an empty reason', ''],
       ['a blank reason', '  \t '],
-    ])('should throw BadRequestException when rejecting with %s', async (_case, reason) => {
-      prisma.doctorProfile.findUnique.mockResolvedValue(mockDoctorProfile);
+    ])(
+      'should throw BadRequestException when rejecting with %s',
+      async (_case, reason) => {
+        prisma.doctorProfile.findUnique.mockResolvedValue(mockDoctorProfile);
 
-      await expect(
-        service.verifyDoctor(1, { approved: false, reason }, mockAdminUser as any),
-      ).rejects.toThrow(BadRequestException);
-      expect(prisma.doctorProfile.update).not.toHaveBeenCalled();
-      expect(notificationService.onDoctorRejected).not.toHaveBeenCalled();
-    });
+        await expect(
+          service.verifyDoctor(
+            1,
+            { approved: false, reason },
+            mockAdminUser as any,
+          ),
+        ).rejects.toThrow(BadRequestException);
+        expect(prisma.doctorProfile.update).not.toHaveBeenCalled();
+        expect(notificationService.onDoctorRejected).not.toHaveBeenCalled();
+      },
+    );
 
     it('should still return the rejection when the notification fails', async () => {
-      const rejected = { ...mockDoctorProfile, rejectionReason: 'Invalid license' };
+      const rejected = {
+        ...mockDoctorProfile,
+        rejectionReason: 'Invalid license',
+      };
       prisma.doctorProfile.findUnique.mockResolvedValue(mockDoctorProfile);
       prisma.doctorProfile.update.mockResolvedValue(rejected);
-      notificationService.onDoctorRejected.mockRejectedValue(new Error('smtp down'));
+      notificationService.onDoctorRejected.mockRejectedValue(
+        new Error('smtp down'),
+      );
       const logError = jest
         .spyOn((service as any).logger, 'error')
         .mockImplementation(() => undefined);
@@ -464,7 +505,9 @@ describe('AdminService', () => {
       await new Promise((resolve) => setImmediate(resolve));
 
       expect(result).toEqual(rejected);
-      expect(logError).toHaveBeenCalledWith(expect.stringContaining('smtp down'));
+      expect(logError).toHaveBeenCalledWith(
+        expect.stringContaining('smtp down'),
+      );
     });
 
     it('should throw NotFoundException if doctor not found', async () => {
@@ -509,17 +552,17 @@ describe('AdminService', () => {
     it('should throw BadRequestException if user is already admin', async () => {
       prisma.user.findUnique.mockResolvedValue(mockAdminUser);
 
-      await expect(
-        service.promoteToAdmin(mockAdminUser.id),
-      ).rejects.toThrow(BadRequestException);
+      await expect(service.promoteToAdmin(mockAdminUser.id)).rejects.toThrow(
+        BadRequestException,
+      );
     });
 
     it('should throw BadRequestException if user is superadmin', async () => {
       prisma.user.findUnique.mockResolvedValue(mockSuperAdmin);
 
-      await expect(
-        service.promoteToAdmin(mockSuperAdmin.id),
-      ).rejects.toThrow(BadRequestException);
+      await expect(service.promoteToAdmin(mockSuperAdmin.id)).rejects.toThrow(
+        BadRequestException,
+      );
     });
   });
 
@@ -584,16 +627,16 @@ describe('AdminService', () => {
   describe('getPlatformStats', () => {
     it('should return aggregated platform statistics', async () => {
       prisma.user.count
-        .mockResolvedValueOnce(100)   // totalUsers
-        .mockResolvedValueOnce(3)     // bannedUsers
-        .mockResolvedValueOnce(8);    // newUsersThisMonth
+        .mockResolvedValueOnce(100) // totalUsers
+        .mockResolvedValueOnce(3) // bannedUsers
+        .mockResolvedValueOnce(8); // newUsersThisMonth
       prisma.doctorProfile.count
-        .mockResolvedValueOnce(25)    // verified doctors
-        .mockResolvedValueOnce(5);    // pending verifications
+        .mockResolvedValueOnce(25) // verified doctors
+        .mockResolvedValueOnce(5); // pending verifications
       prisma.patientProfile.count.mockResolvedValue(60);
       prisma.consultation.count
-        .mockResolvedValueOnce(200)   // totalConsultations
-        .mockResolvedValueOnce(10);   // activeConsultations
+        .mockResolvedValueOnce(200) // totalConsultations
+        .mockResolvedValueOnce(10); // activeConsultations
       prisma.appointment.count.mockResolvedValue(50);
       prisma.payment.aggregate.mockResolvedValue({ _sum: { amount: 1500 } });
 
@@ -626,7 +669,9 @@ describe('AdminService', () => {
       expect(prisma.doctorProfile.count).toHaveBeenCalledWith({
         where: { verified: false, rejectionReason: null },
       });
-      expect(prisma.doctorProfile.count).toHaveBeenCalledWith({ where: { verified: true } });
+      expect(prisma.doctorProfile.count).toHaveBeenCalledWith({
+        where: { verified: true },
+      });
     });
   });
 
@@ -634,8 +679,15 @@ describe('AdminService', () => {
 
   describe('banUser', () => {
     it('should ban a user', async () => {
-      prisma.user.findUnique.mockResolvedValue({ ...mockRegularUser, isBanned: false });
-      prisma.user.update.mockResolvedValue({ ...mockRegularUser, isBanned: true, banReason: 'spam' });
+      prisma.user.findUnique.mockResolvedValue({
+        ...mockRegularUser,
+        isBanned: false,
+      });
+      prisma.user.update.mockResolvedValue({
+        ...mockRegularUser,
+        isBanned: true,
+        banReason: 'spam',
+      });
 
       const result = await service.banUser(
         mockRegularUser.id,
@@ -653,10 +705,17 @@ describe('AdminService', () => {
     });
 
     it('should throw BadRequestException when user is already banned', async () => {
-      prisma.user.findUnique.mockResolvedValue({ ...mockRegularUser, isBanned: true });
+      prisma.user.findUnique.mockResolvedValue({
+        ...mockRegularUser,
+        isBanned: true,
+      });
 
       await expect(
-        service.banUser(mockRegularUser.id, { reason: 'spam' }, mockAdminUser as any),
+        service.banUser(
+          mockRegularUser.id,
+          { reason: 'spam' },
+          mockAdminUser as any,
+        ),
       ).rejects.toThrow(BadRequestException);
     });
 
@@ -664,23 +723,41 @@ describe('AdminService', () => {
       prisma.user.findUnique.mockResolvedValue(null);
 
       await expect(
-        service.banUser('nonexistent', { reason: 'spam' }, mockAdminUser as any),
+        service.banUser(
+          'nonexistent',
+          { reason: 'spam' },
+          mockAdminUser as any,
+        ),
       ).rejects.toThrow(NotFoundException);
     });
 
     it('should throw ForbiddenException when banning a superadmin', async () => {
-      prisma.user.findUnique.mockResolvedValue({ ...mockSuperAdmin, isBanned: false });
+      prisma.user.findUnique.mockResolvedValue({
+        ...mockSuperAdmin,
+        isBanned: false,
+      });
 
       await expect(
-        service.banUser(mockSuperAdmin.id, { reason: 'test' }, mockAdminUser as any),
+        service.banUser(
+          mockSuperAdmin.id,
+          { reason: 'test' },
+          mockAdminUser as any,
+        ),
       ).rejects.toThrow(ForbiddenException);
     });
 
     it('should throw ForbiddenException when banning yourself', async () => {
-      prisma.user.findUnique.mockResolvedValue({ ...mockAdminUser, isBanned: false });
+      prisma.user.findUnique.mockResolvedValue({
+        ...mockAdminUser,
+        isBanned: false,
+      });
 
       await expect(
-        service.banUser(mockAdminUser.id, { reason: 'test' }, mockAdminUser as any),
+        service.banUser(
+          mockAdminUser.id,
+          { reason: 'test' },
+          mockAdminUser as any,
+        ),
       ).rejects.toThrow(ForbiddenException);
     });
   });
@@ -689,10 +766,20 @@ describe('AdminService', () => {
 
   describe('unbanUser', () => {
     it('should unban a user', async () => {
-      prisma.user.findUnique.mockResolvedValue({ ...mockRegularUser, isBanned: true });
-      prisma.user.update.mockResolvedValue({ ...mockRegularUser, isBanned: false, banReason: null });
+      prisma.user.findUnique.mockResolvedValue({
+        ...mockRegularUser,
+        isBanned: true,
+      });
+      prisma.user.update.mockResolvedValue({
+        ...mockRegularUser,
+        isBanned: false,
+        banReason: null,
+      });
 
-      const result = await service.unbanUser(mockRegularUser.id, mockAdminUser as any);
+      const result = await service.unbanUser(
+        mockRegularUser.id,
+        mockAdminUser as any,
+      );
 
       expect(result.isBanned).toBe(false);
       expect(prisma.user.update).toHaveBeenCalledWith(
@@ -703,7 +790,10 @@ describe('AdminService', () => {
     });
 
     it('should throw BadRequestException when user is not banned', async () => {
-      prisma.user.findUnique.mockResolvedValue({ ...mockRegularUser, isBanned: false });
+      prisma.user.findUnique.mockResolvedValue({
+        ...mockRegularUser,
+        isBanned: false,
+      });
 
       await expect(
         service.unbanUser(mockRegularUser.id, mockAdminUser as any),
@@ -730,9 +820,16 @@ describe('AdminService', () => {
     it('should allow superadmin to unban an admin', async () => {
       const bannedAdmin = { ...buildAdminUser(), isBanned: true };
       prisma.user.findUnique.mockResolvedValue(bannedAdmin);
-      prisma.user.update.mockResolvedValue({ ...bannedAdmin, isBanned: false, banReason: null });
+      prisma.user.update.mockResolvedValue({
+        ...bannedAdmin,
+        isBanned: false,
+        banReason: null,
+      });
 
-      const result = await service.unbanUser(bannedAdmin.id, mockSuperAdmin as any);
+      const result = await service.unbanUser(
+        bannedAdmin.id,
+        mockSuperAdmin as any,
+      );
       expect(result.isBanned).toBe(false);
     });
   });
@@ -753,39 +850,72 @@ describe('AdminService', () => {
     const regular = () => ({ ...buildUser(), isActive: true, isBanned: false });
 
     it.each([
-      ['updateUser (role change)', regular, (id: string) => service.updateUser(id, { role: UserRolesEnum.NURSE }, mockSuperAdmin as any)],
-      ['deactivateUser', regular, (id: string) => service.deactivateUser(id, mockSuperAdmin as any)],
-      ['banUser', regular, (id: string) => service.banUser(id, { reason: 'spam' }, mockSuperAdmin as any)],
-      ['unbanUser', () => ({ ...regular(), isBanned: true }), (id: string) => service.unbanUser(id, mockSuperAdmin as any)],
+      [
+        'updateUser (role change)',
+        regular,
+        (id: string) =>
+          service.updateUser(
+            id,
+            { role: UserRolesEnum.NURSE },
+            mockSuperAdmin as any,
+          ),
+      ],
+      [
+        'deactivateUser',
+        regular,
+        (id: string) => service.deactivateUser(id, mockSuperAdmin as any),
+      ],
+      [
+        'banUser',
+        regular,
+        (id: string) =>
+          service.banUser(id, { reason: 'spam' }, mockSuperAdmin as any),
+      ],
+      [
+        'unbanUser',
+        () => ({ ...regular(), isBanned: true }),
+        (id: string) => service.unbanUser(id, mockSuperAdmin as any),
+      ],
       ['promoteToAdmin', regular, (id: string) => service.promoteToAdmin(id)],
-      ['demoteAdmin', () => buildAdminUser(), (id: string) => service.demoteAdmin(id, mockSuperAdmin as any)],
-    ])('%s should make the change apply to the target user on their next request', async (_name, buildTarget, act) => {
-      const target = buildTarget();
-      prisma.user.findUnique.mockResolvedValue(target);
-      prisma.user.update.mockResolvedValue(target);
+      [
+        'demoteAdmin',
+        () => buildAdminUser(),
+        (id: string) => service.demoteAdmin(id, mockSuperAdmin as any),
+      ],
+    ])(
+      '%s should make the change apply to the target user on their next request',
+      async (_name, buildTarget, act) => {
+        const target = buildTarget();
+        prisma.user.findUnique.mockResolvedValue(target);
+        prisma.user.update.mockResolvedValue(target);
 
-      await act(target.id);
+        await act(target.id);
 
-      expect(invalidateSpy).toHaveBeenCalledTimes(1);
-      expect(invalidateSpy).toHaveBeenCalledWith(target.id);
-      expect(invalidateSpy.mock.invocationCallOrder[0]).toBeGreaterThan(
-        prisma.user.update.mock.invocationCallOrder[0],
-      );
-    });
+        expect(invalidateSpy).toHaveBeenCalledTimes(1);
+        expect(invalidateSpy).toHaveBeenCalledWith(target.id);
+        expect(invalidateSpy.mock.invocationCallOrder[0]).toBeGreaterThan(
+          prisma.user.update.mock.invocationCallOrder[0],
+        );
+      },
+    );
 
     it('should not invalidate when the update fails', async () => {
       const target = regular();
       prisma.user.findUnique.mockResolvedValue(target);
       prisma.user.update.mockRejectedValue(new Error('db down'));
 
-      await expect(service.banUser(target.id, { reason: 'spam' }, mockSuperAdmin as any)).rejects.toThrow('db down');
+      await expect(
+        service.banUser(target.id, { reason: 'spam' }, mockSuperAdmin as any),
+      ).rejects.toThrow('db down');
       expect(invalidateSpy).not.toHaveBeenCalled();
     });
 
     it('should not invalidate when the action is rejected', async () => {
       prisma.user.findUnique.mockResolvedValue(mockSuperAdmin);
 
-      await expect(service.demoteAdmin(mockSuperAdmin.id, mockAdminUser as any)).rejects.toThrow(ForbiddenException);
+      await expect(
+        service.demoteAdmin(mockSuperAdmin.id, mockAdminUser as any),
+      ).rejects.toThrow(ForbiddenException);
       expect(invalidateSpy).not.toHaveBeenCalled();
     });
   });

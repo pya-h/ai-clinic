@@ -6,7 +6,9 @@ export class VerifyDoctorDto {
   @IsBoolean()
   approved: boolean;
 
-  @ApiPropertyOptional({ description: 'Rejection reason (required if approved=false).' })
+  @ApiPropertyOptional({
+    description: 'Rejection reason (required if approved=false).',
+  })
   @IsOptional()
   @IsString()
   @MaxLength(1000)

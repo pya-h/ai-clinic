@@ -72,15 +72,24 @@ function multipartBody(fileName: string, mimeType: string, content: Buffer) {
     content,
     Buffer.from(`\r\n--${boundary}--\r\n`),
   ]);
-  return { payload, headers: { 'content-type': `multipart/form-data; boundary=${boundary}` } };
+  return {
+    payload,
+    headers: { 'content-type': `multipart/form-data; boundary=${boundary}` },
+  };
 }
 
 const SAMPLE_BY_MIME_TYPE: Record<string, () => Buffer> = {
   'image/jpeg': () => Buffer.from([0xff, 0xd8, 0xff, 0xe0, ...randomBytes(32)]),
   'image/png': () => Buffer.concat([PNG_BYTES.subarray(0, 8), randomBytes(32)]),
   'image/webp': () =>
-    Buffer.concat([Buffer.from('RIFF'), randomBytes(4), Buffer.from('WEBP'), randomBytes(32)]),
-  'application/pdf': () => Buffer.concat([Buffer.from('%PDF-1.7 '), randomBytes(32)]),
+    Buffer.concat([
+      Buffer.from('RIFF'),
+      randomBytes(4),
+      Buffer.from('WEBP'),
+      randomBytes(32),
+    ]),
+  'application/pdf': () =>
+    Buffer.concat([Buffer.from('%PDF-1.7 '), randomBytes(32)]),
   'image/gif': () => Buffer.concat([Buffer.from('GIF89a'), randomBytes(32)]),
 };
 
@@ -89,10 +98,13 @@ function writeStoredFile(folder: string, fileName: string, content: Buffer) {
   fs.writeFileSync(path.join(storageDir, folder, fileName), content);
 }
 
-const storedPath = (url: string) => path.join(storageDir, url.replace(/^\/uploads\//, ''));
+const storedPath = (url: string) =>
+  path.join(storageDir, url.replace(/^\/uploads\//, ''));
 
 const storedFiles = (folder: string) =>
-  fs.existsSync(path.join(storageDir, folder)) ? fs.readdirSync(path.join(storageDir, folder)).sort() : [];
+  fs.existsSync(path.join(storageDir, folder))
+    ? fs.readdirSync(path.join(storageDir, folder)).sort()
+    : [];
 
 describe('Uploads (e2e)', () => {
   let app: NestFastifyApplication;
@@ -114,9 +126,15 @@ describe('Uploads (e2e)', () => {
     app.useGlobalFilters(new ExceptionTemplateFilter());
     app.useGlobalInterceptors(new ResponseTemplateInterceptor());
     app.useGlobalPipes(
-      new ValidationPipe({ whitelist: true, forbidUnknownValues: true, transform: true }),
+      new ValidationPipe({
+        whitelist: true,
+        forbidUnknownValues: true,
+        transform: true,
+      }),
     );
-    await app.register(fastifyMultipart as any, { limits: { fileSize: 10 * 1024 * 1024 } });
+    await app.register(fastifyMultipart as any, {
+      limits: { fileSize: 10 * 1024 * 1024 },
+    });
 
     const instance = app.getHttpAdapter().getInstance();
     instance.addHook('preHandler', (request: any, _reply: any, done: any) => {
@@ -152,7 +170,10 @@ describe('Uploads (e2e)', () => {
     it('should serve an avatar uploaded through POST /user/avatar, without auth', async () => {
       const user = createMockUser();
       sessionUser = user;
-      prisma.user.update.mockImplementation(async ({ data }: any) => ({ id: user.id, avatar: data.avatar }));
+      prisma.user.update.mockImplementation(async ({ data }: any) => ({
+        id: user.id,
+        avatar: data.avatar,
+      }));
       prisma.user.findUnique.mockResolvedValue(user);
 
       const upload = await app.inject({
@@ -178,7 +199,10 @@ describe('Uploads (e2e)', () => {
       const content = Buffer.from([0xff, 0xd8, 0xff, 0xe0, ...randomBytes(16)]);
       writeStoredFile('avatars', fileName, content);
 
-      const res = await app.inject({ method: 'GET', url: `/uploads/avatars/${fileName}` });
+      const res = await app.inject({
+        method: 'GET',
+        url: `/uploads/avatars/${fileName}`,
+      });
 
       expect(res.statusCode).toBe(HttpStatus.OK);
       expect(res.headers['content-type']).toBe('image/jpeg');
@@ -186,16 +210,26 @@ describe('Uploads (e2e)', () => {
     });
 
     it('should return 404 for a missing avatar', async () => {
-      const res = await app.inject({ method: 'GET', url: `/uploads/avatars/${randomUUID()}.png` });
+      const res = await app.inject({
+        method: 'GET',
+        url: `/uploads/avatars/${randomUUID()}.png`,
+      });
 
       expect(res.statusCode).toBe(HttpStatus.NOT_FOUND);
     });
 
     it('should not serve a stored file with an unsupported extension', async () => {
       const fileName = `${randomUUID()}.html`;
-      writeStoredFile('avatars', fileName, Buffer.from('<script>alert(1)</script>'));
+      writeStoredFile(
+        'avatars',
+        fileName,
+        Buffer.from('<script>alert(1)</script>'),
+      );
 
-      const res = await app.inject({ method: 'GET', url: `/uploads/avatars/${fileName}` });
+      const res = await app.inject({
+        method: 'GET',
+        url: `/uploads/avatars/${fileName}`,
+      });
 
       expect(res.statusCode).toBe(HttpStatus.NOT_FOUND);
       expect(res.body).not.toContain('<script>');
@@ -210,14 +244,19 @@ describe('Uploads (e2e)', () => {
 
       const res = await app.inject({ method: 'GET', url });
 
-      expect([HttpStatus.NOT_FOUND, HttpStatus.UNAUTHORIZED]).toContain(res.statusCode);
+      expect([HttpStatus.NOT_FOUND, HttpStatus.UNAUTHORIZED]).toContain(
+        res.statusCode,
+      );
       expect(res.body).not.toContain('%PDF-secret');
     });
 
     it('should return 404 for an unknown upload folder', async () => {
       writeStoredFile('other', 'x.png', PNG_BYTES);
 
-      const res = await app.inject({ method: 'GET', url: '/uploads/other/x.png' });
+      const res = await app.inject({
+        method: 'GET',
+        url: '/uploads/other/x.png',
+      });
 
       expect(res.statusCode).toBe(HttpStatus.NOT_FOUND);
     });
@@ -230,7 +269,10 @@ describe('Uploads (e2e)', () => {
     let user: MockUser;
     let dbAvatar: string | null;
 
-    const uploadAvatar = (mimeType: string, content = SAMPLE_BY_MIME_TYPE[mimeType]()) =>
+    const uploadAvatar = (
+      mimeType: string,
+      content = SAMPLE_BY_MIME_TYPE[mimeType](),
+    ) =>
       app.inject({
         method: 'POST',
         url: '/user/avatar',
@@ -247,38 +289,47 @@ describe('Uploads (e2e)', () => {
       user = createMockUser();
       sessionUser = user;
       dbAvatar = null;
-      prisma.user.findUnique.mockImplementation(async () => ({ ...user, avatar: dbAvatar }));
+      prisma.user.findUnique.mockImplementation(async () => ({
+        ...user,
+        avatar: dbAvatar,
+      }));
       prisma.user.update.mockImplementation(async ({ data }: any) => {
         if ('avatar' in data) dbAvatar = data.avatar;
         return { ...user, ...data, avatar: dbAvatar };
       });
     });
 
-    it.each(['image/jpeg', 'image/png', 'image/webp'])('should accept a %s avatar and serve it', async (mimeType) => {
-      const content = SAMPLE_BY_MIME_TYPE[mimeType]();
+    it.each(['image/jpeg', 'image/png', 'image/webp'])(
+      'should accept a %s avatar and serve it',
+      async (mimeType) => {
+        const content = SAMPLE_BY_MIME_TYPE[mimeType]();
 
-      const res = await uploadAvatar(mimeType, content);
+        const res = await uploadAvatar(mimeType, content);
 
-      expect(res.statusCode).toBe(HttpStatus.CREATED);
-      const url = JSON.parse(res.body).contents.avatar;
-      expect(dbAvatar).toBe(url);
-      const served = await app.inject({ method: 'GET', url });
-      expect(served.headers['content-type']).toBe(mimeType);
-      expect(served.rawPayload.equals(content)).toBe(true);
-    });
+        expect(res.statusCode).toBe(HttpStatus.CREATED);
+        const url = JSON.parse(res.body).contents.avatar;
+        expect(dbAvatar).toBe(url);
+        const served = await app.inject({ method: 'GET', url });
+        expect(served.headers['content-type']).toBe(mimeType);
+        expect(served.rawPayload.equals(content)).toBe(true);
+      },
+    );
 
-    it.each(['application/pdf', 'image/gif'])('should refuse a %s avatar and store nothing', async (mimeType) => {
-      const before = storedFiles('avatars');
+    it.each(['application/pdf', 'image/gif'])(
+      'should refuse a %s avatar and store nothing',
+      async (mimeType) => {
+        const before = storedFiles('avatars');
 
-      const res = await uploadAvatar(mimeType);
+        const res = await uploadAvatar(mimeType);
 
-      expect(res.statusCode).toBe(HttpStatus.BAD_REQUEST);
-      expect(JSON.parse(res.body).message).toBe(
-        `Invalid file type '${mimeType}'. Allowed types: ${IMAGE_TYPES}.`,
-      );
-      expect(storedFiles('avatars')).toEqual(before);
-      expect(prisma.user.update).not.toHaveBeenCalled();
-    });
+        expect(res.statusCode).toBe(HttpStatus.BAD_REQUEST);
+        expect(JSON.parse(res.body).message).toBe(
+          `Invalid file type '${mimeType}'. Allowed types: ${IMAGE_TYPES}.`,
+        );
+        expect(storedFiles('avatars')).toEqual(before);
+        expect(prisma.user.update).not.toHaveBeenCalled();
+      },
+    );
 
     it('should delete the replaced avatar file once the new one is saved', async () => {
       const first = await uploadedAvatar('image/jpeg');
@@ -286,14 +337,20 @@ describe('Uploads (e2e)', () => {
 
       expect(dbAvatar).toBe(second);
       expect(fs.existsSync(storedPath(first))).toBe(false);
-      expect((await app.inject({ method: 'GET', url: first })).statusCode).toBe(HttpStatus.NOT_FOUND);
-      expect((await app.inject({ method: 'GET', url: second })).statusCode).toBe(HttpStatus.OK);
+      expect((await app.inject({ method: 'GET', url: first })).statusCode).toBe(
+        HttpStatus.NOT_FOUND,
+      );
+      expect(
+        (await app.inject({ method: 'GET', url: second })).statusCode,
+      ).toBe(HttpStatus.OK);
     });
 
     it('should keep the current avatar file when a replacement is refused', async () => {
       const current = await uploadedAvatar();
 
-      expect((await uploadAvatar('application/pdf')).statusCode).toBe(HttpStatus.BAD_REQUEST);
+      expect((await uploadAvatar('application/pdf')).statusCode).toBe(
+        HttpStatus.BAD_REQUEST,
+      );
 
       expect(dbAvatar).toBe(current);
       expect(fs.existsSync(storedPath(current))).toBe(true);
@@ -302,16 +359,23 @@ describe('Uploads (e2e)', () => {
     it.each([
       ['an external URL', () => `https://cdn.example.com/${randomUUID()}.png`],
       ['null', () => null],
-    ])('should delete the uploaded avatar file when the profile sets the avatar to %s', async (_case, next) => {
-      const uploaded = await uploadedAvatar();
-      const avatar = next();
+    ])(
+      'should delete the uploaded avatar file when the profile sets the avatar to %s',
+      async (_case, next) => {
+        const uploaded = await uploadedAvatar();
+        const avatar = next();
 
-      const res = await app.inject({ method: 'PATCH', url: '/user/profile', payload: { avatar } });
+        const res = await app.inject({
+          method: 'PATCH',
+          url: '/user/profile',
+          payload: { avatar },
+        });
 
-      expect(res.statusCode).toBe(HttpStatus.OK);
-      expect(dbAvatar).toBe(avatar);
-      expect(fs.existsSync(storedPath(uploaded))).toBe(false);
-    });
+        expect(res.statusCode).toBe(HttpStatus.OK);
+        expect(dbAvatar).toBe(avatar);
+        expect(fs.existsSync(storedPath(uploaded))).toBe(false);
+      },
+    );
 
     it('should keep the avatar file when a profile update leaves the avatar out', async () => {
       const uploaded = await uploadedAvatar();
@@ -329,21 +393,37 @@ describe('Uploads (e2e)', () => {
     it.each([
       (doc: string) => `/uploads/doctor-documents/${doc}`,
       (doc: string) => `/uploads/avatars/../doctor-documents/${doc}`,
-    ])('should never delete a file outside the avatars folder (previous avatar #%#)', async (previous) => {
-      const doc = `${randomUUID()}.pdf`;
-      writeStoredFile('doctor-documents', doc, SAMPLE_BY_MIME_TYPE['application/pdf']());
-      dbAvatar = previous(doc);
+    ])(
+      'should never delete a file outside the avatars folder (previous avatar #%#)',
+      async (previous) => {
+        const doc = `${randomUUID()}.pdf`;
+        writeStoredFile(
+          'doctor-documents',
+          doc,
+          SAMPLE_BY_MIME_TYPE['application/pdf'](),
+        );
+        dbAvatar = previous(doc);
 
-      await uploadedAvatar();
+        await uploadedAvatar();
 
-      expect(fs.existsSync(path.join(storageDir, 'doctor-documents', doc))).toBe(true);
-    });
+        expect(
+          fs.existsSync(path.join(storageDir, 'doctor-documents', doc)),
+        ).toBe(true);
+      },
+    );
 
     it('should not serve a PDF stored among avatars before avatars were images only', async () => {
       const fileName = `${randomUUID()}.pdf`;
-      writeStoredFile('avatars', fileName, SAMPLE_BY_MIME_TYPE['application/pdf']());
+      writeStoredFile(
+        'avatars',
+        fileName,
+        SAMPLE_BY_MIME_TYPE['application/pdf'](),
+      );
 
-      const res = await app.inject({ method: 'GET', url: `/uploads/avatars/${fileName}` });
+      const res = await app.inject({
+        method: 'GET',
+        url: `/uploads/avatars/${fileName}`,
+      });
 
       expect(res.statusCode).toBe(HttpStatus.NOT_FOUND);
       expect(res.body).not.toContain('%PDF');
@@ -355,8 +435,12 @@ describe('Uploads (e2e)', () => {
   describe('POST /doctor/documents', () => {
     beforeEach(() => {
       sessionUser = createMockDoctorUser();
-      prisma.doctorProfile.findUnique.mockResolvedValue({ id: Math.floor(Math.random() * 1e6) + 1 });
-      prisma.doctorDocument.create.mockImplementation(async ({ data }: any) => ({ id: 1, ...data }));
+      prisma.doctorProfile.findUnique.mockResolvedValue({
+        id: Math.floor(Math.random() * 1e6) + 1,
+      });
+      prisma.doctorDocument.create.mockImplementation(
+        async ({ data }: any) => ({ id: 1, ...data }),
+      );
     });
 
     it.each(['application/pdf', 'image/jpeg', 'image/png', 'image/webp'])(
@@ -367,22 +451,32 @@ describe('Uploads (e2e)', () => {
         const res = await app.inject({
           method: 'POST',
           url: '/doctor/documents',
-          ...multipartBody(`license-${randomUUID().slice(0, 6)}`, mimeType, content),
+          ...multipartBody(
+            `license-${randomUUID().slice(0, 6)}`,
+            mimeType,
+            content,
+          ),
         });
 
         expect(res.statusCode).toBe(HttpStatus.CREATED);
         const { fileUrl, mimeType: stored } = JSON.parse(res.body).contents;
         expect(stored).toBe(mimeType);
-        expect(fileUrl).toMatch(/^\/uploads\/doctor-documents\/[0-9a-f-]{36}\.(pdf|jpg|png|webp)$/);
+        expect(fileUrl).toMatch(
+          /^\/uploads\/doctor-documents\/[0-9a-f-]{36}\.(pdf|jpg|png|webp)$/,
+        );
         expect(fs.readFileSync(storedPath(fileUrl)).equals(content)).toBe(true);
       },
     );
 
-    it('should refuse a type documents don\'t allow', async () => {
+    it("should refuse a type documents don't allow", async () => {
       const res = await app.inject({
         method: 'POST',
         url: '/doctor/documents',
-        ...multipartBody('license.gif', 'image/gif', SAMPLE_BY_MIME_TYPE['image/gif']()),
+        ...multipartBody(
+          'license.gif',
+          'image/gif',
+          SAMPLE_BY_MIME_TYPE['image/gif'](),
+        ),
       });
 
       expect(res.statusCode).toBe(HttpStatus.BAD_REQUEST);
@@ -404,10 +498,11 @@ describe('Uploads (e2e)', () => {
       fileName = `${randomUUID()}.pdf`;
       content = Buffer.concat([Buffer.from('%PDF-1.4 '), randomBytes(32)]);
       writeStoredFile('doctor-documents', fileName, content);
-      prisma.doctorDocument.findFirst.mockImplementation(async ({ where }: any) =>
-        where.fileUrl === `/uploads/doctor-documents/${fileName}`
-          ? { doctor: { userId: owner.id } }
-          : null,
+      prisma.doctorDocument.findFirst.mockImplementation(
+        async ({ where }: any) =>
+          where.fileUrl === `/uploads/doctor-documents/${fileName}`
+            ? { doctor: { userId: owner.id } }
+            : null,
       );
     });
 
@@ -417,7 +512,10 @@ describe('Uploads (e2e)', () => {
     ])('should serve the document to %s', async (_label, user) => {
       sessionUser = user();
 
-      const res = await app.inject({ method: 'GET', url: `/uploads/doctor-documents/${fileName}` });
+      const res = await app.inject({
+        method: 'GET',
+        url: `/uploads/doctor-documents/${fileName}`,
+      });
 
       expect(res.statusCode).toBe(HttpStatus.OK);
       expect(res.headers['content-type']).toBe('application/pdf');
@@ -426,7 +524,10 @@ describe('Uploads (e2e)', () => {
     });
 
     it('should return 401 without a session', async () => {
-      const res = await app.inject({ method: 'GET', url: `/uploads/doctor-documents/${fileName}` });
+      const res = await app.inject({
+        method: 'GET',
+        url: `/uploads/doctor-documents/${fileName}`,
+      });
 
       expect(res.statusCode).toBe(HttpStatus.UNAUTHORIZED);
       expect(prisma.doctorDocument.findFirst).not.toHaveBeenCalled();
@@ -438,7 +539,10 @@ describe('Uploads (e2e)', () => {
     ])('should return 403 for %s', async (_label, user) => {
       sessionUser = user();
 
-      const res = await app.inject({ method: 'GET', url: `/uploads/doctor-documents/${fileName}` });
+      const res = await app.inject({
+        method: 'GET',
+        url: `/uploads/doctor-documents/${fileName}`,
+      });
 
       expect(res.statusCode).toBe(HttpStatus.FORBIDDEN);
       expect(res.rawPayload.includes(content)).toBe(false);
@@ -449,7 +553,10 @@ describe('Uploads (e2e)', () => {
       writeStoredFile('doctor-documents', orphan, content);
       sessionUser = createMockAdminUser();
 
-      const res = await app.inject({ method: 'GET', url: `/uploads/doctor-documents/${orphan}` });
+      const res = await app.inject({
+        method: 'GET',
+        url: `/uploads/doctor-documents/${orphan}`,
+      });
 
       expect(res.statusCode).toBe(HttpStatus.NOT_FOUND);
     });
@@ -458,7 +565,10 @@ describe('Uploads (e2e)', () => {
       fs.rmSync(path.join(storageDir, 'doctor-documents', fileName));
       sessionUser = owner;
 
-      const res = await app.inject({ method: 'GET', url: `/uploads/doctor-documents/${fileName}` });
+      const res = await app.inject({
+        method: 'GET',
+        url: `/uploads/doctor-documents/${fileName}`,
+      });
 
       expect(res.statusCode).toBe(HttpStatus.NOT_FOUND);
     });

@@ -36,10 +36,7 @@ export class ChatService {
    * party may reopen an existing chat, so a nurse can answer a doctor who
    * contacted them first. Admin/SuperAdmin initiators may chat with anyone.
    */
-  async createChat(
-    initiatorId: string,
-    dto: CreateChatDto,
-  ): Promise<any> {
+  async createChat(initiatorId: string, dto: CreateChatDto): Promise<any> {
     const { participantId, topic, consultationId } = dto;
 
     if (initiatorId === participantId) {
@@ -103,7 +100,10 @@ export class ChatService {
         throw new NotFoundException('Consultation not found');
       }
       const involved = [consultation.patientId, consultation.doctor?.userId];
-      if (!involved.includes(initiatorId) || !involved.includes(participantId)) {
+      if (
+        !involved.includes(initiatorId) ||
+        !involved.includes(participantId)
+      ) {
         throw new ForbiddenException(
           'A chat can only be linked to a consultation between its two participants',
         );
@@ -118,10 +118,7 @@ export class ChatService {
           topic: topic || null,
           consultationId: consultationId || null,
           parties: {
-            create: [
-              { userId: initiatorId },
-              { userId: participantId },
-            ],
+            create: [{ userId: initiatorId }, { userId: participantId }],
           },
         },
         include: {
@@ -130,7 +127,10 @@ export class ChatService {
       });
     } catch (err) {
       // Chat.consultationId is unique: e.g. the consultation's earlier chat was closed.
-      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+      if (
+        err instanceof Prisma.PrismaClientKnownRequestError &&
+        err.code === 'P2002'
+      ) {
         throw new ConflictException('This consultation already has a chat');
       }
       throw err;
@@ -206,9 +206,7 @@ export class ChatService {
           lastSeenAt: p.lastSeenAt,
           isOnline: this.isOnline(p.userId),
         })),
-        lastMessage: lastMessage
-          ? this.serializeMessage(lastMessage)
-          : null,
+        lastMessage: lastMessage ? this.serializeMessage(lastMessage) : null,
         unreadCount,
       };
     });
@@ -499,10 +497,7 @@ export class ChatService {
     });
   }
 
-  async deleteMessage(
-    messageId: bigint,
-    userId: string,
-  ): Promise<Message> {
+  async deleteMessage(messageId: bigint, userId: string): Promise<Message> {
     const message = await this.prisma.message.findUnique({
       where: { id: messageId },
     });
@@ -555,7 +550,9 @@ export class ChatService {
   }
 
   isOnline(userId: string): boolean {
-    return this.onlineUsers.has(userId) && this.onlineUsers.get(userId)!.size > 0;
+    return (
+      this.onlineUsers.has(userId) && this.onlineUsers.get(userId)!.size > 0
+    );
   }
 
   getSocketIds(userId: string): string[] {
@@ -566,7 +563,10 @@ export class ChatService {
   // ─────────────────────────── Private Helpers ───────────────────────────
 
   /** Who may start a new chat; admin initiators are exempt (see createChat). */
-  private async validateChatRules(initiator: User, participant: User): Promise<void> {
+  private async validateChatRules(
+    initiator: User,
+    participant: User,
+  ): Promise<void> {
     const { PATIENT, DOCTOR, NURSE } = UserRolesEnum;
     const from = initiator.role;
     const to = participant.role;
@@ -701,10 +701,7 @@ export class ChatService {
     return !!appointment;
   }
 
-  private async findExistingChat(
-    userId1: string,
-    userId2: string,
-  ) {
+  private async findExistingChat(userId1: string, userId2: string) {
     return this.prisma.chat.findFirst({
       where: {
         closedAt: null,

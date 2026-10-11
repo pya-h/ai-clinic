@@ -6,9 +6,7 @@
  * This helper provides utility functions that those specs can share.
  */
 
-import {
-  NestFastifyApplication,
-} from '@nestjs/platform-fastify';
+import { NestFastifyApplication } from '@nestjs/platform-fastify';
 import { MockUser } from './mock-session.helper';
 
 /**

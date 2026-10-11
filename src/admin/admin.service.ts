@@ -99,12 +99,17 @@ export class AdminService {
     }
 
     if (!currentUser.isSuperAdmin && (target.isAdmin || target.isSuperAdmin)) {
-      throw new ForbiddenException('Only superadmins can modify admin accounts.');
+      throw new ForbiddenException(
+        'Only superadmins can modify admin accounts.',
+      );
     }
 
     if (dto.email) {
       const existingByEmail = await this.prisma.user.findFirst({
-        where: { email: { equals: dto.email, mode: 'insensitive' }, id: { not: userId } },
+        where: {
+          email: { equals: dto.email, mode: 'insensitive' },
+          id: { not: userId },
+        },
         select: { id: true },
       });
       if (existingByEmail) {
@@ -133,7 +138,9 @@ export class AdminService {
     }
 
     if (!currentUser.isSuperAdmin && (target.isAdmin || target.isSuperAdmin)) {
-      throw new ForbiddenException('Only superadmins can deactivate admin accounts.');
+      throw new ForbiddenException(
+        'Only superadmins can deactivate admin accounts.',
+      );
     }
 
     if (userId === currentUser.id) {
@@ -277,7 +284,9 @@ export class AdminService {
     const notification = reason
       ? this.notificationService.onDoctorRejected(doctor.userId, reason)
       : this.notificationService.onDoctorVerified(doctor.userId);
-    notification.catch((e) => this.logger.error(`Notification failed: ${e.message}`));
+    notification.catch((e) =>
+      this.logger.error(`Notification failed: ${e.message}`),
+    );
 
     return updated;
   }

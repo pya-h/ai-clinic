@@ -10,7 +10,9 @@ import {
 } from 'class-validator';
 
 export class CreateReviewDto {
-  @ApiProperty({ description: 'The DoctorProfile ID (autoincrement Int) to review.' })
+  @ApiProperty({
+    description: 'The DoctorProfile ID (autoincrement Int) to review.',
+  })
   @IsNotEmpty()
   @IsInt()
   doctorId: number;

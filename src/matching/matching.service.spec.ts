@@ -30,7 +30,8 @@ import { randomInt, randomUUID } from 'crypto';
 
 const MATCH_TIMEOUT_MS = 5 * 60 * 1000;
 /** A creation time this many ms past (positive) or short of (negative) the 5-minute timeout. */
-const createdPastTimeout = (ms: number) => new Date(Date.now() - MATCH_TIMEOUT_MS - ms);
+const createdPastTimeout = (ms: number) =>
+  new Date(Date.now() - MATCH_TIMEOUT_MS - ms);
 
 describe('MatchingService', () => {
   let service: MatchingService;
@@ -176,7 +177,11 @@ describe('MatchingService', () => {
         buildMockDoctor({ id: i + 1, consultationCount: (i + 1) * 10 }),
       );
       prisma.doctorProfile.findMany.mockResolvedValue(doctors);
-      const ratingData = { averageRating: 4.0, totalReviews: 10, distribution: { 1: 0, 2: 0, 3: 2, 4: 5, 5: 3 } };
+      const ratingData = {
+        averageRating: 4.0,
+        totalReviews: 10,
+        distribution: { 1: 0, 2: 0, 3: 2, 4: 5, 5: 3 },
+      };
       reviewService.getAggregateRatingsForDoctors.mockResolvedValue(
         new Map(doctors.map((d) => [d.id, ratingData])),
       );
@@ -206,9 +211,20 @@ describe('MatchingService', () => {
       });
       prisma.doctorProfile.findMany.mockResolvedValue([doc]);
       reviewService.getAggregateRatingsForDoctors.mockResolvedValue(
-        new Map([[1, { averageRating: null, totalReviews: 0, distribution: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 } }]]),
+        new Map([
+          [
+            1,
+            {
+              averageRating: null,
+              totalReviews: 0,
+              distribution: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 },
+            },
+          ],
+        ]),
       );
-      schedulingService.countAvailableSlotsForDoctors.mockResolvedValue(new Map([[1, 0]]));
+      schedulingService.countAvailableSlotsForDoctors.mockResolvedValue(
+        new Map([[1, 0]]),
+      );
 
       const result = await service.scoreDoctors({
         specialty: DoctorSpecialtiesEnum.CARDIOLOGY,
@@ -230,9 +246,20 @@ describe('MatchingService', () => {
       });
       prisma.doctorProfile.findMany.mockResolvedValue([doc]);
       reviewService.getAggregateRatingsForDoctors.mockResolvedValue(
-        new Map([[1, { averageRating: null, totalReviews: 0, distribution: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 } }]]),
+        new Map([
+          [
+            1,
+            {
+              averageRating: null,
+              totalReviews: 0,
+              distribution: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 },
+            },
+          ],
+        ]),
       );
-      schedulingService.countAvailableSlotsForDoctors.mockResolvedValue(new Map([[1, 0]]));
+      schedulingService.countAvailableSlotsForDoctors.mockResolvedValue(
+        new Map([[1, 0]]),
+      );
 
       const result = await service.scoreDoctors({
         specialty: DoctorSpecialtiesEnum.DERMATOLOGY,
@@ -251,9 +278,20 @@ describe('MatchingService', () => {
       });
       prisma.doctorProfile.findMany.mockResolvedValue([doc]);
       reviewService.getAggregateRatingsForDoctors.mockResolvedValue(
-        new Map([[1, { averageRating: null, totalReviews: 0, distribution: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 } }]]),
+        new Map([
+          [
+            1,
+            {
+              averageRating: null,
+              totalReviews: 0,
+              distribution: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 },
+            },
+          ],
+        ]),
       );
-      schedulingService.countAvailableSlotsForDoctors.mockResolvedValue(new Map([[1, 0]]));
+      schedulingService.countAvailableSlotsForDoctors.mockResolvedValue(
+        new Map([[1, 0]]),
+      );
 
       const result = await service.scoreDoctors({
         specialty: DoctorSpecialtiesEnum.CARDIOLOGY,
@@ -271,9 +309,20 @@ describe('MatchingService', () => {
       });
       prisma.doctorProfile.findMany.mockResolvedValue([doc]);
       reviewService.getAggregateRatingsForDoctors.mockResolvedValue(
-        new Map([[1, { averageRating: null, totalReviews: 0, distribution: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 } }]]),
+        new Map([
+          [
+            1,
+            {
+              averageRating: null,
+              totalReviews: 0,
+              distribution: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 },
+            },
+          ],
+        ]),
       );
-      schedulingService.countAvailableSlotsForDoctors.mockResolvedValue(new Map([[1, 0]]));
+      schedulingService.countAvailableSlotsForDoctors.mockResolvedValue(
+        new Map([[1, 0]]),
+      );
 
       const result = await service.scoreDoctors({});
 
@@ -284,8 +333,12 @@ describe('MatchingService', () => {
     it('should handle review service errors gracefully', async () => {
       const doc = buildMockDoctor({ id: 1, consultationCount: 0 });
       prisma.doctorProfile.findMany.mockResolvedValue([doc]);
-      reviewService.getAggregateRatingsForDoctors.mockRejectedValue(new Error('DB error'));
-      schedulingService.countAvailableSlotsForDoctors.mockResolvedValue(new Map([[1, 0]]));
+      reviewService.getAggregateRatingsForDoctors.mockRejectedValue(
+        new Error('DB error'),
+      );
+      schedulingService.countAvailableSlotsForDoctors.mockResolvedValue(
+        new Map([[1, 0]]),
+      );
 
       const result = await service.scoreDoctors({});
 
@@ -298,7 +351,16 @@ describe('MatchingService', () => {
       const doc = buildMockDoctor({ id: 1, consultationCount: 0 });
       prisma.doctorProfile.findMany.mockResolvedValue([doc]);
       reviewService.getAggregateRatingsForDoctors.mockResolvedValue(
-        new Map([[1, { averageRating: 5.0, totalReviews: 20, distribution: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 20 } }]]),
+        new Map([
+          [
+            1,
+            {
+              averageRating: 5.0,
+              totalReviews: 20,
+              distribution: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 20 },
+            },
+          ],
+        ]),
       );
       schedulingService.countAvailableSlotsForDoctors.mockRejectedValue(
         new Error('Service down'),
@@ -315,9 +377,20 @@ describe('MatchingService', () => {
       const doc2 = buildMockDoctor({ id: 2 });
       prisma.doctorProfile.findMany.mockResolvedValue([doc2]);
       reviewService.getAggregateRatingsForDoctors.mockResolvedValue(
-        new Map([[2, { averageRating: 4.0, totalReviews: 5, distribution: { 1: 0, 2: 0, 3: 0, 4: 3, 5: 2 } }]]),
+        new Map([
+          [
+            2,
+            {
+              averageRating: 4.0,
+              totalReviews: 5,
+              distribution: { 1: 0, 2: 0, 3: 0, 4: 3, 5: 2 },
+            },
+          ],
+        ]),
       );
-      schedulingService.countAvailableSlotsForDoctors.mockResolvedValue(new Map([[2, 0]]));
+      schedulingService.countAvailableSlotsForDoctors.mockResolvedValue(
+        new Map([[2, 0]]),
+      );
 
       await service.scoreDoctors({ excludeDoctorIds: [doc1.id] });
 
@@ -334,10 +407,21 @@ describe('MatchingService', () => {
       const doc = buildMockDoctor({ id: 1, consultationCount: 0 });
       prisma.doctorProfile.findMany.mockResolvedValue([doc]);
       reviewService.getAggregateRatingsForDoctors.mockResolvedValue(
-        new Map([[1, { averageRating: null, totalReviews: 0, distribution: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 } }]]),
+        new Map([
+          [
+            1,
+            {
+              averageRating: null,
+              totalReviews: 0,
+              distribution: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 },
+            },
+          ],
+        ]),
       );
       // 100 slots > maxSlots (50), should cap at 1.0
-      schedulingService.countAvailableSlotsForDoctors.mockResolvedValue(new Map([[1, 100]]));
+      schedulingService.countAvailableSlotsForDoctors.mockResolvedValue(
+        new Map([[1, 100]]),
+      );
 
       const result = await service.scoreDoctors({});
 
@@ -349,9 +433,20 @@ describe('MatchingService', () => {
       const doc = buildMockDoctor({ id: 1, consultationCount: 500 });
       prisma.doctorProfile.findMany.mockResolvedValue([doc]);
       reviewService.getAggregateRatingsForDoctors.mockResolvedValue(
-        new Map([[1, { averageRating: null, totalReviews: 0, distribution: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 } }]]),
+        new Map([
+          [
+            1,
+            {
+              averageRating: null,
+              totalReviews: 0,
+              distribution: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 },
+            },
+          ],
+        ]),
       );
-      schedulingService.countAvailableSlotsForDoctors.mockResolvedValue(new Map([[1, 0]]));
+      schedulingService.countAvailableSlotsForDoctors.mockResolvedValue(
+        new Map([[1, 0]]),
+      );
 
       const result = await service.scoreDoctors({});
 
@@ -371,9 +466,20 @@ describe('MatchingService', () => {
       doc.user.avatar = 'avatar-url.jpg';
       prisma.doctorProfile.findMany.mockResolvedValue([doc]);
       reviewService.getAggregateRatingsForDoctors.mockResolvedValue(
-        new Map([[7, { averageRating: 3.5, totalReviews: 8, distribution: { 1: 0, 2: 1, 3: 2, 4: 3, 5: 2 } }]]),
+        new Map([
+          [
+            7,
+            {
+              averageRating: 3.5,
+              totalReviews: 8,
+              distribution: { 1: 0, 2: 1, 3: 2, 4: 3, 5: 2 },
+            },
+          ],
+        ]),
       );
-      schedulingService.countAvailableSlotsForDoctors.mockResolvedValue(new Map([[7, 0]]));
+      schedulingService.countAvailableSlotsForDoctors.mockResolvedValue(
+        new Map([[7, 0]]),
+      );
 
       const result = await service.scoreDoctors({});
 
@@ -430,15 +536,15 @@ describe('MatchingService', () => {
     });
 
     it('should reject non-patient users', async () => {
-      await expect(
-        service.createMatchRequest(doctor as any),
-      ).rejects.toThrow(ForbiddenException);
+      await expect(service.createMatchRequest(doctor as any)).rejects.toThrow(
+        ForbiddenException,
+      );
     });
 
     it('should reject admin users', async () => {
-      await expect(
-        service.createMatchRequest(admin as any),
-      ).rejects.toThrow(ForbiddenException);
+      await expect(service.createMatchRequest(admin as any)).rejects.toThrow(
+        ForbiddenException,
+      );
     });
 
     it('should reject when active match request exists', async () => {
@@ -447,9 +553,9 @@ describe('MatchingService', () => {
         status: MatchStatusEnum.SEARCHING,
       });
 
-      await expect(
-        service.createMatchRequest(patient as any),
-      ).rejects.toThrow(BadRequestException);
+      await expect(service.createMatchRequest(patient as any)).rejects.toThrow(
+        BadRequestException,
+      );
     });
 
     it('should reject when MATCHED request already exists', async () => {
@@ -458,9 +564,9 @@ describe('MatchingService', () => {
         status: MatchStatusEnum.MATCHED,
       });
 
-      await expect(
-        service.createMatchRequest(patient as any),
-      ).rejects.toThrow(BadRequestException);
+      await expect(service.createMatchRequest(patient as any)).rejects.toThrow(
+        BadRequestException,
+      );
     });
 
     it('should use SOAP specialty when soapId provided', async () => {
@@ -482,10 +588,7 @@ describe('MatchingService', () => {
       });
       prisma.doctorProfile.findMany.mockResolvedValue([]);
 
-      const result = await service.createMatchRequest(
-        patient as any,
-        soapId,
-      );
+      const result = await service.createMatchRequest(patient as any, soapId);
 
       expect(prisma.matchRequest.create).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -614,9 +717,9 @@ describe('MatchingService', () => {
     it('should throw NotFoundException when request not found', async () => {
       prisma.matchRequest.findUnique.mockResolvedValue(null);
 
-      await expect(
-        service.matchDoctor(randomUUID(), 1),
-      ).rejects.toThrow(NotFoundException);
+      await expect(service.matchDoctor(randomUUID(), 1)).rejects.toThrow(
+        NotFoundException,
+      );
     });
 
     it('should throw BadRequestException for invalid transition', async () => {
@@ -625,9 +728,9 @@ describe('MatchingService', () => {
         status: MatchStatusEnum.CANCELLED,
       });
 
-      await expect(
-        service.matchDoctor(randomUUID(), 1),
-      ).rejects.toThrow(BadRequestException);
+      await expect(service.matchDoctor(randomUUID(), 1)).rejects.toThrow(
+        BadRequestException,
+      );
     });
   });
 
@@ -739,7 +842,9 @@ describe('MatchingService', () => {
         createdAt: createdPastTimeout(randomInt(1_000, 48 * 3600_000)),
       });
 
-      await expect(service.acceptMatch(requestId, doctor as any)).rejects.toThrow(
+      await expect(
+        service.acceptMatch(requestId, doctor as any),
+      ).rejects.toThrow(
         new BadRequestException('This match request has expired.'),
       );
       expect(prisma.consultation.create).not.toHaveBeenCalled();
@@ -755,9 +860,14 @@ describe('MatchingService', () => {
         createdAt: createdPastTimeout(-randomInt(5_000, MATCH_TIMEOUT_MS)),
       });
       prisma.consultation.create.mockResolvedValue({ id: consultationId });
-      prisma.matchRequest.update.mockResolvedValue({ id: requestId, status: MatchStatusEnum.CONSULTATION_CREATED });
+      prisma.matchRequest.update.mockResolvedValue({
+        id: requestId,
+        status: MatchStatusEnum.CONSULTATION_CREATED,
+      });
 
-      await expect(service.acceptMatch(requestId, doctor as any)).resolves.toMatchObject({ consultationId });
+      await expect(
+        service.acceptMatch(requestId, doctor as any),
+      ).resolves.toMatchObject({ consultationId });
     });
 
     it('should pass soapId to consultation when present', async () => {
@@ -884,7 +994,9 @@ describe('MatchingService', () => {
         createdAt: createdPastTimeout(randomInt(1_000, 48 * 3600_000)),
       });
 
-      await expect(service.rejectMatch(requestId, doctor as any)).rejects.toThrow(
+      await expect(
+        service.rejectMatch(requestId, doctor as any),
+      ).rejects.toThrow(
         new BadRequestException('This match request has expired.'),
       );
       expect((prisma as any).matchRejection.create).not.toHaveBeenCalled();
@@ -1014,9 +1126,9 @@ describe('MatchingService', () => {
     it('should throw NotFoundException when request not found', async () => {
       prisma.matchRequest.findUnique.mockResolvedValue(null);
 
-      await expect(
-        service.timeoutRequest(randomUUID()),
-      ).rejects.toThrow(NotFoundException);
+      await expect(service.timeoutRequest(randomUUID())).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 
@@ -1054,19 +1166,30 @@ describe('MatchingService', () => {
 
     it('should time out each one only if it is unchanged, and return those it timed out', async () => {
       const stale = Array.from({ length: randomInt(2, 8) }, buildActive);
-      const changedMeanwhile = new Set(stale.filter(() => Math.random() < 0.4).map((r) => r.id));
+      const changedMeanwhile = new Set(
+        stale.filter(() => Math.random() < 0.4).map((r) => r.id),
+      );
       prisma.matchRequest.findMany.mockResolvedValue(stale);
-      prisma.matchRequest.updateMany.mockImplementation(async ({ where }: any) => ({
-        count: changedMeanwhile.has(where.id) ? 0 : 1,
-      }));
+      prisma.matchRequest.updateMany.mockImplementation(
+        async ({ where }: any) => ({
+          count: changedMeanwhile.has(where.id) ? 0 : 1,
+        }),
+      );
 
       const expired = await service.expireStaleRequests();
 
       expect(expired).toEqual(stale.filter((r) => !changedMeanwhile.has(r.id)));
       for (const request of stale) {
         expect(prisma.matchRequest.updateMany).toHaveBeenCalledWith({
-          where: { id: request.id, status: request.status, matchedDoctorId: request.matchedDoctorId },
-          data: { status: MatchStatusEnum.TIMEOUT, resolvedAt: expect.any(Date) },
+          where: {
+            id: request.id,
+            status: request.status,
+            matchedDoctorId: request.matchedDoctorId,
+          },
+          data: {
+            status: MatchStatusEnum.TIMEOUT,
+            resolvedAt: expect.any(Date),
+          },
         });
       }
     });
@@ -1240,7 +1363,10 @@ describe('MatchingService', () => {
       prisma.matchRequest.updateMany.mockResolvedValue({ count: 1 });
       prisma.matchRequest.findUniqueOrThrow.mockResolvedValue(updated);
 
-      const result = await service.fallbackToManualBrowse(requestId, patient as any);
+      const result = await service.fallbackToManualBrowse(
+        requestId,
+        patient as any,
+      );
 
       expect(result).toEqual(updated);
       expect(prisma.matchRequest.updateMany).toHaveBeenCalledWith({
@@ -1393,9 +1519,9 @@ describe('MatchingService', () => {
         userId: doctor.id,
       });
 
-      await expect(
-        service.getStatus(requestId, doctor as any),
-      ).rejects.toThrow(ForbiddenException);
+      await expect(service.getStatus(requestId, doctor as any)).rejects.toThrow(
+        ForbiddenException,
+      );
     });
 
     it('should throw NotFoundException when request not found', async () => {
@@ -1445,7 +1571,9 @@ describe('MatchingService', () => {
         expect.objectContaining({
           where: {
             patientId: patient.id,
-            status: { in: [MatchStatusEnum.SEARCHING, MatchStatusEnum.MATCHED] },
+            status: {
+              in: [MatchStatusEnum.SEARCHING, MatchStatusEnum.MATCHED],
+            },
           },
         }),
       );
@@ -1471,8 +1599,16 @@ describe('MatchingService', () => {
         userId: doctor.id,
       });
       const requests = [
-        { id: randomUUID(), matchedDoctorId: doctorProfileId, status: MatchStatusEnum.MATCHED },
-        { id: randomUUID(), matchedDoctorId: doctorProfileId, status: MatchStatusEnum.MATCHED },
+        {
+          id: randomUUID(),
+          matchedDoctorId: doctorProfileId,
+          status: MatchStatusEnum.MATCHED,
+        },
+        {
+          id: randomUUID(),
+          matchedDoctorId: doctorProfileId,
+          status: MatchStatusEnum.MATCHED,
+        },
       ];
       prisma.matchRequest.findMany.mockResolvedValue(requests);
 
@@ -1494,12 +1630,17 @@ describe('MatchingService', () => {
     it('should leave out requests past their 5 minutes', async () => {
       const now = Date.now() + randomInt(0, 1e9);
       const spy = jest.spyOn(Date, 'now').mockReturnValue(now);
-      prisma.doctorProfile.findUnique.mockResolvedValue({ id: doctorProfileId, userId: doctor.id });
+      prisma.doctorProfile.findUnique.mockResolvedValue({
+        id: doctorProfileId,
+        userId: doctor.id,
+      });
       prisma.matchRequest.findMany.mockResolvedValue([]);
 
       await service.getPendingForDoctor(doctor as any);
 
-      expect(prisma.matchRequest.findMany.mock.calls[0][0].where.createdAt).toEqual({
+      expect(
+        prisma.matchRequest.findMany.mock.calls[0][0].where.createdAt,
+      ).toEqual({
         gte: new Date(now - MATCH_TIMEOUT_MS),
       });
       spy.mockRestore();
@@ -1518,17 +1659,17 @@ describe('MatchingService', () => {
     });
 
     it('should reject non-doctor users', async () => {
-      await expect(
-        service.getPendingForDoctor(patient as any),
-      ).rejects.toThrow(ForbiddenException);
+      await expect(service.getPendingForDoctor(patient as any)).rejects.toThrow(
+        ForbiddenException,
+      );
     });
 
     it('should throw NotFoundException when doctor profile not found', async () => {
       prisma.doctorProfile.findUnique.mockResolvedValue(null);
 
-      await expect(
-        service.getPendingForDoctor(doctor as any),
-      ).rejects.toThrow(NotFoundException);
+      await expect(service.getPendingForDoctor(doctor as any)).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 

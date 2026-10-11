@@ -22,7 +22,8 @@ export class CsrfGuard implements CanActivate {
     if (SAFE_METHODS.has(request.method)) return true;
 
     // Handler only: a class-wide exemption would cover routes added later.
-    if (this.reflector.get<boolean>(SKIP_CSRF_KEY, context.getHandler())) return true;
+    if (this.reflector.get<boolean>(SKIP_CSRF_KEY, context.getHandler()))
+      return true;
 
     const cookieToken = request.cookies?.['csrf-token'];
     const headerToken = request.headers['x-csrf-token'] as string | undefined;

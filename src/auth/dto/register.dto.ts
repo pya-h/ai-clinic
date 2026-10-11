@@ -67,7 +67,8 @@ export class RegistrationDto {
   @ApiPropertyOptional({
     enum: BasicUserRoles,
     enumName: 'BasicUserRoles',
-    description: 'User role. Only PATIENT and DOCTOR are allowed for self-registration.',
+    description:
+      'User role. Only PATIENT and DOCTOR are allowed for self-registration.',
     example: BasicUserRoles.PATIENT,
     type: 'string',
     default: BasicUserRoles.PATIENT,

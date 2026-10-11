@@ -46,7 +46,9 @@ describe('AiAgentsController', () => {
           provide: PrismaService,
           useValue: {
             aiConversation: {
-              findFirst: jest.fn().mockResolvedValue({ id: 'conv-1', userId: 'user-1' }),
+              findFirst: jest
+                .fn()
+                .mockResolvedValue({ id: 'conv-1', userId: 'user-1' }),
             },
           },
         },
@@ -113,9 +115,9 @@ describe('AiAgentsController', () => {
     });
 
     it('should throw BadRequestException for guest without conversationId', async () => {
-      await expect(
-        controller.send(null, { text: 'hello' }),
-      ).rejects.toThrow(BadRequestException);
+      await expect(controller.send(null, { text: 'hello' })).rejects.toThrow(
+        BadRequestException,
+      );
     });
   });
 
@@ -182,7 +184,11 @@ describe('AiAgentsController', () => {
       const user = buildUser();
       const convoId = randomUuid();
       const messages = [
-        { id: randomUuid(), payload: { text: 'just a normal message' }, userId: 'bot' },
+        {
+          id: randomUuid(),
+          payload: { text: 'just a normal message' },
+          userId: 'bot',
+        },
       ];
 
       botpressService.pollForNewMessages.mockResolvedValue(messages);
@@ -249,8 +255,18 @@ describe('AiAgentsController', () => {
       const user = buildUser();
       const convoId = randomUuid();
       const history = [
-        { id: randomUuid(), role: 'user', text: 'hello', createdAt: new Date().toISOString() },
-        { id: randomUuid(), role: 'bot', text: 'hi there', createdAt: new Date().toISOString() },
+        {
+          id: randomUuid(),
+          role: 'user',
+          text: 'hello',
+          createdAt: new Date().toISOString(),
+        },
+        {
+          id: randomUuid(),
+          role: 'bot',
+          text: 'hi there',
+          createdAt: new Date().toISOString(),
+        },
       ];
 
       botpressService.getConversationHistory.mockResolvedValue(history);

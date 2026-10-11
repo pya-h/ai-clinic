@@ -3,7 +3,11 @@ import { IsIn, IsNotEmpty, IsObject, IsString } from 'class-validator';
 export class CalendlyWebhookDto {
   @IsString()
   @IsNotEmpty()
-  @IsIn(['invitee.created', 'invitee.canceled', 'routing_form_submission.created'])
+  @IsIn([
+    'invitee.created',
+    'invitee.canceled',
+    'routing_form_submission.created',
+  ])
   event: string;
 
   @IsString()

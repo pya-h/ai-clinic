@@ -22,13 +22,19 @@ const STATUS_SELECT = {
  */
 export class UserStatusCache {
   private static readonly TTL = 60_000;
-  private static readonly entries = new Map<string, { status: UserStatus; checkedAt: number }>();
+  private static readonly entries = new Map<
+    string,
+    { status: UserStatus; checkedAt: number }
+  >();
   private static readonly listeners = new Set<(userId: string) => void>();
   private static invalidations = 0;
   private static readonly logger = new Logger(UserStatusCache.name);
 
   /** Resolves to null when the user does not exist; DB errors are left to the caller. */
-  static async get(prisma: PrismaService, userId: string): Promise<UserStatus | null> {
+  static async get(
+    prisma: PrismaService,
+    userId: string,
+  ): Promise<UserStatus | null> {
     const now = Date.now();
     const cached = UserStatusCache.entries.get(userId);
     if (cached && now - cached.checkedAt < UserStatusCache.TTL) {
@@ -73,10 +79,9 @@ export class UserStatusCache {
  * The session's login-time user with role and admin flags taken from the DB status,
  * or the same object when they already match.
  */
-export function withCurrentRole<T extends Pick<UserStatus, 'role' | 'isAdmin' | 'isSuperAdmin'>>(
-  user: T,
-  status: UserStatus,
-): T {
+export function withCurrentRole<
+  T extends Pick<UserStatus, 'role' | 'isAdmin' | 'isSuperAdmin'>,
+>(user: T, status: UserStatus): T {
   if (
     user.role === status.role &&
     user.isAdmin === status.isAdmin &&
@@ -84,7 +89,12 @@ export function withCurrentRole<T extends Pick<UserStatus, 'role' | 'isAdmin' | 
   ) {
     return user;
   }
-  return { ...user, role: status.role, isAdmin: status.isAdmin, isSuperAdmin: status.isSuperAdmin };
+  return {
+    ...user,
+    role: status.role,
+    isAdmin: status.isAdmin,
+    isSuperAdmin: status.isSuperAdmin,
+  };
 }
 
 /** Why the account may not be used, or null when it may. */

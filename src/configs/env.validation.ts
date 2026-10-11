@@ -73,14 +73,10 @@ export function validateEnv(
     warnings.push('BOTAGENT_KEY not set — Botpress chat will not work');
   }
   if (!config.SMTP_HOST) {
-    warnings.push(
-      'SMTP_HOST not set — email notifications will not work',
-    );
+    warnings.push('SMTP_HOST not set — email notifications will not work');
   }
   if (!config.VAPID_PUBLIC_KEY || !config.VAPID_PRIVATE_KEY) {
-    warnings.push(
-      'VAPID keys not set — web push notifications will not work',
-    );
+    warnings.push('VAPID keys not set — web push notifications will not work');
   }
 
   for (const w of warnings) {

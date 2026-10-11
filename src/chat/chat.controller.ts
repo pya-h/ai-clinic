@@ -29,10 +29,7 @@ export class ChatController {
 
   @Post()
   @ApiOperation({ summary: 'Create or reopen a chat with another user' })
-  async createChat(
-    @CurrentUser() user: User,
-    @Body() dto: CreateChatDto,
-  ) {
+  async createChat(@CurrentUser() user: User, @Body() dto: CreateChatDto) {
     const chat = await this.chatService.createChat(user.id, dto);
     // Sockets join their chats' rooms when they connect; without this, someone
     // already online would miss the first messages of a chat started with them.

@@ -68,7 +68,9 @@ export class ReviewController {
     return this.reviewService.listAll(pagination);
   }
 
-  @ApiOperation({ description: 'List reviews for a doctor (public, paginated).' })
+  @ApiOperation({
+    description: 'List reviews for a doctor (public, paginated).',
+  })
   @Get('doctor/:doctorId')
   async listByDoctor(
     @Param('doctorId', ParseIntPipe) doctorId: number,
@@ -79,9 +81,7 @@ export class ReviewController {
 
   @ApiOperation({ description: 'Get aggregate rating for a doctor (public).' })
   @Get('doctor/:doctorId/rating')
-  async getAggregateRating(
-    @Param('doctorId', ParseIntPipe) doctorId: number,
-  ) {
+  async getAggregateRating(@Param('doctorId', ParseIntPipe) doctorId: number) {
     return this.reviewService.getAggregateRating(doctorId);
   }
 }

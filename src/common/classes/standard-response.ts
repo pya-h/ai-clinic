@@ -28,12 +28,7 @@ export class StandardResponse<T> {
   })
   fields?: object;
 
-  constructor(
-    status: number,
-    data?: T,
-    message?: string,
-    fields?: object,
-  ) {
+  constructor(status: number, data?: T, message?: string, fields?: object) {
     this.status = status;
     this.contents = data ?? undefined;
     this.message = message ?? undefined;

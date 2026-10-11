@@ -268,7 +268,9 @@ describe('SOAP (e2e)', () => {
       sessionUser = nurse;
       const soap = buildSoap();
       prisma.patientSOAP.findUnique.mockResolvedValue(soap);
-      nurseService.getDoctorIdsForNurse.mockResolvedValueOnce([doctorProfileId]);
+      nurseService.getDoctorIdsForNurse.mockResolvedValueOnce([
+        doctorProfileId,
+      ]);
       prisma.consultation.findFirst.mockResolvedValue({ id: randomUuid() });
 
       const res = await app.inject({ method: 'GET', url: `/soap/${soap.id}` });

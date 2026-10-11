@@ -54,12 +54,18 @@ export class CalendlyController {
         ?.replace('t=', '') || '';
 
     if (
-      !this.calendlyService.verifyWebhookSignature(rawBody, signature || '', timestamp)
+      !this.calendlyService.verifyWebhookSignature(
+        rawBody,
+        signature || '',
+        timestamp,
+      )
     ) {
       throw new UnauthorizedException('Invalid webhook signature.');
     }
 
-    await this.calendlyService.handleWebhookEvent(body as unknown as CalendlyWebhookEvent);
+    await this.calendlyService.handleWebhookEvent(
+      body as unknown as CalendlyWebhookEvent,
+    );
 
     return { received: true };
   }

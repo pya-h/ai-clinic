@@ -177,7 +177,8 @@ describe('Matching (e2e)', () => {
     await app.init();
     await app.getHttpAdapter().getInstance().ready();
     gateway = app.get(MatchingGateway);
-    startupMatchRequestQueries = prisma.matchRequest.findMany.mock.calls.slice();
+    startupMatchRequestQueries =
+      prisma.matchRequest.findMany.mock.calls.slice();
   });
 
   afterAll(async () => {
@@ -195,7 +196,9 @@ describe('Matching (e2e)', () => {
       expect(startupMatchRequestQueries).toContainEqual([
         {
           where: {
-            status: { in: [MatchStatusEnum.SEARCHING, MatchStatusEnum.MATCHED] },
+            status: {
+              in: [MatchStatusEnum.SEARCHING, MatchStatusEnum.MATCHED],
+            },
             createdAt: { lt: expect.any(Date) },
           },
         },
@@ -235,7 +238,11 @@ describe('Matching (e2e)', () => {
       sessionUser = patientUser;
       const specialty = randomSpecialty();
       const doctorProfile = {
-        ...buildDoctorProfile({ userId: doctorUser.id, specialty, verified: true }),
+        ...buildDoctorProfile({
+          userId: doctorUser.id,
+          specialty,
+          verified: true,
+        }),
         user: {
           id: doctorUser.id,
           firstname: doctorUser.firstname,
@@ -270,7 +277,9 @@ describe('Matching (e2e)', () => {
         expect(res.statusCode).toBe(HttpStatus.CREATED);
         const body = JSON.parse(res.body);
         expect(body.contents.matchRequest.status).toBe(MatchStatusEnum.MATCHED);
-        expect(body.contents.matchRequest.matchedDoctorId).toBe(doctorProfile.id);
+        expect(body.contents.matchRequest.matchedDoctorId).toBe(
+          doctorProfile.id,
+        );
         expect(body.contents.doctors).toHaveLength(1);
         expect(body.contents.doctors[0].doctorId).toBe(doctorProfile.id);
 
@@ -296,7 +305,11 @@ describe('Matching (e2e)', () => {
       sessionUser = patientUser;
       const specialty = randomSpecialty();
       const doctorProfile = {
-        ...buildDoctorProfile({ userId: doctorUser.id, specialty, verified: true }),
+        ...buildDoctorProfile({
+          userId: doctorUser.id,
+          specialty,
+          verified: true,
+        }),
         user: {
           id: doctorUser.id,
           firstname: doctorUser.firstname,
@@ -307,7 +320,8 @@ describe('Matching (e2e)', () => {
       };
       const searching = { ...mockMatchRequest, specialty };
       const toSpy = jest.spyOn(gateway.server, 'to');
-      const timers: Map<string, NodeJS.Timeout> = (gateway as any).patientTimers;
+      const timers: Map<string, NodeJS.Timeout> = (gateway as any)
+        .patientTimers;
 
       prisma.matchRequest.findFirst.mockResolvedValue(null);
       prisma.matchRequest.create.mockResolvedValue({ ...searching });
@@ -324,12 +338,19 @@ describe('Matching (e2e)', () => {
         });
 
         expect(res.statusCode).toBe(HttpStatus.CONFLICT);
-        expect(JSON.parse(res.body).message).toBe('Match request status changed concurrently.');
+        expect(JSON.parse(res.body).message).toBe(
+          'Match request status changed concurrently.',
+        );
         expect(toSpy).not.toHaveBeenCalledWith(`user:${doctorUser.id}`);
-        expect(app.get(NotificationService).onMatchFound).not.toHaveBeenCalled();
+        expect(
+          app.get(NotificationService).onMatchFound,
+        ).not.toHaveBeenCalled();
         expect(timers.has(matchRequestId)).toBe(false);
         expect(prisma.matchRequest.updateMany).toHaveBeenLastCalledWith({
-          where: { id: matchRequestId, status: { in: ['SEARCHING', 'MATCHED'] } },
+          where: {
+            id: matchRequestId,
+            status: { in: ['SEARCHING', 'MATCHED'] },
+          },
           data: { status: 'TIMEOUT', resolvedAt: expect.any(Date) },
         });
       } finally {
@@ -639,7 +660,9 @@ describe('Matching (e2e)', () => {
         matchedDoctorId: doctorProfileId,
         resolvedAt: new Date(),
       });
-      prisma.doctorProfile.findUnique.mockResolvedValue({ userId: doctorUser.id });
+      prisma.doctorProfile.findUnique.mockResolvedValue({
+        userId: doctorUser.id,
+      });
 
       try {
         const res = await app.inject({
@@ -648,7 +671,9 @@ describe('Matching (e2e)', () => {
         });
 
         expect(res.statusCode).toBe(HttpStatus.OK);
-        expect(JSON.parse(res.body).contents.status).toBe(MatchStatusEnum.CANCELLED);
+        expect(JSON.parse(res.body).contents.status).toBe(
+          MatchStatusEnum.CANCELLED,
+        );
         expect(prisma.doctorProfile.findUnique).toHaveBeenCalledWith({
           where: { id: doctorProfileId },
           select: { userId: true },

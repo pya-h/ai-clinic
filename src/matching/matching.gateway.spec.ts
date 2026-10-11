@@ -8,8 +8,14 @@ import { DoctorSpecialtiesEnum, MatchStatusEnum } from '@prisma/client';
 import { randomInt, randomUUID } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { UserStatusCache } from '../auth/user-status';
-import { captureHandshake, flushPromises } from '../../test/helpers/ws-handshake.helper';
-import { createSessionApp, loginCookie } from '../../test/helpers/session-cookie.helper';
+import {
+  captureHandshake,
+  flushPromises,
+} from '../../test/helpers/ws-handshake.helper';
+import {
+  createSessionApp,
+  loginCookie,
+} from '../../test/helpers/session-cookie.helper';
 import type { FastifyInstance } from 'fastify';
 
 describe('MatchingGateway', () => {
@@ -18,7 +24,10 @@ describe('MatchingGateway', () => {
   let notificationService: Record<string, jest.Mock>;
   let prisma: { user: { findFirst: jest.Mock } };
 
-  const statusFor = (userId: string, overrides: Record<string, unknown> = {}) => ({
+  const statusFor = (
+    userId: string,
+    overrides: Record<string, unknown> = {},
+  ) => ({
     isActive: true,
     isBanned: false,
     banReason: null,
@@ -60,7 +69,9 @@ describe('MatchingGateway', () => {
     return {
       emit: jest.fn(),
       to: jest.fn().mockReturnValue({ emit: toEmit }),
-      in: jest.fn().mockReturnValue({ socketsJoin: jest.fn(), disconnectSockets }),
+      in: jest
+        .fn()
+        .mockReturnValue({ socketsJoin: jest.fn(), disconnectSockets }),
       _toEmit: toEmit,
       _disconnectSockets: disconnectSockets,
     };
@@ -84,7 +95,9 @@ describe('MatchingGateway', () => {
     };
 
     prisma = {
-      user: { findFirst: jest.fn(async ({ where }: any) => statusFor(where.id)) },
+      user: {
+        findFirst: jest.fn(async ({ where }: any) => statusFor(where.id)),
+      },
     };
     (UserStatusCache as any).entries.clear();
 
@@ -207,7 +220,9 @@ describe('MatchingGateway', () => {
 
       expect(client.emit).toHaveBeenCalledWith(
         'match:error',
-        expect.objectContaining({ message: expect.stringContaining('Invalid specialty') }),
+        expect.objectContaining({
+          message: expect.stringContaining('Invalid specialty'),
+        }),
       );
     });
 
@@ -378,9 +393,7 @@ describe('MatchingGateway', () => {
 
     it('should emit match:error on service failure', async () => {
       const client = createMockSocket();
-      matchingService.cancelRequest.mockRejectedValue(
-        new Error('not found'),
-      );
+      matchingService.cancelRequest.mockRejectedValue(new Error('not found'));
 
       await gateway.handleCancel(client as any, { matchRequestId: 'mr-1' });
 
@@ -420,20 +433,36 @@ describe('MatchingGateway', () => {
     it('should offer to the top doctor and return the MATCHED request', async () => {
       const request = buildRequest();
       const [top, next] = [buildCandidate(), buildCandidate()];
-      const matched = { ...request, status: MatchStatusEnum.MATCHED, matchedDoctorId: top.doctorId };
+      const matched = {
+        ...request,
+        status: MatchStatusEnum.MATCHED,
+        matchedDoctorId: top.doctorId,
+      };
       matchingService.matchDoctor.mockResolvedValue(matched);
 
-      const result = await gateway.dispatchMatchRequest(request as any, [top, next]);
+      const result = await gateway.dispatchMatchRequest(request as any, [
+        top,
+        next,
+      ]);
 
       expect(result).toBe(matched);
       expect(matchingService.matchDoctor).toHaveBeenCalledTimes(1);
-      expect(matchingService.matchDoctor).toHaveBeenCalledWith(request.id, top.doctorId);
+      expect(matchingService.matchDoctor).toHaveBeenCalledWith(
+        request.id,
+        top.doctorId,
+      );
       expect(gateway.server.to).toHaveBeenCalledWith(`user:${top.userId}`);
-      expect((gateway.server as any)._toEmit).toHaveBeenCalledWith('match:request', {
-        matchRequestId: request.id,
-        doctorId: top.doctorId,
-      });
-      expect(notificationService.onMatchFound).toHaveBeenCalledWith(top.userId, request.id);
+      expect((gateway.server as any)._toEmit).toHaveBeenCalledWith(
+        'match:request',
+        {
+          matchRequestId: request.id,
+          doctorId: top.doctorId,
+        },
+      );
+      expect(notificationService.onMatchFound).toHaveBeenCalledWith(
+        top.userId,
+        request.id,
+      );
     });
 
     it('should return the request unchanged when there are no candidates', async () => {
@@ -460,10 +489,15 @@ describe('MatchingGateway', () => {
 
       await jest.advanceTimersByTimeAsync(1);
       expect(matchingService.timeoutRequest).toHaveBeenCalledWith(request.id);
-      expect(gateway.server.to).toHaveBeenCalledWith(`user:${request.patientId}`);
-      expect((gateway.server as any)._toEmit).toHaveBeenCalledWith('match:timeout', {
-        matchRequestId: request.id,
-      });
+      expect(gateway.server.to).toHaveBeenCalledWith(
+        `user:${request.patientId}`,
+      );
+      expect((gateway.server as any)._toEmit).toHaveBeenCalledWith(
+        'match:timeout',
+        {
+          matchRequestId: request.id,
+        },
+      );
     });
 
     it('should not notify the patient when the request was already resolved at timeout', async () => {
@@ -483,29 +517,43 @@ describe('MatchingGateway', () => {
     it.each([
       ['a concurrent change', new Error('status changed concurrently')],
       ['a DB error', new Error('connection reset')],
-    ])('should retire the request and clear its timer when the offer fails with %s', async (_case, error) => {
-      const request = buildRequest();
-      matchingService.matchDoctor.mockRejectedValue(error);
-      matchingService.timeoutRequest.mockResolvedValue({ ...request, status: MatchStatusEnum.TIMEOUT });
+    ])(
+      'should retire the request and clear its timer when the offer fails with %s',
+      async (_case, error) => {
+        const request = buildRequest();
+        matchingService.matchDoctor.mockRejectedValue(error);
+        matchingService.timeoutRequest.mockResolvedValue({
+          ...request,
+          status: MatchStatusEnum.TIMEOUT,
+        });
 
-      await expect(gateway.dispatchMatchRequest(request as any, [buildCandidate()])).rejects.toThrow(error.message);
+        await expect(
+          gateway.dispatchMatchRequest(request as any, [buildCandidate()]),
+        ).rejects.toThrow(error.message);
 
-      expect(matchingService.timeoutRequest).toHaveBeenCalledTimes(1);
-      expect(matchingService.timeoutRequest).toHaveBeenCalledWith(request.id);
-      expect((gateway as any).patientTimers.has(request.id)).toBe(false);
-      expect(jest.getTimerCount()).toBe(0);
-      expect(gateway.server.to).not.toHaveBeenCalled();
-    });
+        expect(matchingService.timeoutRequest).toHaveBeenCalledTimes(1);
+        expect(matchingService.timeoutRequest).toHaveBeenCalledWith(request.id);
+        expect((gateway as any).patientTimers.has(request.id)).toBe(false);
+        expect(jest.getTimerCount()).toBe(0);
+        expect(gateway.server.to).not.toHaveBeenCalled();
+      },
+    );
 
     it('should still report the offer error, and log, when retiring the request fails too', async () => {
       const request = buildRequest();
       matchingService.matchDoctor.mockRejectedValue(new Error('offer failed'));
       matchingService.timeoutRequest.mockRejectedValue(new Error('db down'));
-      const logError = jest.spyOn((gateway as any).logger, 'error').mockImplementation(() => undefined);
+      const logError = jest
+        .spyOn((gateway as any).logger, 'error')
+        .mockImplementation(() => undefined);
 
-      await expect(gateway.dispatchMatchRequest(request as any, [buildCandidate()])).rejects.toThrow('offer failed');
+      await expect(
+        gateway.dispatchMatchRequest(request as any, [buildCandidate()]),
+      ).rejects.toThrow('offer failed');
 
-      expect(logError).toHaveBeenCalledWith(`Retiring match request ${request.id} failed: db down`);
+      expect(logError).toHaveBeenCalledWith(
+        `Retiring match request ${request.id} failed: db down`,
+      );
       expect(jest.getTimerCount()).toBe(0);
     });
 
@@ -523,15 +571,22 @@ describe('MatchingGateway', () => {
       await gateway.dispatchMatchRequest(request as any, []);
       await jest.advanceTimersByTimeAsync(MATCH_TIMEOUT_MS);
 
-      expect(matchingService.getDoctorUserId).toHaveBeenCalledWith(doctorProfileId);
-      expect(gateway.server.to).toHaveBeenCalledWith(`user:${request.patientId}`);
+      expect(matchingService.getDoctorUserId).toHaveBeenCalledWith(
+        doctorProfileId,
+      );
+      expect(gateway.server.to).toHaveBeenCalledWith(
+        `user:${request.patientId}`,
+      );
       expect(gateway.server.to).toHaveBeenCalledWith(`user:${doctorUserId}`);
       expect((gateway.server as any)._toEmit).toHaveBeenCalledTimes(2);
     });
 
     it('should tell only the patient when no doctor held the offer at timeout', async () => {
       const request = buildRequest();
-      matchingService.timeoutRequest.mockResolvedValue({ ...request, status: MatchStatusEnum.TIMEOUT });
+      matchingService.timeoutRequest.mockResolvedValue({
+        ...request,
+        status: MatchStatusEnum.TIMEOUT,
+      });
 
       await gateway.dispatchMatchRequest(request as any, []);
       await jest.advanceTimersByTimeAsync(MATCH_TIMEOUT_MS);
@@ -542,7 +597,10 @@ describe('MatchingGateway', () => {
 
     it('should replace (not orphan) a running timeout when dispatched again for the same request', async () => {
       const request = buildRequest();
-      matchingService.timeoutRequest.mockResolvedValue({ ...request, status: MatchStatusEnum.TIMEOUT });
+      matchingService.timeoutRequest.mockResolvedValue({
+        ...request,
+        status: MatchStatusEnum.TIMEOUT,
+      });
 
       await gateway.dispatchMatchRequest(request as any, []);
       await gateway.dispatchMatchRequest(request as any, []);
@@ -554,7 +612,10 @@ describe('MatchingGateway', () => {
 
     it('should forget the timer once it has fired', async () => {
       const request = buildRequest();
-      matchingService.timeoutRequest.mockResolvedValue({ ...request, status: MatchStatusEnum.TIMEOUT });
+      matchingService.timeoutRequest.mockResolvedValue({
+        ...request,
+        status: MatchStatusEnum.TIMEOUT,
+      });
 
       await gateway.dispatchMatchRequest(request as any, []);
       expect((gateway as any).patientTimers.size).toBe(1);
@@ -566,8 +627,14 @@ describe('MatchingGateway', () => {
     it('should be used by the match:request WS handler (timeout armed with no candidates)', async () => {
       const client = createMockSocket();
       const request = { ...buildRequest(), patientId: mockPatient.id };
-      matchingService.createMatchRequest.mockResolvedValue({ matchRequest: request, doctors: [] });
-      matchingService.timeoutRequest.mockResolvedValue({ ...request, status: MatchStatusEnum.TIMEOUT });
+      matchingService.createMatchRequest.mockResolvedValue({
+        matchRequest: request,
+        doctors: [],
+      });
+      matchingService.timeoutRequest.mockResolvedValue({
+        ...request,
+        status: MatchStatusEnum.TIMEOUT,
+      });
 
       await gateway.handleMatchRequest(client as any, {});
       await jest.advanceTimersByTimeAsync(MATCH_TIMEOUT_MS);
@@ -604,35 +671,53 @@ describe('MatchingGateway', () => {
 
       const minutes = randomInt(1, 6);
       await jest.advanceTimersByTimeAsync(minutes * SWEEP_INTERVAL_MS);
-      expect(matchingService.expireStaleRequests).toHaveBeenCalledTimes(1 + minutes);
+      expect(matchingService.expireStaleRequests).toHaveBeenCalledTimes(
+        1 + minutes,
+      );
 
       gateway.onModuleDestroy();
       await jest.advanceTimersByTimeAsync(5 * SWEEP_INTERVAL_MS);
-      expect(matchingService.expireStaleRequests).toHaveBeenCalledTimes(1 + minutes);
+      expect(matchingService.expireStaleRequests).toHaveBeenCalledTimes(
+        1 + minutes,
+      );
     });
 
     it('should tell each patient, and each doctor holding the offer, that the request timed out', async () => {
-      const expired = Array.from({ length: randomInt(2, 6) }, () => buildExpired());
-      const doctorUserIds = new Map(expired.map((r) => [r.matchedDoctorId, randomUUID()]));
+      const expired = Array.from({ length: randomInt(2, 6) }, () =>
+        buildExpired(),
+      );
+      const doctorUserIds = new Map(
+        expired.map((r) => [r.matchedDoctorId, randomUUID()]),
+      );
       matchingService.expireStaleRequests.mockResolvedValue(expired);
-      matchingService.getDoctorUserId.mockImplementation(async (id: number) => doctorUserIds.get(id));
+      matchingService.getDoctorUserId.mockImplementation(async (id: number) =>
+        doctorUserIds.get(id),
+      );
 
       await gateway.expireStaleRequests();
 
       const offered = expired.filter((r) => r.matchedDoctorId);
-      expect(matchingService.getDoctorUserId).toHaveBeenCalledTimes(offered.length);
+      expect(matchingService.getDoctorUserId).toHaveBeenCalledTimes(
+        offered.length,
+      );
       for (const request of expired) {
-        expect(gateway.server.to).toHaveBeenCalledWith(`user:${request.patientId}`);
+        expect(gateway.server.to).toHaveBeenCalledWith(
+          `user:${request.patientId}`,
+        );
       }
       for (const request of offered) {
-        expect(gateway.server.to).toHaveBeenCalledWith(`user:${doctorUserIds.get(request.matchedDoctorId)}`);
+        expect(gateway.server.to).toHaveBeenCalledWith(
+          `user:${doctorUserIds.get(request.matchedDoctorId)}`,
+        );
       }
       const emitted = (gateway.server as any)._toEmit.mock.calls;
       expect(emitted).toHaveLength(expired.length + offered.length);
-      expect(new Set(emitted.map(([event]: [string]) => event))).toEqual(new Set(['match:timeout']));
-      expect(new Set(emitted.map(([, body]: [string, any]) => body.matchRequestId))).toEqual(
-        new Set(expired.map((r) => r.id)),
+      expect(new Set(emitted.map(([event]: [string]) => event))).toEqual(
+        new Set(['match:timeout']),
       );
+      expect(
+        new Set(emitted.map(([, body]: [string, any]) => body.matchRequestId)),
+      ).toEqual(new Set(expired.map((r) => r.id)));
     });
 
     it('should drop the in-memory timer of a request it expired, so it is not announced twice', async () => {
@@ -656,21 +741,33 @@ describe('MatchingGateway', () => {
         if (id === failing.matchedDoctorId) throw new Error('db down');
         return otherDoctorUserId;
       });
-      const logError = jest.spyOn((gateway as any).logger, 'error').mockImplementation(() => undefined);
+      const logError = jest
+        .spyOn((gateway as any).logger, 'error')
+        .mockImplementation(() => undefined);
 
       await expect(gateway.expireStaleRequests()).resolves.toBeUndefined();
 
-      expect(logError).toHaveBeenCalledWith(`Timeout notice for ${failing.id} failed: db down`);
+      expect(logError).toHaveBeenCalledWith(
+        `Timeout notice for ${failing.id} failed: db down`,
+      );
       expect(gateway.server.to).toHaveBeenCalledWith(`user:${other.patientId}`);
-      expect(gateway.server.to).toHaveBeenCalledWith(`user:${otherDoctorUserId}`);
+      expect(gateway.server.to).toHaveBeenCalledWith(
+        `user:${otherDoctorUserId}`,
+      );
     });
 
     it('should log a failed sweep without throwing, and sweep again next time', async () => {
-      matchingService.expireStaleRequests.mockRejectedValueOnce(new Error('connection reset'));
-      const logError = jest.spyOn((gateway as any).logger, 'error').mockImplementation(() => undefined);
+      matchingService.expireStaleRequests.mockRejectedValueOnce(
+        new Error('connection reset'),
+      );
+      const logError = jest
+        .spyOn((gateway as any).logger, 'error')
+        .mockImplementation(() => undefined);
 
       await expect(gateway.expireStaleRequests()).resolves.toBeUndefined();
-      expect(logError).toHaveBeenCalledWith('Match request expiry sweep failed: connection reset');
+      expect(logError).toHaveBeenCalledWith(
+        'Match request expiry sweep failed: connection reset',
+      );
 
       await gateway.expireStaleRequests();
       expect(matchingService.expireStaleRequests).toHaveBeenCalledTimes(2);
@@ -678,7 +775,9 @@ describe('MatchingGateway', () => {
 
     it('should not start a sweep while one is still running', async () => {
       let finish!: (value: unknown[]) => void;
-      matchingService.expireStaleRequests.mockReturnValueOnce(new Promise((resolve) => (finish = resolve)));
+      matchingService.expireStaleRequests.mockReturnValueOnce(
+        new Promise((resolve) => (finish = resolve)),
+      );
 
       const first = gateway.expireStaleRequests();
       await gateway.expireStaleRequests();
@@ -711,7 +810,10 @@ describe('MatchingGateway', () => {
       };
       await gateway.dispatchMatchRequest(request as any, []);
 
-      await gateway.notifyMatchCancelled({ ...request, status: MatchStatusEnum.CANCELLED } as any);
+      await gateway.notifyMatchCancelled({
+        ...request,
+        status: MatchStatusEnum.CANCELLED,
+      } as any);
       await jest.advanceTimersByTimeAsync(5 * 60 * 1000);
 
       expect(matchingService.timeoutRequest).not.toHaveBeenCalled();
@@ -729,11 +831,16 @@ describe('MatchingGateway', () => {
         matchedDoctorId: doctorProfileId,
       } as any);
 
-      expect(matchingService.getDoctorUserId).toHaveBeenCalledWith(doctorProfileId);
+      expect(matchingService.getDoctorUserId).toHaveBeenCalledWith(
+        doctorProfileId,
+      );
       expect(gateway.server.to).toHaveBeenCalledWith(`user:${doctorUserId}`);
-      expect((gateway.server as any)._toEmit).toHaveBeenCalledWith('match:cancelled', {
-        matchRequestId,
-      });
+      expect((gateway.server as any)._toEmit).toHaveBeenCalledWith(
+        'match:cancelled',
+        {
+          matchRequestId,
+        },
+      );
     });
 
     it('should not emit when no doctor was offered', async () => {
@@ -786,7 +893,9 @@ describe('MatchingGateway', () => {
     });
 
     beforeEach(() => {
-      (gateway as any).adapterHost = { httpAdapter: { getInstance: () => sessionApp } };
+      (gateway as any).adapterHost = {
+        httpAdapter: { getInstance: () => sessionApp },
+      };
       connect = captureHandshake(gateway);
     });
 
@@ -795,7 +904,9 @@ describe('MatchingGateway', () => {
       prisma.user.findFirst.mockResolvedValue(statusFor(user.id));
       const cookie = await loginCookie(sessionApp, cookieName, user);
 
-      const { socket, next } = await connect({ cookie: `csrf-token=abc; ${cookie}` });
+      const { socket, next } = await connect({
+        cookie: `csrf-token=abc; ${cookie}`,
+      });
 
       expect(next).toHaveBeenCalledWith();
       expect(socket.data.user.id).toBe(user.id);
@@ -805,32 +916,51 @@ describe('MatchingGateway', () => {
     });
 
     it('should reject a tampered session cookie without querying the DB', async () => {
-      const cookie = await loginCookie(sessionApp, cookieName, { ...mockPatient, id: randomUUID() });
-      const tampered = cookie.slice(0, -4) + (cookie.endsWith('AAAA') ? 'BBBB' : 'AAAA');
+      const cookie = await loginCookie(sessionApp, cookieName, {
+        ...mockPatient,
+        id: randomUUID(),
+      });
+      const tampered =
+        cookie.slice(0, -4) + (cookie.endsWith('AAAA') ? 'BBBB' : 'AAAA');
 
       const { socket, next } = await connect({ cookie: tampered });
 
-      expect(next).toHaveBeenCalledWith(new Error('Unauthorized: No valid session'));
+      expect(next).toHaveBeenCalledWith(
+        new Error('Unauthorized: No valid session'),
+      );
       expect(socket.data.user).toBeUndefined();
       expect(prisma.user.findFirst).not.toHaveBeenCalled();
     });
 
     it('should reject a session cookie under another name', async () => {
-      const cookie = await loginCookie(sessionApp, cookieName, { ...mockPatient, id: randomUUID() });
+      const cookie = await loginCookie(sessionApp, cookieName, {
+        ...mockPatient,
+        id: randomUUID(),
+      });
 
-      const { next } = await connect({ cookie: cookie.replace(/^sid=/, 'other=') });
+      const { next } = await connect({
+        cookie: cookie.replace(/^sid=/, 'other='),
+      });
 
-      expect(next).toHaveBeenCalledWith(new Error('Unauthorized: No valid session'));
+      expect(next).toHaveBeenCalledWith(
+        new Error('Unauthorized: No valid session'),
+      );
     });
 
     it('should reject, and log, when the session cannot be decoded at all', async () => {
       (gateway as any).adapterHost = { httpAdapter: undefined };
-      const warn = jest.spyOn((gateway as any).logger, 'warn').mockImplementation(() => undefined);
+      const warn = jest
+        .spyOn((gateway as any).logger, 'warn')
+        .mockImplementation(() => undefined);
 
       const { next } = await connect({ cookie: 'sid=whatever' });
 
-      expect(next).toHaveBeenCalledWith(new Error('Unauthorized: No valid session'));
-      expect(warn).toHaveBeenCalledWith(expect.stringContaining('Session extraction failed'));
+      expect(next).toHaveBeenCalledWith(
+        new Error('Unauthorized: No valid session'),
+      );
+      expect(warn).toHaveBeenCalledWith(
+        expect.stringContaining('Session extraction failed'),
+      );
     });
   });
 
@@ -840,30 +970,47 @@ describe('MatchingGateway', () => {
 
     beforeEach(() => {
       sessionUser = { ...mockPatient, id: randomUUID(), isBanned: false };
-      jest.spyOn(gateway as any, 'extractUserFromSocket').mockImplementation(() => sessionUser);
+      jest
+        .spyOn(gateway as any, 'extractUserFromSocket')
+        .mockImplementation(() => sessionUser);
       connect = captureHandshake(gateway);
     });
 
     it('should admit an active user with role and admin flags from the DB', async () => {
-      prisma.user.findFirst.mockResolvedValue(statusFor(sessionUser.id, { role: 'DOCTOR' }));
+      prisma.user.findFirst.mockResolvedValue(
+        statusFor(sessionUser.id, { role: 'DOCTOR' }),
+      );
 
       const { socket, next } = await connect();
 
       expect(next).toHaveBeenCalledWith();
-      expect(socket.data.user).toMatchObject({ id: sessionUser.id, role: 'DOCTOR', isBanned: false });
+      expect(socket.data.user).toMatchObject({
+        id: sessionUser.id,
+        role: 'DOCTOR',
+        isBanned: false,
+      });
     });
 
     it.each([
-      ['banned', { isBanned: true, banReason: 'Spam' }, 'Unauthorized: Account banned'],
+      [
+        'banned',
+        { isBanned: true, banReason: 'Spam' },
+        'Unauthorized: Account banned',
+      ],
       ['deactivated', { isActive: false }, 'Unauthorized: Account deactivated'],
-    ])('should reject a %s user whose session predates it', async (_label, dbState, message) => {
-      prisma.user.findFirst.mockResolvedValue(statusFor(sessionUser.id, dbState));
+    ])(
+      'should reject a %s user whose session predates it',
+      async (_label, dbState, message) => {
+        prisma.user.findFirst.mockResolvedValue(
+          statusFor(sessionUser.id, dbState),
+        );
 
-      const { socket, next } = await connect();
+        const { socket, next } = await connect();
 
-      expect(next).toHaveBeenCalledWith(new Error(message));
-      expect(socket.data.user).toBeUndefined();
-    });
+        expect(next).toHaveBeenCalledWith(new Error(message));
+        expect(socket.data.user).toBeUndefined();
+      },
+    );
 
     it('should admit a user unbanned since the session was issued', async () => {
       sessionUser = { ...sessionUser, isBanned: true };
@@ -878,7 +1025,9 @@ describe('MatchingGateway', () => {
 
       const { next } = await connect();
 
-      expect(next).toHaveBeenCalledWith(new Error('Unauthorized: No valid session'));
+      expect(next).toHaveBeenCalledWith(
+        new Error('Unauthorized: No valid session'),
+      );
     });
 
     it('should reject a connection without a session without querying the DB', async () => {
@@ -886,7 +1035,9 @@ describe('MatchingGateway', () => {
 
       const { next } = await connect();
 
-      expect(next).toHaveBeenCalledWith(new Error('Unauthorized: No valid session'));
+      expect(next).toHaveBeenCalledWith(
+        new Error('Unauthorized: No valid session'),
+      );
       expect(prisma.user.findFirst).not.toHaveBeenCalled();
     });
 
@@ -906,18 +1057,24 @@ describe('MatchingGateway', () => {
 
     it("should disconnect a user's open sockets once they are banned", async () => {
       const userId = randomUUID();
-      prisma.user.findFirst.mockResolvedValue(statusFor(userId, { isBanned: true }));
+      prisma.user.findFirst.mockResolvedValue(
+        statusFor(userId, { isBanned: true }),
+      );
 
       UserStatusCache.invalidate(userId);
       await flushPromises();
 
       expect(gateway.server.in).toHaveBeenCalledWith(`user:${userId}`);
-      expect((gateway.server as any)._disconnectSockets).toHaveBeenCalledWith(true);
+      expect((gateway.server as any)._disconnectSockets).toHaveBeenCalledWith(
+        true,
+      );
     });
 
     it('should keep the sockets of a user whose change does not block them', async () => {
       const userId = randomUUID();
-      prisma.user.findFirst.mockResolvedValue(statusFor(userId, { isAdmin: true }));
+      prisma.user.findFirst.mockResolvedValue(
+        statusFor(userId, { isAdmin: true }),
+      );
 
       UserStatusCache.invalidate(userId);
       await flushPromises();
@@ -946,29 +1103,60 @@ describe('MatchingGateway', () => {
 
   describe('per-action account check', () => {
     it.each([
-      ['match:request', (g: MatchingGateway, c: any) => g.handleMatchRequest(c, {})],
-      ['match:accept', (g: MatchingGateway, c: any) => g.handleAccept(c, { matchRequestId: randomUUID() })],
-      ['match:reject', (g: MatchingGateway, c: any) => g.handleReject(c, { matchRequestId: randomUUID() })],
-      ['match:cancel', (g: MatchingGateway, c: any) => g.handleCancel(c, { matchRequestId: randomUUID() })],
-    ])('should refuse %s from a user banned while connected', async (_event, act) => {
-      const client = createMockSocket({ ...mockPatient, id: randomUUID() });
-      prisma.user.findFirst.mockResolvedValue(statusFor(client.data.user.id, { isBanned: true }));
+      [
+        'match:request',
+        (g: MatchingGateway, c: any) => g.handleMatchRequest(c, {}),
+      ],
+      [
+        'match:accept',
+        (g: MatchingGateway, c: any) =>
+          g.handleAccept(c, { matchRequestId: randomUUID() }),
+      ],
+      [
+        'match:reject',
+        (g: MatchingGateway, c: any) =>
+          g.handleReject(c, { matchRequestId: randomUUID() }),
+      ],
+      [
+        'match:cancel',
+        (g: MatchingGateway, c: any) =>
+          g.handleCancel(c, { matchRequestId: randomUUID() }),
+      ],
+    ])(
+      'should refuse %s from a user banned while connected',
+      async (_event, act) => {
+        const client = createMockSocket({ ...mockPatient, id: randomUUID() });
+        prisma.user.findFirst.mockResolvedValue(
+          statusFor(client.data.user.id, { isBanned: true }),
+        );
 
-      await expect(act(gateway, client)).rejects.toThrow(new WsException('Account suspended'));
-      for (const method of ['createMatchRequest', 'acceptMatch', 'rejectMatch', 'cancelRequest']) {
-        expect(matchingService[method]).not.toHaveBeenCalled();
-      }
-    });
+        await expect(act(gateway, client)).rejects.toThrow(
+          new WsException('Account suspended'),
+        );
+        for (const method of [
+          'createMatchRequest',
+          'acceptMatch',
+          'rejectMatch',
+          'cancelRequest',
+        ]) {
+          expect(matchingService[method]).not.toHaveBeenCalled();
+        }
+      },
+    );
 
     it('should act with the role from the DB, not the one in the session', async () => {
       const client = createMockSocket({ ...mockPatient, id: randomUUID() });
-      prisma.user.findFirst.mockResolvedValue(statusFor(client.data.user.id, { role: 'DOCTOR' }));
+      prisma.user.findFirst.mockResolvedValue(
+        statusFor(client.data.user.id, { role: 'DOCTOR' }),
+      );
       matchingService.acceptMatch.mockResolvedValue({
         matchRequest: { id: randomUUID(), patientId: randomUUID() },
         consultationId: randomUUID(),
       });
 
-      await gateway.handleAccept(client as any, { matchRequestId: randomUUID() });
+      await gateway.handleAccept(client as any, {
+        matchRequestId: randomUUID(),
+      });
 
       expect(matchingService.acceptMatch).toHaveBeenCalledWith(
         expect.any(String),

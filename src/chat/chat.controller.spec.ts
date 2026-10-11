@@ -88,7 +88,11 @@ describe('ChatController', () => {
 
       const result = await controller.sendMessage(user, chatId, dto);
 
-      expect(chatService.sendMessage).toHaveBeenCalledWith(chatId, user.id, dto);
+      expect(chatService.sendMessage).toHaveBeenCalledWith(
+        chatId,
+        user.id,
+        dto,
+      );
       expect(chatGateway.announceNewMessage).toHaveBeenCalledWith(
         message,
         `${user.firstname} ${user.lastname}`,

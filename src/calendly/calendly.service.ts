@@ -38,8 +38,10 @@ export class CalendlyService {
     private readonly cache: CacheService,
   ) {
     this.apiKey = this.config.get<string>('calendly.apiKey') || '';
-    this.organizationUri = this.config.get<string>('calendly.organizationUri') || '';
-    this.webhookSigningKey = this.config.get<string>('calendly.webhookSigningKey') || '';
+    this.organizationUri =
+      this.config.get<string>('calendly.organizationUri') || '';
+    this.webhookSigningKey =
+      this.config.get<string>('calendly.webhookSigningKey') || '';
   }
 
   isConfigured(): boolean {
@@ -49,14 +51,22 @@ export class CalendlyService {
   // ──────────────── Event Type Mapping (B-89) ────────────────
 
   async getEventTypes(): Promise<CalendlyEventType[]> {
-    const cached = await this.cache.get<CalendlyEventType[]>(CACHE_GROUP, EVENT_TYPES_KEY);
+    const cached = await this.cache.get<CalendlyEventType[]>(
+      CACHE_GROUP,
+      EVENT_TYPES_KEY,
+    );
     if (cached) return cached;
 
     const response = await this.apiRequest<CalendlyEventTypeListResponse>(
       `/event_types?organization=${encodeURIComponent(this.organizationUri)}&active=true`,
     );
 
-    await this.cache.set(CACHE_GROUP, EVENT_TYPES_KEY, response.collection, EVENT_TYPES_TTL);
+    await this.cache.set(
+      CACHE_GROUP,
+      EVENT_TYPES_KEY,
+      response.collection,
+      EVENT_TYPES_TTL,
+    );
     return response.collection;
   }
 
@@ -78,7 +88,8 @@ export class CalendlyService {
     if (match) return match;
 
     return (
-      eventTypes.find((et) => et.active && et.duration === durationMinutes) ?? null
+      eventTypes.find((et) => et.active && et.duration === durationMinutes) ??
+      null
     );
   }
 
@@ -108,8 +119,14 @@ export class CalendlyService {
     const appointment = await this.prisma.appointment.findUnique({
       where: { id: appointmentId },
       include: {
-        patient: { select: { id: true, email: true, firstname: true, lastname: true } },
-        doctor: { include: { user: { select: { email: true, firstname: true, lastname: true } } } },
+        patient: {
+          select: { id: true, email: true, firstname: true, lastname: true },
+        },
+        doctor: {
+          include: {
+            user: { select: { email: true, firstname: true, lastname: true } },
+          },
+        },
       },
     });
 
@@ -118,7 +135,9 @@ export class CalendlyService {
     }
 
     if (appointment.calendlyEventUri) {
-      this.logger.warn(`Appointment ${appointmentId} already has a Calendly event.`);
+      this.logger.warn(
+        `Appointment ${appointmentId} already has a Calendly event.`,
+      );
       return;
     }
 
@@ -151,18 +170,19 @@ export class CalendlyService {
     );
   }
 
-  private async createSchedulingLink(eventTypeUri: string): Promise<CalendlySchedulingLink> {
-    const response = await this.apiRequest<{ resource: CalendlySchedulingLink }>(
-      '/scheduling_links',
-      {
-        method: 'POST',
-        body: JSON.stringify({
-          max_event_count: 1,
-          owner: eventTypeUri,
-          owner_type: 'EventType',
-        }),
-      },
-    );
+  private async createSchedulingLink(
+    eventTypeUri: string,
+  ): Promise<CalendlySchedulingLink> {
+    const response = await this.apiRequest<{
+      resource: CalendlySchedulingLink;
+    }>('/scheduling_links', {
+      method: 'POST',
+      body: JSON.stringify({
+        max_event_count: 1,
+        owner: eventTypeUri,
+        owner_type: 'EventType',
+      }),
+    });
     return response.resource;
   }
 
@@ -177,7 +197,8 @@ export class CalendlyService {
 
     // `t` (Unix seconds) is signed with the body; an old one means a replayed request.
     const sentAt = /^\d+$/.test(timestamp) ? Number(timestamp) : NaN;
-    if (!(Math.abs(Date.now() / 1000 - sentAt) <= WEBHOOK_TOLERANCE_SECONDS)) return false;
+    if (!(Math.abs(Date.now() / 1000 - sentAt) <= WEBHOOK_TOLERANCE_SECONDS))
+      return false;
 
     const data = `${timestamp}.${rawBody}`;
     const expectedSignature = crypto
@@ -215,12 +236,16 @@ export class CalendlyService {
     }
   }
 
-  private async handleInviteeCreated(event: CalendlyWebhookEvent): Promise<void> {
+  private async handleInviteeCreated(
+    event: CalendlyWebhookEvent,
+  ): Promise<void> {
     const { payload } = event;
 
     const appointment = await this.findAppointmentFromWebhook(payload);
     if (!appointment) {
-      this.logger.warn(`No appointment found for Calendly invitee.created event`);
+      this.logger.warn(
+        `No appointment found for Calendly invitee.created event`,
+      );
       return;
     }
 
@@ -252,7 +277,9 @@ export class CalendlyService {
     );
   }
 
-  private async handleInviteeCanceled(event: CalendlyWebhookEvent): Promise<void> {
+  private async handleInviteeCanceled(
+    event: CalendlyWebhookEvent,
+  ): Promise<void> {
     const { payload } = event;
     const eventUri = payload.event;
 
@@ -286,7 +313,9 @@ export class CalendlyService {
     );
   }
 
-  private async findAppointmentFromWebhook(payload: CalendlyWebhookEvent['payload']) {
+  private async findAppointmentFromWebhook(
+    payload: CalendlyWebhookEvent['payload'],
+  ) {
     // Primary: match via UTM tracking param (set during scheduleForAppointment)
     const utmContent = payload.tracking?.utm_content;
     if (utmContent?.startsWith('apt_')) {
@@ -307,7 +336,10 @@ export class CalendlyService {
 
   // ──────────────── Two-Way Sync (B-92) ────────────────
 
-  async cancelCalendlyEvent(appointmentId: number, reason?: string): Promise<void> {
+  async cancelCalendlyEvent(
+    appointmentId: number,
+    reason?: string,
+  ): Promise<void> {
     if (!this.isConfigured()) return;
 
     const appointment = await this.prisma.appointment.findUnique({
@@ -317,7 +349,12 @@ export class CalendlyService {
     if (!appointment?.calendlyEventUri) return;
 
     // Only cancel if we have the actual Calendly API event URI (set by webhook)
-    if (!appointment.calendlyEventUri.includes('api.calendly.com/scheduled_events/')) return;
+    if (
+      !appointment.calendlyEventUri.includes(
+        'api.calendly.com/scheduled_events/',
+      )
+    )
+      return;
 
     const eventUuid = this.extractUuid(appointment.calendlyEventUri);
     if (!eventUuid) return;
@@ -329,15 +366,12 @@ export class CalendlyService {
 
       if (event.resource.status === 'canceled') return;
 
-      await this.apiRequest(
-        `/scheduled_events/${eventUuid}/cancellation`,
-        {
-          method: 'POST',
-          body: JSON.stringify({
-            reason: reason || 'Cancelled from AI-Clinic platform.',
-          }),
-        },
-      );
+      await this.apiRequest(`/scheduled_events/${eventUuid}/cancellation`, {
+        method: 'POST',
+        body: JSON.stringify({
+          reason: reason || 'Cancelled from AI-Clinic platform.',
+        }),
+      });
 
       this.logger.log(
         `Calendly event cancelled for appointment ${appointmentId}`,
@@ -376,15 +410,20 @@ export class CalendlyService {
 
     if (!appointment.calendlyEventUri) return null;
 
-    if (!appointment.calendlyEventUri.includes('api.calendly.com/scheduled_events/')) return null;
+    if (
+      !appointment.calendlyEventUri.includes(
+        'api.calendly.com/scheduled_events/',
+      )
+    )
+      return null;
 
     const eventUuid = this.extractUuid(appointment.calendlyEventUri);
     if (!eventUuid) return null;
 
     try {
-      const response = await this.apiRequest<{ resource: CalendlyScheduledEvent }>(
-        `/scheduled_events/${eventUuid}`,
-      );
+      const response = await this.apiRequest<{
+        resource: CalendlyScheduledEvent;
+      }>(`/scheduled_events/${eventUuid}`);
       return response.resource;
     } catch {
       return null;
@@ -417,7 +456,9 @@ export class CalendlyService {
 
       if (!response.ok) {
         const errorBody = await response.text();
-        this.logger.error(`Calendly API ${method} ${path} failed (${response.status}): ${errorBody}`);
+        this.logger.error(
+          `Calendly API ${method} ${path} failed (${response.status}): ${errorBody}`,
+        );
         throw new InternalServerErrorException(
           'An error occurred while communicating with the scheduling provider.',
         );

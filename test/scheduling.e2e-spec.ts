@@ -232,9 +232,16 @@ describe('Scheduling (e2e)', () => {
 
       prisma.doctorProfile.findUnique.mockResolvedValue(mockDoctorProfile);
       prisma.doctorAvailability.findMany.mockResolvedValue([
-        { dayOfWeek: day.getUTCDay(), startTime: '09:00', endTime: '16:00', isActive: true },
+        {
+          dayOfWeek: day.getUTCDay(),
+          startTime: '09:00',
+          endTime: '16:00',
+          isActive: true,
+        },
       ]);
-      prisma.slotDuration.findMany.mockResolvedValue([{ minutes: 60, isActive: true }]);
+      prisma.slotDuration.findMany.mockResolvedValue([
+        { minutes: 60, isActive: true },
+      ]);
       prisma.availabilityException.findMany.mockResolvedValue([]);
       prisma.appointment.findMany.mockResolvedValue([
         {
@@ -250,7 +257,9 @@ describe('Scheduling (e2e)', () => {
       });
 
       expect(res.statusCode).toBe(HttpStatus.OK);
-      const startTimes = res.json().contents.map((s: { startTime: string }) => s.startTime);
+      const startTimes = res
+        .json()
+        .contents.map((s: { startTime: string }) => s.startTime);
       expect(startTimes).toHaveLength(6);
       expect(startTimes).not.toContain(booked);
 
@@ -264,7 +273,10 @@ describe('Scheduling (e2e)', () => {
     });
 
     it('should return 404 for an unverified doctor', async () => {
-      prisma.doctorProfile.findUnique.mockResolvedValue({ ...mockDoctorProfile, verified: false });
+      prisma.doctorProfile.findUnique.mockResolvedValue({
+        ...mockDoctorProfile,
+        verified: false,
+      });
 
       const res = await app.inject({
         method: 'GET',
@@ -303,18 +315,30 @@ describe('Scheduling (e2e)', () => {
       ['start=2026-02-30&end=2026-03-05'],
       ['start=2026-04-01&end=2026-04-31'],
       ['start=2027-02-29&end=2027-03-01'],
-    ])('should return 400 for a date that does not exist (%s)', async (query) => {
-      const res = await app.inject({ method: 'GET', url: `/scheduling/doctor/1/slots?${query}` });
+    ])(
+      'should return 400 for a date that does not exist (%s)',
+      async (query) => {
+        const res = await app.inject({
+          method: 'GET',
+          url: `/scheduling/doctor/1/slots?${query}`,
+        });
 
-      expect(res.statusCode).toBe(HttpStatus.BAD_REQUEST);
-      expect(prisma.doctorProfile.findUnique).not.toHaveBeenCalled();
-    });
+        expect(res.statusCode).toBe(HttpStatus.BAD_REQUEST);
+        expect(prisma.doctorProfile.findUnique).not.toHaveBeenCalled();
+      },
+    );
 
     it('should accept a leap day that exists', async () => {
-      prisma.doctorProfile.findUnique.mockResolvedValue({ id: 1, verified: true });
+      prisma.doctorProfile.findUnique.mockResolvedValue({
+        id: 1,
+        verified: true,
+      });
       prisma.doctorAvailability.findMany.mockResolvedValue([]);
 
-      const res = await app.inject({ method: 'GET', url: '/scheduling/doctor/1/slots?start=2028-02-29&end=2028-03-01' });
+      const res = await app.inject({
+        method: 'GET',
+        url: '/scheduling/doctor/1/slots?start=2028-02-29&end=2028-03-01',
+      });
 
       expect(res.statusCode).toBe(HttpStatus.OK);
     });
@@ -387,7 +411,13 @@ describe('Scheduling (e2e)', () => {
         const res = await app.inject({
           method: 'POST',
           url: '/scheduling/book',
-          payload: { doctorId: 1, dateTime, durationMinutes: 30, price: 50, method: 'CHAT' },
+          payload: {
+            doctorId: 1,
+            dateTime,
+            durationMinutes: 30,
+            price: 50,
+            method: 'CHAT',
+          },
         });
 
         expect(res.statusCode).toBe(HttpStatus.BAD_REQUEST);
@@ -739,8 +769,22 @@ describe('Scheduling (e2e)', () => {
       sessionUser = doctorUser;
       prisma.doctorProfile.findUnique.mockResolvedValue(mockDoctorProfile);
       prisma.slotDuration.findMany.mockResolvedValue([
-        { id: 1, doctorId: 1, minutes: 30, price: 50, label: '30 min', isActive: true },
-        { id: 2, doctorId: 1, minutes: 60, price: 90, label: '60 min', isActive: true },
+        {
+          id: 1,
+          doctorId: 1,
+          minutes: 30,
+          price: 50,
+          label: '30 min',
+          isActive: true,
+        },
+        {
+          id: 2,
+          doctorId: 1,
+          minutes: 60,
+          price: 90,
+          label: '60 min',
+          isActive: true,
+        },
       ]);
 
       const res = await app.inject({

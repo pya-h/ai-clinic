@@ -11,6 +11,8 @@ export default () => ({
      *   poll           – client-driven polling via GET /ai-agents/messages/:id
      * Switch by setting BOTPRESS_DELIVERY_MODE=poll in your .env
      */
-    deliveryMode: (process.env.BOTPRESS_DELIVERY_MODE || 'sse') as 'sse' | 'poll',
+    deliveryMode: (process.env.BOTPRESS_DELIVERY_MODE || 'sse') as
+      | 'sse'
+      | 'poll',
   },
 });

@@ -84,7 +84,9 @@ describe('SoapService', () => {
     });
 
     it('should return false for regular messages without tags', () => {
-      expect(service.containsSoapTag('Hello, how are you feeling today?')).toBe(false);
+      expect(service.containsSoapTag('Hello, how are you feeling today?')).toBe(
+        false,
+      );
     });
 
     it('should return false for empty string', () => {
@@ -92,7 +94,9 @@ describe('SoapService', () => {
     });
 
     it('should return false for partial tag', () => {
-      expect(service.containsSoapTag('**SOAP** is not the right tag')).toBe(false);
+      expect(service.containsSoapTag('**SOAP** is not the right tag')).toBe(
+        false,
+      );
     });
 
     it('should be case-sensitive (***soap*** should not match)', () => {
@@ -201,7 +205,8 @@ Follow up in 2 weeks`;
     });
 
     it('should handle case-insensitive section headers', () => {
-      const raw = 'subjective: pain\nOBJECTIVE: temp\nassessment: flu\nPlan: rest';
+      const raw =
+        'subjective: pain\nOBJECTIVE: temp\nassessment: flu\nPlan: rest';
       const result = service.parseSoapSections(raw);
       expect(result.subjective).toBe('pain');
       expect(result.objective).toBe('temp');
@@ -277,8 +282,7 @@ Follow up in 2 weeks`;
     });
 
     it('should set empty sections to null in create', async () => {
-      const messageText =
-        '***SOAP***\nSubjective: headache only\n***SOAP***';
+      const messageText = '***SOAP***\nSubjective: headache only\n***SOAP***';
       prisma.patientSOAP.upsert.mockResolvedValue(mockSoap);
       prisma.aiConversation.findUnique.mockResolvedValue({ topic: null });
 
@@ -302,7 +306,11 @@ Follow up in 2 weeks`;
       prisma.aiConversation.findUnique.mockResolvedValue({ topic: null });
       prisma.aiConversation.update.mockResolvedValue({});
 
-      await service.detectAndUpsert(mockUserId, mockConversationId, messageText);
+      await service.detectAndUpsert(
+        mockUserId,
+        mockConversationId,
+        messageText,
+      );
 
       expect(prisma.aiConversation.findUnique).toHaveBeenCalledWith({
         where: { id: mockConversationId },
@@ -318,9 +326,15 @@ Follow up in 2 weeks`;
       const messageText =
         '***SOAP***\nSubjective: headache\nAssessment: Migraine\nPlan: rest\n***SOAP***';
       prisma.patientSOAP.upsert.mockResolvedValue(mockSoap);
-      prisma.aiConversation.findUnique.mockResolvedValue({ topic: 'My existing title' });
+      prisma.aiConversation.findUnique.mockResolvedValue({
+        topic: 'My existing title',
+      });
 
-      await service.detectAndUpsert(mockUserId, mockConversationId, messageText);
+      await service.detectAndUpsert(
+        mockUserId,
+        mockConversationId,
+        messageText,
+      );
 
       expect(prisma.aiConversation.update).not.toHaveBeenCalled();
     });
@@ -332,11 +346,17 @@ Follow up in 2 weeks`;
       prisma.aiConversation.findUnique.mockResolvedValue({ topic: null });
       prisma.aiConversation.update.mockResolvedValue({});
 
-      await service.detectAndUpsert(mockUserId, mockConversationId, messageText);
+      await service.detectAndUpsert(
+        mockUserId,
+        mockConversationId,
+        messageText,
+      );
 
       expect(prisma.aiConversation.update).toHaveBeenCalledWith({
         where: { id: mockConversationId },
-        data: { topic: 'Patient reports persistent lower back pain for two weeks.' },
+        data: {
+          topic: 'Patient reports persistent lower back pain for two weeks.',
+        },
       });
     });
 
@@ -348,7 +368,11 @@ Follow up in 2 weeks`;
       prisma.aiConversation.findUnique.mockResolvedValue({ topic: null });
       prisma.aiConversation.update.mockResolvedValue({});
 
-      await service.detectAndUpsert(mockUserId, mockConversationId, messageText);
+      await service.detectAndUpsert(
+        mockUserId,
+        mockConversationId,
+        messageText,
+      );
 
       const updateCall = prisma.aiConversation.update.mock.calls[0][0];
       expect(updateCall.data.topic.length).toBeLessThanOrEqual(80);
@@ -362,12 +386,18 @@ Follow up in 2 weeks`;
       prisma.aiConversation.findUnique.mockResolvedValue({ topic: null });
       prisma.aiConversation.update.mockResolvedValue({});
 
-      await service.detectAndUpsert(mockUserId, mockConversationId, messageText);
+      await service.detectAndUpsert(
+        mockUserId,
+        mockConversationId,
+        messageText,
+      );
 
       const updateCall = prisma.aiConversation.update.mock.calls[0][0];
       expect(updateCall.data.topic).not.toContain('**');
       expect(updateCall.data.topic).not.toContain('*');
-      expect(updateCall.data.topic).toBe('Likely viral infection with moderate symptoms.');
+      expect(updateCall.data.topic).toBe(
+        'Likely viral infection with moderate symptoms.',
+      );
     });
 
     it('should not set title when both assessment and subjective are empty', async () => {
@@ -376,7 +406,11 @@ Follow up in 2 weeks`;
       prisma.patientSOAP.upsert.mockResolvedValue(mockSoap);
       prisma.aiConversation.findUnique.mockResolvedValue({ topic: null });
 
-      await service.detectAndUpsert(mockUserId, mockConversationId, messageText);
+      await service.detectAndUpsert(
+        mockUserId,
+        mockConversationId,
+        messageText,
+      );
 
       expect(prisma.aiConversation.update).not.toHaveBeenCalled();
     });
@@ -448,19 +482,15 @@ Follow up in 2 weeks`;
 
     it('should allow admin to access any SOAP', async () => {
       prisma.patientSOAP.findUnique.mockResolvedValue(mockSoap);
-      const result = await service.getById(
-        mockSoapId,
-        randomUuid(),
-        true,
-      );
+      const result = await service.getById(mockSoapId, randomUuid(), true);
       expect(result).toEqual(mockSoap);
     });
 
     it('should throw NotFoundException if SOAP not found', async () => {
       prisma.patientSOAP.findUnique.mockResolvedValue(null);
-      await expect(
-        service.getById(randomUuid(), mockUserId),
-      ).rejects.toThrow(NotFoundException);
+      await expect(service.getById(randomUuid(), mockUserId)).rejects.toThrow(
+        NotFoundException,
+      );
     });
 
     it('should throw ForbiddenException if non-owner non-admin requests', async () => {
@@ -472,19 +502,28 @@ Follow up in 2 weeks`;
 
     describe('doctor and nurse access', () => {
       const doctorA = { profileId: randomInt(1, 50_000), userId: randomUuid() };
-      const doctorB = { profileId: randomInt(50_000, 100_000), userId: randomUuid() };
+      const doctorB = {
+        profileId: randomInt(50_000, 100_000),
+        userId: randomUuid(),
+      };
 
       // In-memory stand-in for consultations linked to mockSoap, filtered like the real query.
       const linkSoapTo = (...doctors: (typeof doctorA)[]) =>
-        prisma.consultation.findFirst.mockImplementation(async ({ where }: any) => {
-          const match = doctors.find(
-            (d) =>
-              where.soapId === mockSoapId &&
-              (where.doctor === undefined || where.doctor.userId === d.userId) &&
-              (where.doctorId === undefined || where.doctorId.in.includes(d.profileId)),
-          );
-          return match ? { id: randomUuid(), doctorId: match.profileId } : null;
-        });
+        prisma.consultation.findFirst.mockImplementation(
+          async ({ where }: any) => {
+            const match = doctors.find(
+              (d) =>
+                where.soapId === mockSoapId &&
+                (where.doctor === undefined ||
+                  where.doctor.userId === d.userId) &&
+                (where.doctorId === undefined ||
+                  where.doctorId.in.includes(d.profileId)),
+            );
+            return match
+              ? { id: randomUuid(), doctorId: match.profileId }
+              : null;
+          },
+        );
 
       beforeEach(() => {
         prisma.patientSOAP.findUnique.mockResolvedValue(mockSoap);
@@ -493,7 +532,12 @@ Follow up in 2 weeks`;
       it('should allow a doctor with a consultation linked to the SOAP', async () => {
         linkSoapTo(doctorA);
 
-        const result = await service.getById(mockSoapId, doctorA.userId, false, UserRolesEnum.DOCTOR);
+        const result = await service.getById(
+          mockSoapId,
+          doctorA.userId,
+          false,
+          UserRolesEnum.DOCTOR,
+        );
 
         expect(result).toEqual(mockSoap);
         expect(prisma.consultation.findFirst).toHaveBeenCalledWith({
@@ -506,7 +550,12 @@ Follow up in 2 weeks`;
         linkSoapTo(doctorA, doctorB);
 
         await expect(
-          service.getById(mockSoapId, doctorB.userId, false, UserRolesEnum.DOCTOR),
+          service.getById(
+            mockSoapId,
+            doctorB.userId,
+            false,
+            UserRolesEnum.DOCTOR,
+          ),
         ).resolves.toEqual(mockSoap);
       });
 
@@ -514,13 +563,23 @@ Follow up in 2 weeks`;
         linkSoapTo(doctorA);
 
         await expect(
-          service.getById(mockSoapId, doctorB.userId, false, UserRolesEnum.DOCTOR),
+          service.getById(
+            mockSoapId,
+            doctorB.userId,
+            false,
+            UserRolesEnum.DOCTOR,
+          ),
         ).rejects.toThrow(ForbiddenException);
       });
 
       it('should forbid a doctor when the SOAP is not linked to any consultation', async () => {
         await expect(
-          service.getById(mockSoapId, doctorA.userId, false, UserRolesEnum.DOCTOR),
+          service.getById(
+            mockSoapId,
+            doctorA.userId,
+            false,
+            UserRolesEnum.DOCTOR,
+          ),
         ).rejects.toThrow(ForbiddenException);
       });
 
@@ -528,7 +587,12 @@ Follow up in 2 weeks`;
         linkSoapTo(doctorA);
 
         await expect(
-          service.getById(mockSoapId, doctorA.userId, false, UserRolesEnum.PATIENT),
+          service.getById(
+            mockSoapId,
+            doctorA.userId,
+            false,
+            UserRolesEnum.PATIENT,
+          ),
         ).rejects.toThrow(ForbiddenException);
         expect(prisma.consultation.findFirst).not.toHaveBeenCalled();
       });
@@ -536,7 +600,9 @@ Follow up in 2 weeks`;
       it('should allow a nurse with VIEW_SOAPS for a linked doctor', async () => {
         const nurseId = randomUuid();
         linkSoapTo(doctorA);
-        nurseService.getDoctorIdsForNurse.mockResolvedValue([doctorA.profileId]);
+        nurseService.getDoctorIdsForNurse.mockResolvedValue([
+          doctorA.profileId,
+        ]);
 
         await expect(
           service.getById(mockSoapId, nurseId, false, UserRolesEnum.NURSE),
@@ -549,7 +615,9 @@ Follow up in 2 weeks`;
 
       it('should allow a nurse of the second linked doctor, not only the first', async () => {
         linkSoapTo(doctorA, doctorB);
-        nurseService.getDoctorIdsForNurse.mockResolvedValue([doctorB.profileId]);
+        nurseService.getDoctorIdsForNurse.mockResolvedValue([
+          doctorB.profileId,
+        ]);
 
         await expect(
           service.getById(mockSoapId, randomUuid(), false, UserRolesEnum.NURSE),
@@ -558,7 +626,9 @@ Follow up in 2 weeks`;
 
       it('should forbid a nurse whose VIEW_SOAPS doctors are not linked to the SOAP', async () => {
         linkSoapTo(doctorA);
-        nurseService.getDoctorIdsForNurse.mockResolvedValue([doctorB.profileId]);
+        nurseService.getDoctorIdsForNurse.mockResolvedValue([
+          doctorB.profileId,
+        ]);
 
         await expect(
           service.getById(mockSoapId, randomUuid(), false, UserRolesEnum.NURSE),

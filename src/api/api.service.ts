@@ -23,16 +23,15 @@ export class ApiService {
 
   updateInstance() {
     this.api = axios.create({
-      ...(this.baseURL?.length ? {baseURL: this.baseURL} : {}),
-      ...(this.timeout ? {timeout: this.timeout} : {})
-    })
+      ...(this.baseURL?.length ? { baseURL: this.baseURL } : {}),
+      ...(this.timeout ? { timeout: this.timeout } : {}),
+    });
   }
 
   set BaseURL(value: string) {
     this.baseURL = value;
     this.updateInstance();
   }
-
 
   set Timeout(value: number) {
     this.timeout = value;
@@ -162,6 +161,14 @@ export class ApiService {
     if (!params.length) {
       return '';
     }
-    return '?' + params.map(([field, value]) => `${encodeURIComponent(String(field))}=${encodeURIComponent(String(value ?? ''))}`).join('&');
+    return (
+      '?' +
+      params
+        .map(
+          ([field, value]) =>
+            `${encodeURIComponent(String(field))}=${encodeURIComponent(String(value ?? ''))}`,
+        )
+        .join('&')
+    );
   }
 }

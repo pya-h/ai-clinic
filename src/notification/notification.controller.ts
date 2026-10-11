@@ -34,11 +34,7 @@ export class NotificationController {
     @Query('skip', new DefaultValuePipe(0), ParseIntPipe) skip: number,
     @Query('take', new DefaultValuePipe(20), ParseIntPipe) take: number,
   ) {
-    return this.notificationService.getUserNotifications(
-      user.id,
-      skip,
-      take,
-    );
+    return this.notificationService.getUserNotifications(user.id, skip, take);
   }
 
   @ApiOperation({ description: 'Get unread notification count.' })
@@ -65,10 +61,7 @@ export class NotificationController {
   @ApiOperation({ description: 'Subscribe to push notifications.' })
   @HttpCode(HttpStatus.CREATED)
   @Post('subscribe')
-  async subscribe(
-    @CurrentUser() user: User,
-    @Body() dto: SubscribePushDto,
-  ) {
+  async subscribe(@CurrentUser() user: User, @Body() dto: SubscribePushDto) {
     return this.notificationService.subscribe(user.id, dto.endpoint, dto.keys);
   }
 

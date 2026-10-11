@@ -56,7 +56,10 @@ describe('ExceptionTemplateFilter', () => {
   it('should extract string message from HttpException with string response', () => {
     const randomPath = `/api/${randomUUID().slice(0, 8)}`;
     const { host, sendFn, statusFn } = createMockHost(randomPath);
-    const exception = new HttpException('Something went wrong', HttpStatus.BAD_REQUEST);
+    const exception = new HttpException(
+      'Something went wrong',
+      HttpStatus.BAD_REQUEST,
+    );
 
     filter.catch(exception, host);
 
@@ -109,7 +112,10 @@ describe('ExceptionTemplateFilter', () => {
     const { host, sendFn, statusFn } = createMockHost('/api/users');
     const randomField = `field_${Math.random().toString(36).slice(2, 6)}`;
     const exception = new HttpException(
-      { statusCode: 400, message: [`${randomField} must be valid`, 'name is required'] },
+      {
+        statusCode: 400,
+        message: [`${randomField} must be valid`, 'name is required'],
+      },
       HttpStatus.BAD_REQUEST,
     );
 

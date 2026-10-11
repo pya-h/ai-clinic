@@ -61,10 +61,7 @@ export class AiAgentsController {
   @Throttle({ default: { limit: 20, ttl: 60000 } })
   @Post('message')
   @HttpCode(204)
-  async send(
-    @CurrentUser() user: User | null,
-    @Body() body: SendAiMessageDto,
-  ) {
+  async send(@CurrentUser() user: User | null, @Body() body: SendAiMessageDto) {
     if (!user) {
       if (!body.conversationId) {
         throw new BadRequestException(
@@ -109,9 +106,17 @@ export class AiAgentsController {
 
     for (const msg of messages) {
       const messageText = BotpressService.extractPayloadText(msg?.payload);
-      if (messageText && user?.id && this.soapService.containsSoapTag(messageText)) {
+      if (
+        messageText &&
+        user?.id &&
+        this.soapService.containsSoapTag(messageText)
+      ) {
         try {
-          await this.soapService.detectAndUpsert(user.id, conversationId, messageText);
+          await this.soapService.detectAndUpsert(
+            user.id,
+            conversationId,
+            messageText,
+          );
         } catch (err) {
           this.logger.error('Failed to save SOAP note during poll:', err);
         }
@@ -133,7 +138,10 @@ export class AiAgentsController {
     );
   }
 
-  @ApiOperation({ description: 'Full conversation history — all messages (user + bot) in chronological order.' })
+  @ApiOperation({
+    description:
+      'Full conversation history — all messages (user + bot) in chronological order.',
+  })
   @UseGuards(CookieAuthGuard)
   @Get('history/:conversationId')
   async getConversationHistory(
@@ -143,7 +151,9 @@ export class AiAgentsController {
     return this.aiService.getConversationHistory(user, conversationId);
   }
 
-  @ApiOperation({ description: 'List all AI conversations for the current user.' })
+  @ApiOperation({
+    description: 'List all AI conversations for the current user.',
+  })
   @UseGuards(CookieAuthGuard)
   @Get('conversations')
   async listConversations(
@@ -162,10 +172,16 @@ export class AiAgentsController {
     @Param('conversationId') conversationId: string,
     @Body() body: RenameConversationDto,
   ) {
-    return this.aiService.renameConversation(user.id, conversationId, body.topic);
+    return this.aiService.renameConversation(
+      user.id,
+      conversationId,
+      body.topic,
+    );
   }
 
-  @ApiOperation({ description: 'Start a brand-new AI conversation (ignores existing).' })
+  @ApiOperation({
+    description: 'Start a brand-new AI conversation (ignores existing).',
+  })
   @UseGuards(CookieAuthGuard)
   @HttpCode(HttpStatus.OK)
   @Post('start/new')
@@ -202,10 +218,13 @@ export class AiAgentsController {
     reply.hijack();
 
     try {
-
       // hijack() bypasses Fastify CORS — emit headers manually
       const requestOrigin = (req.headers['origin'] as string | undefined) ?? '';
-      const allowedOrigins = (process.env.CORS_ORIGIN || 'http://localhost:5173').split(',').map(o => o.trim());
+      const allowedOrigins = (
+        process.env.CORS_ORIGIN || 'http://localhost:5173'
+      )
+        .split(',')
+        .map((o) => o.trim());
       const corsHeaders: Record<string, string> = {
         'Content-Type': 'text/event-stream',
         'Cache-Control': 'no-cache, no-transform',
@@ -253,7 +272,10 @@ export class AiAgentsController {
       // Debounce: buffer bot messages; merge consecutive ones within 500ms.
       // Botpress splits text + quick-reply options into separate events.
       // Merging keeps them as one message for the client and for SOAP detection.
-      let pendingBotMsg: { data: Record<string, unknown>; timer: ReturnType<typeof setTimeout> } | null = null;
+      let pendingBotMsg: {
+        data: Record<string, unknown>;
+        timer: ReturnType<typeof setTimeout>;
+      } | null = null;
 
       const mergePayloads = (
         a: Record<string, unknown> | undefined,
@@ -265,8 +287,14 @@ export class AiAgentsController {
         if (typeof pa.text === 'string' && typeof pb.text === 'string') {
           result.text = pa.text.length >= pb.text.length ? pa.text : pb.text;
         }
-        if (typeof pa.markdown === 'string' && typeof pb.markdown === 'string') {
-          result.markdown = pa.markdown.length >= pb.markdown.length ? pa.markdown : pb.markdown;
+        if (
+          typeof pa.markdown === 'string' &&
+          typeof pb.markdown === 'string'
+        ) {
+          result.markdown =
+            pa.markdown.length >= pb.markdown.length
+              ? pa.markdown
+              : pb.markdown;
         }
         return result;
       };
@@ -280,12 +308,19 @@ export class AiAgentsController {
         const messageText =
           BotpressService.extractPayloadText(data.payload) ??
           BotpressService.extractPayloadText(data as unknown);
-        if (messageText && user?.id && this.soapService.containsSoapTag(messageText)) {
+        if (
+          messageText &&
+          user?.id &&
+          this.soapService.containsSoapTag(messageText)
+        ) {
           this.soapService
             .detectAndUpsert(user.id, actualConversationId, messageText)
             .then((soap) => {
               if (soap) {
-                sendEvent('soap_ready', { soapId: soap.id, conversationId: actualConversationId });
+                sendEvent('soap_ready', {
+                  soapId: soap.id,
+                  conversationId: actualConversationId,
+                });
               }
             })
             .catch((err) => {

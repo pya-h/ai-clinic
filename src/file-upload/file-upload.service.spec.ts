@@ -46,20 +46,40 @@ describe('FileUploadService', () => {
     'image/jpeg': Buffer.from([0xff, 0xd8, 0xff, 0xe0, ...Array(20).fill(0)]),
     'image/png': Buffer.from([0x89, 0x50, 0x4e, 0x47, ...Array(20).fill(0)]),
     'image/webp': Buffer.from([
-      0x52, 0x49, 0x46, 0x46, 0x00, 0x00, 0x00, 0x00,
-      0x57, 0x45, 0x42, 0x50, ...Array(12).fill(0),
+      0x52,
+      0x49,
+      0x46,
+      0x46,
+      0x00,
+      0x00,
+      0x00,
+      0x00,
+      0x57,
+      0x45,
+      0x42,
+      0x50,
+      ...Array(12).fill(0),
     ]),
-    'application/pdf': Buffer.from([0x25, 0x50, 0x44, 0x46, ...Array(20).fill(0)]),
+    'application/pdf': Buffer.from([
+      0x25,
+      0x50,
+      0x44,
+      0x46,
+      ...Array(20).fill(0),
+    ]),
   };
 
   /* ── helper to create a mock MultipartFile ── */
-  function createMockFile(overrides: Partial<{
-    filename: string;
-    mimetype: string;
-    buffer: Buffer;
-  }> = {}) {
+  function createMockFile(
+    overrides: Partial<{
+      filename: string;
+      mimetype: string;
+      buffer: Buffer;
+    }> = {},
+  ) {
     const mime = overrides.mimetype ?? 'image/jpeg';
-    const buf = overrides.buffer ?? VALID_MAGIC[mime] ?? Buffer.from('fake-data');
+    const buf =
+      overrides.buffer ?? VALID_MAGIC[mime] ?? Buffer.from('fake-data');
     return {
       filename: overrides.filename ?? 'test-image.jpg',
       mimetype: mime,
@@ -77,7 +97,10 @@ describe('FileUploadService', () => {
       // Mock the internal provider's upload
       const providerSpy = jest
         .spyOn((service as any).provider, 'upload')
-        .mockResolvedValue({ url: '/uploads/avatars/123-test.jpg', key: 'avatars/123-test.jpg' });
+        .mockResolvedValue({
+          url: '/uploads/avatars/123-test.jpg',
+          key: 'avatars/123-test.jpg',
+        });
 
       const file = createMockFile();
       const result = await service.uploadFile(file, 'avatars');
@@ -89,40 +112,54 @@ describe('FileUploadService', () => {
       expect(file.toBuffer).toHaveBeenCalled();
       expect(providerSpy).toHaveBeenCalledWith(
         expect.any(Buffer),
-        expect.stringMatching(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.jpg$/),
+        expect.stringMatching(
+          /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.jpg$/,
+        ),
         'image/jpeg',
         'avatars',
       );
     });
 
     it('should upload a valid PNG file', async () => {
-      jest
-        .spyOn((service as any).provider, 'upload')
-        .mockResolvedValue({ url: '/uploads/doctor-documents/123-doc.png', key: 'doctor-documents/123-doc.png' });
+      jest.spyOn((service as any).provider, 'upload').mockResolvedValue({
+        url: '/uploads/doctor-documents/123-doc.png',
+        key: 'doctor-documents/123-doc.png',
+      });
 
-      const file = createMockFile({ filename: 'doc.png', mimetype: 'image/png' });
+      const file = createMockFile({
+        filename: 'doc.png',
+        mimetype: 'image/png',
+      });
       const result = await service.uploadFile(file, 'doctor-documents');
 
       expect(result.mimeType).toBe('image/png');
     });
 
     it('should upload a valid PDF file', async () => {
-      jest
-        .spyOn((service as any).provider, 'upload')
-        .mockResolvedValue({ url: '/uploads/doctor-documents/123-file.pdf', key: 'doctor-documents/123-file.pdf' });
+      jest.spyOn((service as any).provider, 'upload').mockResolvedValue({
+        url: '/uploads/doctor-documents/123-file.pdf',
+        key: 'doctor-documents/123-file.pdf',
+      });
 
-      const file = createMockFile({ filename: 'file.pdf', mimetype: 'application/pdf' });
+      const file = createMockFile({
+        filename: 'file.pdf',
+        mimetype: 'application/pdf',
+      });
       const result = await service.uploadFile(file, 'doctor-documents');
 
       expect(result.mimeType).toBe('application/pdf');
     });
 
     it('should upload a valid WebP file', async () => {
-      jest
-        .spyOn((service as any).provider, 'upload')
-        .mockResolvedValue({ url: '/uploads/avatars/123-img.webp', key: 'avatars/123-img.webp' });
+      jest.spyOn((service as any).provider, 'upload').mockResolvedValue({
+        url: '/uploads/avatars/123-img.webp',
+        key: 'avatars/123-img.webp',
+      });
 
-      const file = createMockFile({ filename: 'img.webp', mimetype: 'image/webp' });
+      const file = createMockFile({
+        filename: 'img.webp',
+        mimetype: 'image/webp',
+      });
       const result = await service.uploadFile(file, 'avatars');
 
       expect(result.mimeType).toBe('image/webp');
@@ -154,7 +191,9 @@ describe('FileUploadService', () => {
 
     it('should reject a file that exceeds 10MB', async () => {
       const bigBuffer = Buffer.alloc(11 * 1024 * 1024); // 11MB
-      bigBuffer[0] = 0xff; bigBuffer[1] = 0xd8; bigBuffer[2] = 0xff;
+      bigBuffer[0] = 0xff;
+      bigBuffer[1] = 0xd8;
+      bigBuffer[2] = 0xff;
       const file = createMockFile({ buffer: bigBuffer });
 
       await expect(service.uploadFile(file, 'avatars')).rejects.toThrow(
@@ -174,14 +213,19 @@ describe('FileUploadService', () => {
     it('should sanitize filenames with special characters', async () => {
       const providerSpy = jest
         .spyOn((service as any).provider, 'upload')
-        .mockResolvedValue({ url: '/uploads/avatars/123-file.jpg', key: 'avatars/123-file.jpg' });
+        .mockResolvedValue({
+          url: '/uploads/avatars/123-file.jpg',
+          key: 'avatars/123-file.jpg',
+        });
 
       const file = createMockFile({ filename: 'my file (1).jpg' });
       await service.uploadFile(file, 'avatars');
 
       // The fileName passed to provider should be a UUID + extension
       const calledFileName = providerSpy.mock.calls[0][1];
-      expect(calledFileName).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.jpg$/);
+      expect(calledFileName).toMatch(
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.jpg$/,
+      );
     });
   });
 
@@ -193,24 +237,40 @@ describe('FileUploadService', () => {
       ['image/png', 'avatar.html', '.png'],
       ['image/webp', 'no-extension', '.webp'],
       ['application/pdf', 'license.pdf.exe', '.pdf'],
-    ])('should store %s uploaded as "%s" with the %s extension', async (mimetype, filename, ext) => {
-      const providerSpy = jest
-        .spyOn((service as any).provider, 'upload')
-        .mockResolvedValue({ url: '/uploads/x', key: 'x' });
+    ])(
+      'should store %s uploaded as "%s" with the %s extension',
+      async (mimetype, filename, ext) => {
+        const providerSpy = jest
+          .spyOn((service as any).provider, 'upload')
+          .mockResolvedValue({ url: '/uploads/x', key: 'x' });
 
-      const result = await service.uploadFile(createMockFile({ filename, mimetype }), 'doctor-documents');
+        const result = await service.uploadFile(
+          createMockFile({ filename, mimetype }),
+          'doctor-documents',
+        );
 
-      expect(providerSpy.mock.calls[0][1]).toMatch(new RegExp(`^${UUID}\\${ext}$`));
-      expect(result.fileName).toBe(filename);
-    });
+        expect(providerSpy.mock.calls[0][1]).toMatch(
+          new RegExp(`^${UUID}\\${ext}$`),
+        );
+        expect(result.fileName).toBe(filename);
+      },
+    );
   });
 
   describe('uploadFile allowed types per folder', () => {
     const IMAGES = ['image/jpeg', 'image/png', 'image/webp'];
     const cases: [UploadFolder, string, boolean][] = [
-      ...IMAGES.map((m): [UploadFolder, string, boolean] => ['avatars', m, true]),
+      ...IMAGES.map((m): [UploadFolder, string, boolean] => [
+        'avatars',
+        m,
+        true,
+      ]),
       ['avatars', 'application/pdf', false],
-      ...IMAGES.map((m): [UploadFolder, string, boolean] => ['doctor-documents', m, true]),
+      ...IMAGES.map((m): [UploadFolder, string, boolean] => [
+        'doctor-documents',
+        m,
+        true,
+      ]),
       ['doctor-documents', 'application/pdf', true],
       ['doctor-documents', 'image/svg+xml', false],
       ['avatars', 'image/gif', false],
@@ -230,7 +290,9 @@ describe('FileUploadService', () => {
       } else {
         await expect(upload).rejects.toThrow(
           `Invalid file type '${mimetype}'. Allowed types: ${
-            folder === 'avatars' ? IMAGES.join(', ') : [...IMAGES, 'application/pdf'].join(', ')
+            folder === 'avatars'
+              ? IMAGES.join(', ')
+              : [...IMAGES, 'application/pdf'].join(', ')
           }.`,
         );
         expect(file.toBuffer).not.toHaveBeenCalled();
@@ -250,36 +312,54 @@ describe('FileUploadService', () => {
       ['webp', 'image/webp'],
     ];
     const cases: [UploadFolder, string, string][] = [
-      ...IMAGE_EXTENSIONS.map(([e, m]): [UploadFolder, string, string] => ['avatars', e, m]),
-      ...IMAGE_EXTENSIONS.map(([e, m]): [UploadFolder, string, string] => ['doctor-documents', e, m]),
+      ...IMAGE_EXTENSIONS.map(([e, m]): [UploadFolder, string, string] => [
+        'avatars',
+        e,
+        m,
+      ]),
+      ...IMAGE_EXTENSIONS.map(([e, m]): [UploadFolder, string, string] => [
+        'doctor-documents',
+        e,
+        m,
+      ]),
       ['doctor-documents', 'pdf', 'application/pdf'],
       ['doctor-documents', 'PDF', 'application/pdf'],
     ];
 
-    it.each(cases)('should open a stored %s/*.%s file as %s', async (folder, ext, mimeType) => {
-      const stream = Readable.from(['data']);
-      const readSpy = jest.spyOn((service as any).provider, 'read').mockResolvedValue(stream);
-      const fileName = `${randomUUID()}.${ext}`;
+    it.each(cases)(
+      'should open a stored %s/*.%s file as %s',
+      async (folder, ext, mimeType) => {
+        const stream = Readable.from(['data']);
+        const readSpy = jest
+          .spyOn((service as any).provider, 'read')
+          .mockResolvedValue(stream);
+        const fileName = `${randomUUID()}.${ext}`;
 
-      const result = await service.openFile(folder, fileName);
+        const result = await service.openFile(folder, fileName);
 
-      expect(result).toEqual({ stream, mimeType });
-      expect(readSpy).toHaveBeenCalledWith(`${folder}/${fileName}`);
-    });
+        expect(result).toEqual({ stream, mimeType });
+        expect(readSpy).toHaveBeenCalledWith(`${folder}/${fileName}`);
+      },
+    );
 
-    it.each(['pdf', 'PDF'])('should not serve a .%s stored among avatars (e.g. uploaded before avatars were images only)', async (ext) => {
-      const readSpy = jest.spyOn((service as any).provider, 'read');
+    it.each(['pdf', 'PDF'])(
+      'should not serve a .%s stored among avatars (e.g. uploaded before avatars were images only)',
+      async (ext) => {
+        const readSpy = jest.spyOn((service as any).provider, 'read');
 
-      await expect(service.openFile('avatars', `${randomUUID()}.${ext}`)).rejects.toThrow(NotFoundException);
-      expect(readSpy).not.toHaveBeenCalled();
-    });
+        await expect(
+          service.openFile('avatars', `${randomUUID()}.${ext}`),
+        ).rejects.toThrow(NotFoundException);
+        expect(readSpy).not.toHaveBeenCalled();
+      },
+    );
 
     it('should throw NotFoundException when the file does not exist', async () => {
       jest.spyOn((service as any).provider, 'read').mockResolvedValue(null);
 
-      await expect(service.openFile('avatars', `${randomUUID()}.png`)).rejects.toThrow(
-        NotFoundException,
-      );
+      await expect(
+        service.openFile('avatars', `${randomUUID()}.png`),
+      ).rejects.toThrow(NotFoundException);
     });
 
     it.each([
@@ -290,12 +370,17 @@ describe('FileUploadService', () => {
       'nested/file.png',
       '..png',
       '',
-    ])('should not touch storage for the unsafe or unsupported name "%s"', async (fileName) => {
-      const readSpy = jest.spyOn((service as any).provider, 'read');
+    ])(
+      'should not touch storage for the unsafe or unsupported name "%s"',
+      async (fileName) => {
+        const readSpy = jest.spyOn((service as any).provider, 'read');
 
-      await expect(service.openFile('avatars', fileName)).rejects.toThrow(NotFoundException);
-      expect(readSpy).not.toHaveBeenCalled();
-    });
+        await expect(service.openFile('avatars', fileName)).rejects.toThrow(
+          NotFoundException,
+        );
+        expect(readSpy).not.toHaveBeenCalled();
+      },
+    );
   });
 
   /* ── deleteFile ── */
@@ -320,13 +405,21 @@ describe('FileUploadService', () => {
       ['avatars', `${randomUUID()}.jpeg`],
       ['avatars', `${randomUUID()}.pdf`],
       ['doctor-documents', `${randomUUID()}.pdf`],
-    ] as [UploadFolder, string][])('should delete %s/%s given its upload URL', async (folder, fileName) => {
-      const deleteSpy = jest.spyOn((service as any).provider, 'delete').mockResolvedValue(undefined);
+    ] as [UploadFolder, string][])(
+      'should delete %s/%s given its upload URL',
+      async (folder, fileName) => {
+        const deleteSpy = jest
+          .spyOn((service as any).provider, 'delete')
+          .mockResolvedValue(undefined);
 
-      await service.deleteUploadedFile(folder, `/uploads/${folder}/${fileName}`);
+        await service.deleteUploadedFile(
+          folder,
+          `/uploads/${folder}/${fileName}`,
+        );
 
-      expect(deleteSpy).toHaveBeenCalledWith(`${folder}/${fileName}`);
-    });
+        expect(deleteSpy).toHaveBeenCalledWith(`${folder}/${fileName}`);
+      },
+    );
 
     it.each([
       `https://cdn.example.com/${randomUUID()}.png`,
@@ -349,10 +442,15 @@ describe('FileUploadService', () => {
     });
 
     it('should propagate a storage failure', async () => {
-      jest.spyOn((service as any).provider, 'delete').mockRejectedValue(new Error('EACCES'));
+      jest
+        .spyOn((service as any).provider, 'delete')
+        .mockRejectedValue(new Error('EACCES'));
 
       await expect(
-        service.deleteUploadedFile('avatars', `/uploads/avatars/${randomUUID()}.webp`),
+        service.deleteUploadedFile(
+          'avatars',
+          `/uploads/avatars/${randomUUID()}.webp`,
+        ),
       ).rejects.toThrow('EACCES');
     });
   });

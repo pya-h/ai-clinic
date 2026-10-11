@@ -68,7 +68,10 @@ export interface CalendlySchedulingLink {
 }
 
 export interface CalendlyWebhookEvent {
-  event: 'invitee.created' | 'invitee.canceled' | 'routing_form_submission.created';
+  event:
+    | 'invitee.created'
+    | 'invitee.canceled'
+    | 'routing_form_submission.created';
   created_at: string;
   created_by: string;
   payload: CalendlyWebhookPayload;

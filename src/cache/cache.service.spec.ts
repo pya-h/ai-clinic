@@ -155,10 +155,14 @@ describe('CacheService', () => {
     it('should set multiple values at once', async () => {
       mockCacheManager.mset.mockResolvedValue([]);
 
-      await service.mset('group1', [
-        { k: 'a', v: 1 },
-        { k: 'b', v: 2 },
-      ], 5000);
+      await service.mset(
+        'group1',
+        [
+          { k: 'a', v: 1 },
+          { k: 'b', v: 2 },
+        ],
+        5000,
+      );
 
       expect(mockCacheManager.mset).toHaveBeenCalledWith(
         expect.arrayContaining([
@@ -415,10 +419,7 @@ describe('CacheService', () => {
     it('should only call mset once when no items are tracked', async () => {
       mockCacheManager.mset.mockResolvedValue([]);
 
-      await service.mset2(
-        { g: 'x', k: 'a', v: 1 },
-        { g: 'y', k: 'b', v: 2 },
-      );
+      await service.mset2({ g: 'x', k: 'a', v: 1 }, { g: 'y', k: 'b', v: 2 });
 
       expect(mockCacheManager.mset).toHaveBeenCalledTimes(1);
     });

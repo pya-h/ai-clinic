@@ -42,8 +42,11 @@ export class ResponseTemplateInterceptor<T> implements NestInterceptor<T, any> {
 
           // Only extract statusCode/message from plain object data
           if (data && typeof data === 'object' && !Array.isArray(data)) {
-            const { message: dataMessage, statusCode: dataStatus, ...rest } =
-              data as Record<string, unknown>;
+            const {
+              message: dataMessage,
+              statusCode: dataStatus,
+              ...rest
+            } = data as Record<string, unknown>;
             if (dataStatus) response.statusCode = dataStatus;
             if (dataMessage && typeof dataMessage === 'string') {
               message = dataMessage;

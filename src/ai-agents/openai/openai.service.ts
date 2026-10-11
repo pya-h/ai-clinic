@@ -1,4 +1,8 @@
-import { Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { randomUUID } from 'crypto';
 import OpenAI from 'openai';
@@ -53,7 +57,9 @@ export class OpenAiService {
     chat.push(...newMessages);
     if (chat.length > OpenAiService.MAX_MESSAGES_PER_CHAT) {
       const system = chat[0];
-      const trimmed = chat.slice(chat.length - OpenAiService.MAX_MESSAGES_PER_CHAT + 1);
+      const trimmed = chat.slice(
+        chat.length - OpenAiService.MAX_MESSAGES_PER_CHAT + 1,
+      );
       trimmed.unshift(system);
       this.tempHistory.set(chatId, trimmed);
     }
@@ -61,7 +67,9 @@ export class OpenAiService {
 
   async runCompletion(chatId: string, prompt: string) {
     if (!this.openaiClient) {
-      throw new ServiceUnavailableException('OpenAI service is not configured.');
+      throw new ServiceUnavailableException(
+        'OpenAI service is not configured.',
+      );
     }
     const result = await this.openaiClient.chat.completions.create({
       model: this.modelName,
@@ -82,7 +90,9 @@ export class OpenAiService {
 
   async openNewChat(_userId: string, message: string): Promise<string> {
     const chatId = randomUUID();
-    return (await this.runCompletion(chatId, message)).choices[0]
-      .message.content ?? '';
+    return (
+      (await this.runCompletion(chatId, message)).choices[0].message.content ??
+      ''
+    );
   }
 }

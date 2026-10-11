@@ -418,7 +418,9 @@ describe('Chat (e2e)', () => {
     it('should let a doctor start a chat with a patient they only have an appointment with', async () => {
       const doctorProfileId = randomId();
       const patient = createMockUser();
-      prisma.doctorProfile.findUnique.mockResolvedValue({ id: doctorProfileId });
+      prisma.doctorProfile.findUnique.mockResolvedValue({
+        id: doctorProfileId,
+      });
       prisma.consultation.findFirst.mockResolvedValue(null);
       prisma.appointment.findFirst.mockResolvedValue({ id: randomUuid() });
 
@@ -447,7 +449,10 @@ describe('Chat (e2e)', () => {
     it('should let a verified doctor start a chat with any nurse', async () => {
       prisma.doctorProfile.findUnique.mockResolvedValue({ verified: true });
 
-      const res = await startChat(createMockDoctorUser(), createMockNurseUser());
+      const res = await startChat(
+        createMockDoctorUser(),
+        createMockNurseUser(),
+      );
 
       expect(res.statusCode).toBe(HttpStatus.CREATED);
       expect(prisma.chat.create).toHaveBeenCalled();
@@ -456,20 +461,33 @@ describe('Chat (e2e)', () => {
     it.each([
       ['an unverified profile', { verified: false }],
       ['no profile', null],
-    ])('should return 403 when a doctor with %s starts a chat with a nurse', async (_case, profile) => {
-      prisma.doctorProfile.findUnique.mockResolvedValue(profile);
+    ])(
+      'should return 403 when a doctor with %s starts a chat with a nurse',
+      async (_case, profile) => {
+        prisma.doctorProfile.findUnique.mockResolvedValue(profile);
 
-      const res = await startChat(createMockDoctorUser(), createMockNurseUser());
+        const res = await startChat(
+          createMockDoctorUser(),
+          createMockNurseUser(),
+        );
 
-      expect(res.statusCode).toBe(HttpStatus.FORBIDDEN);
-      expect(JSON.parse(res.body).message).toBe('Only verified doctors can start chats with nurses');
-      expect(prisma.chat.create).not.toHaveBeenCalled();
-    });
+        expect(res.statusCode).toBe(HttpStatus.FORBIDDEN);
+        expect(JSON.parse(res.body).message).toBe(
+          'Only verified doctors can start chats with nurses',
+        );
+        expect(prisma.chat.create).not.toHaveBeenCalled();
+      },
+    );
 
     it('should let a nurse start a chat with their assigned doctor', async () => {
-      prisma.doctorNurseAssignment.findFirst.mockResolvedValue({ id: randomId() });
+      prisma.doctorNurseAssignment.findFirst.mockResolvedValue({
+        id: randomId(),
+      });
 
-      const res = await startChat(createMockNurseUser(), createMockDoctorUser());
+      const res = await startChat(
+        createMockNurseUser(),
+        createMockDoctorUser(),
+      );
 
       expect(res.statusCode).toBe(HttpStatus.CREATED);
     });
@@ -477,7 +495,10 @@ describe('Chat (e2e)', () => {
     it('should return 403 when a nurse starts a chat with an unassigned doctor', async () => {
       prisma.doctorNurseAssignment.findFirst.mockResolvedValue(null);
 
-      const res = await startChat(createMockNurseUser(), createMockDoctorUser());
+      const res = await startChat(
+        createMockNurseUser(),
+        createMockDoctorUser(),
+      );
 
       expect(res.statusCode).toBe(HttpStatus.FORBIDDEN);
       expect(prisma.chat.create).not.toHaveBeenCalled();
@@ -487,7 +508,10 @@ describe('Chat (e2e)', () => {
       const existing = buildChatData();
       prisma.chat.findFirst.mockResolvedValue(existing);
 
-      const res = await startChat(createMockNurseUser(), createMockDoctorUser());
+      const res = await startChat(
+        createMockNurseUser(),
+        createMockDoctorUser(),
+      );
 
       expect(res.statusCode).toBe(HttpStatus.CREATED);
       expect(JSON.parse(res.body).contents.id).toBe(existing.id);
@@ -499,16 +523,27 @@ describe('Chat (e2e)', () => {
       ['doctor', 'doctor', createMockDoctorUser, createMockDoctorUser],
       ['nurse', 'nurse', createMockNurseUser, createMockNurseUser],
       ['doctor', 'site admin', createMockDoctorUser, createMockAdminUser],
-      ['role-less user', 'doctor', () => createMockUser({ role: UserRolesEnum.NONE }), createMockDoctorUser],
-    ])('should return 403 when a %s starts a chat with a %s', async (_from, _to, makeFrom, makeTo) => {
-      const res = await startChat(makeFrom(), makeTo());
+      [
+        'role-less user',
+        'doctor',
+        () => createMockUser({ role: UserRolesEnum.NONE }),
+        createMockDoctorUser,
+      ],
+    ])(
+      'should return 403 when a %s starts a chat with a %s',
+      async (_from, _to, makeFrom, makeTo) => {
+        const res = await startChat(makeFrom(), makeTo());
 
-      expect(res.statusCode).toBe(HttpStatus.FORBIDDEN);
-      expect(prisma.chat.create).not.toHaveBeenCalled();
-    });
+        expect(res.statusCode).toBe(HttpStatus.FORBIDDEN);
+        expect(prisma.chat.create).not.toHaveBeenCalled();
+      },
+    );
 
     it('should let an admin start a chat with a doctor', async () => {
-      const res = await startChat(createMockAdminUser(), createMockDoctorUser());
+      const res = await startChat(
+        createMockAdminUser(),
+        createMockDoctorUser(),
+      );
 
       expect(res.statusCode).toBe(HttpStatus.CREATED);
     });
@@ -520,9 +555,7 @@ describe('Chat (e2e)', () => {
     it('should return paginated chats for the current user', async () => {
       sessionUser = patientUser;
       const chatId = randomUuid();
-      const mockChats = [
-        buildChatData({ id: chatId }),
-      ];
+      const mockChats = [buildChatData({ id: chatId })];
 
       prisma.chat.findMany.mockResolvedValue(mockChats);
       prisma.chat.count.mockResolvedValue(1);
@@ -720,9 +753,15 @@ describe('Chat (e2e)', () => {
       });
 
       prisma.chat.findUnique.mockResolvedValue(mockChat);
-      prisma.user.findUnique.mockResolvedValue({ isActive: true, isBanned: false });
+      prisma.user.findUnique.mockResolvedValue({
+        isActive: true,
+        isBanned: false,
+      });
       prisma.message.create.mockResolvedValue(mockMessage);
-      prisma.chat.update.mockResolvedValue({ ...mockChat, updatedAt: new Date() });
+      prisma.chat.update.mockResolvedValue({
+        ...mockChat,
+        updatedAt: new Date(),
+      });
 
       const res = await app.inject({
         method: 'POST',
@@ -745,7 +784,10 @@ describe('Chat (e2e)', () => {
       const content = `Over HTTP ${randomUuid()}`;
       const mockMessage = buildMessageData(chatId, { content });
       prisma.chat.findUnique.mockResolvedValue(buildChatData({ id: chatId }));
-      prisma.user.findUnique.mockResolvedValue({ isActive: true, isBanned: false });
+      prisma.user.findUnique.mockResolvedValue({
+        isActive: true,
+        isBanned: false,
+      });
       prisma.message.create.mockResolvedValue(mockMessage);
       prisma.chat.update.mockResolvedValue({});
       prisma.chatParticipant.findMany.mockResolvedValue([
@@ -795,15 +837,22 @@ describe('Chat (e2e)', () => {
     it('should still return 201 for the saved message when the room broadcast fails', async () => {
       sessionUser = patientUser;
       const chatId = randomUuid();
-      const mockMessage = buildMessageData(chatId, { content: `Saved ${randomUuid()}` });
+      const mockMessage = buildMessageData(chatId, {
+        content: `Saved ${randomUuid()}`,
+      });
       prisma.chat.findUnique.mockResolvedValue(buildChatData({ id: chatId }));
-      prisma.user.findUnique.mockResolvedValue({ isActive: true, isBanned: false });
+      prisma.user.findUnique.mockResolvedValue({
+        isActive: true,
+        isBanned: false,
+      });
       prisma.message.create.mockResolvedValue(mockMessage);
       prisma.chat.update.mockResolvedValue({});
       prisma.chatParticipant.findMany.mockResolvedValue([]);
-      const to = jest.spyOn(app.get(ChatGateway).server, 'to').mockImplementation(() => {
-        throw new Error('adapter down');
-      });
+      const to = jest
+        .spyOn(app.get(ChatGateway).server, 'to')
+        .mockImplementation(() => {
+          throw new Error('adapter down');
+        });
 
       try {
         const res = await app.inject({

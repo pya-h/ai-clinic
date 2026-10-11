@@ -207,7 +207,13 @@ describe('SchedulingService', () => {
   describe('setSlotDuration', () => {
     it('should create a slot duration', async () => {
       const dto = { minutes: 30, price: 50 };
-      const created = { id: 1, doctorId: 42, ...dto, label: null as null, isActive: true };
+      const created = {
+        id: 1,
+        doctorId: 42,
+        ...dto,
+        label: null as null,
+        isActive: true,
+      };
       prisma.slotDuration.create.mockResolvedValue(created);
 
       const result = await service.setSlotDuration(42, dto);
@@ -330,7 +336,10 @@ describe('SchedulingService', () => {
     beforeEach(() => {
       prisma.doctorProfile.findUnique.mockResolvedValue(mockDoctor);
       // The dates below are in March 2026; past days have no slots.
-      jest.useFakeTimers({ now: new Date('2026-03-01T00:00:00.000Z'), doNotFake: ['nextTick', 'setImmediate'] });
+      jest.useFakeTimers({
+        now: new Date('2026-03-01T00:00:00.000Z'),
+        doNotFake: ['nextTick', 'setImmediate'],
+      });
     });
 
     afterEach(() => {
@@ -341,9 +350,16 @@ describe('SchedulingService', () => {
       // 2026-03-09 Mon … 2026-03-12 Thu, open 09:00-12:00 every day, hourly slots.
       beforeEach(() => {
         prisma.doctorAvailability.findMany.mockResolvedValue(
-          [1, 2, 3, 4].map((dayOfWeek) => ({ dayOfWeek, startTime: '09:00', endTime: '12:00', isActive: true })),
+          [1, 2, 3, 4].map((dayOfWeek) => ({
+            dayOfWeek,
+            startTime: '09:00',
+            endTime: '12:00',
+            isActive: true,
+          })),
         );
-        prisma.slotDuration.findMany.mockResolvedValue([{ minutes: 60, isActive: true }]);
+        prisma.slotDuration.findMany.mockResolvedValue([
+          { minutes: 60, isActive: true },
+        ]);
         prisma.availabilityException.findMany.mockResolvedValue([]);
         prisma.appointment.findMany.mockResolvedValue([]);
       });
@@ -351,7 +367,11 @@ describe('SchedulingService', () => {
       it('should list no slots for days before today, nor started ones today', async () => {
         jest.setSystemTime(new Date('2026-03-11T10:15:00.000Z'));
 
-        const result = await service.getAvailableSlots(42, new Date('2026-03-09'), new Date('2026-03-12'));
+        const result = await service.getAvailableSlots(
+          42,
+          new Date('2026-03-09'),
+          new Date('2026-03-12'),
+        );
 
         expect(result.map((s) => `${s.date} ${s.startTime}`)).toEqual([
           '2026-03-11 11:00',
@@ -362,9 +382,17 @@ describe('SchedulingService', () => {
       });
 
       it('should list nothing for a range entirely in the past', async () => {
-        jest.setSystemTime(new Date(Date.UTC(2026, 2, 13, Math.floor(Math.random() * 24))));
+        jest.setSystemTime(
+          new Date(Date.UTC(2026, 2, 13, Math.floor(Math.random() * 24))),
+        );
 
-        expect(await service.getAvailableSlots(42, new Date('2026-03-09'), new Date('2026-03-12'))).toEqual([]);
+        expect(
+          await service.getAvailableSlots(
+            42,
+            new Date('2026-03-09'),
+            new Date('2026-03-12'),
+          ),
+        ).toEqual([]);
       });
     });
 
@@ -426,10 +454,30 @@ describe('SchedulingService', () => {
       );
 
       expect(result).toEqual([
-        { date: '2026-03-10', startTime: '09:00', endTime: '09:30', durationMinutes: 30 },
-        { date: '2026-03-10', startTime: '09:30', endTime: '10:00', durationMinutes: 30 },
-        { date: '2026-03-10', startTime: '10:00', endTime: '10:30', durationMinutes: 30 },
-        { date: '2026-03-10', startTime: '10:30', endTime: '11:00', durationMinutes: 30 },
+        {
+          date: '2026-03-10',
+          startTime: '09:00',
+          endTime: '09:30',
+          durationMinutes: 30,
+        },
+        {
+          date: '2026-03-10',
+          startTime: '09:30',
+          endTime: '10:00',
+          durationMinutes: 30,
+        },
+        {
+          date: '2026-03-10',
+          startTime: '10:00',
+          endTime: '10:30',
+          durationMinutes: 30,
+        },
+        {
+          date: '2026-03-10',
+          startTime: '10:30',
+          endTime: '11:00',
+          durationMinutes: 30,
+        },
       ]);
     });
 
@@ -515,8 +563,18 @@ describe('SchedulingService', () => {
       );
 
       expect(result).toEqual([
-        { date: '2026-03-10', startTime: '10:00', endTime: '11:00', durationMinutes: 60 },
-        { date: '2026-03-10', startTime: '11:00', endTime: '12:00', durationMinutes: 60 },
+        {
+          date: '2026-03-10',
+          startTime: '10:00',
+          endTime: '11:00',
+          durationMinutes: 60,
+        },
+        {
+          date: '2026-03-10',
+          startTime: '11:00',
+          endTime: '12:00',
+          durationMinutes: 60,
+        },
       ]);
     });
 
@@ -621,18 +679,32 @@ describe('SchedulingService', () => {
 
       beforeEach(() => {
         prisma.doctorAvailability.findMany.mockResolvedValue([
-          { dayOfWeek: 2, startTime: '09:00', endTime: '17:00', isActive: true },
+          {
+            dayOfWeek: 2,
+            startTime: '09:00',
+            endTime: '17:00',
+            isActive: true,
+          },
         ]);
-        prisma.slotDuration.findMany.mockResolvedValue([{ minutes: 60, isActive: true }]);
+        prisma.slotDuration.findMany.mockResolvedValue([
+          { minutes: 60, isActive: true },
+        ]);
         prisma.appointment.findMany.mockResolvedValue([]);
       });
 
       it("should still apply that day's blocking exception, stored at midnight", async () => {
         const start = midDay();
-        prisma.availabilityException.findMany.mockImplementation(async ({ where }: any) =>
-          where.date.gte <= new Date('2026-03-10T00:00:00.000Z')
-            ? [{ date: new Date('2026-03-10'), isBlocked: true, doctorId: 42 }]
-            : [],
+        prisma.availabilityException.findMany.mockImplementation(
+          async ({ where }: any) =>
+            where.date.gte <= new Date('2026-03-10T00:00:00.000Z')
+              ? [
+                  {
+                    date: new Date('2026-03-10'),
+                    isBlocked: true,
+                    doctorId: 42,
+                  },
+                ]
+              : [],
         );
 
         expect(await service.getAvailableSlots(42, start, start)).toEqual([]);
@@ -640,10 +712,19 @@ describe('SchedulingService', () => {
 
       it("should still apply that day's partial override", async () => {
         const start = midDay();
-        prisma.availabilityException.findMany.mockImplementation(async ({ where }: any) =>
-          where.date.gte <= new Date('2026-03-10T00:00:00.000Z')
-            ? [{ date: new Date('2026-03-10'), isBlocked: false, startTime: '13:00', endTime: '15:00', doctorId: 42 }]
-            : [],
+        prisma.availabilityException.findMany.mockImplementation(
+          async ({ where }: any) =>
+            where.date.gte <= new Date('2026-03-10T00:00:00.000Z')
+              ? [
+                  {
+                    date: new Date('2026-03-10'),
+                    isBlocked: false,
+                    startTime: '13:00',
+                    endTime: '15:00',
+                    doctorId: 42,
+                  },
+                ]
+              : [],
         );
 
         const result = await service.getAvailableSlots(42, start, start);
@@ -745,8 +826,20 @@ describe('SchedulingService', () => {
     it('should subtract appointments booked later on the last day of the range', async () => {
       // 2026-03-10 = Tuesday
       prisma.doctorAvailability.findMany.mockResolvedValue([
-        { doctorId: doctorA, dayOfWeek: 2, startTime: '09:00', endTime: '12:00', isActive: true },
-        { doctorId: doctorB, dayOfWeek: 2, startTime: '09:00', endTime: '12:00', isActive: true },
+        {
+          doctorId: doctorA,
+          dayOfWeek: 2,
+          startTime: '09:00',
+          endTime: '12:00',
+          isActive: true,
+        },
+        {
+          doctorId: doctorB,
+          dayOfWeek: 2,
+          startTime: '09:00',
+          endTime: '12:00',
+          isActive: true,
+        },
       ]);
       prisma.slotDuration.findMany.mockResolvedValue([
         { doctorId: doctorA, minutes: 60, isActive: true },
@@ -783,14 +876,30 @@ describe('SchedulingService', () => {
 
     it('should honour a blocked exception on the first day when the range starts mid-day', async () => {
       prisma.doctorAvailability.findMany.mockResolvedValue([
-        { doctorId: doctorA, dayOfWeek: 2, startTime: '09:00', endTime: '11:00', isActive: true },
-        { doctorId: doctorA, dayOfWeek: 3, startTime: '09:00', endTime: '11:00', isActive: true },
+        {
+          doctorId: doctorA,
+          dayOfWeek: 2,
+          startTime: '09:00',
+          endTime: '11:00',
+          isActive: true,
+        },
+        {
+          doctorId: doctorA,
+          dayOfWeek: 3,
+          startTime: '09:00',
+          endTime: '11:00',
+          isActive: true,
+        },
       ]);
       prisma.slotDuration.findMany.mockResolvedValue([
         { doctorId: doctorA, minutes: 60, isActive: true },
       ]);
       prisma.availabilityException.findMany.mockResolvedValue([
-        { doctorId: doctorA, date: new Date('2026-03-10T00:00:00.000Z'), isBlocked: true },
+        {
+          doctorId: doctorA,
+          date: new Date('2026-03-10T00:00:00.000Z'),
+          isBlocked: true,
+        },
       ]);
       prisma.appointment.findMany.mockResolvedValue([]);
 
@@ -813,10 +922,19 @@ describe('SchedulingService', () => {
     });
 
     it('should not count slots of today that have already started', async () => {
-      jest.useFakeTimers({ now: new Date('2026-03-10T10:15:00.000Z'), doNotFake: ['nextTick', 'setImmediate'] });
+      jest.useFakeTimers({
+        now: new Date('2026-03-10T10:15:00.000Z'),
+        doNotFake: ['nextTick', 'setImmediate'],
+      });
       try {
         prisma.doctorAvailability.findMany.mockResolvedValue([
-          { doctorId: doctorA, dayOfWeek: 2, startTime: '09:00', endTime: '13:00', isActive: true },
+          {
+            doctorId: doctorA,
+            dayOfWeek: 2,
+            startTime: '09:00',
+            endTime: '13:00',
+            isActive: true,
+          },
         ]);
         prisma.slotDuration.findMany.mockResolvedValue([
           { doctorId: doctorA, minutes: 60, isActive: true },
@@ -839,7 +957,13 @@ describe('SchedulingService', () => {
 
     it('should report zero for doctors without availability or durations', async () => {
       prisma.doctorAvailability.findMany.mockResolvedValue([
-        { doctorId: doctorA, dayOfWeek: 2, startTime: '09:00', endTime: '11:00', isActive: true },
+        {
+          doctorId: doctorA,
+          dayOfWeek: 2,
+          startTime: '09:00',
+          endTime: '11:00',
+          isActive: true,
+        },
       ]);
       prisma.slotDuration.findMany.mockResolvedValue([]);
       prisma.availabilityException.findMany.mockResolvedValue([]);
@@ -886,7 +1010,12 @@ describe('SchedulingService', () => {
         verified: true,
         visitMethods: ['CHAT'],
       });
-      const created = { id: 1, ...bookDto, patientId: patient.id, status: 'PENDING' };
+      const created = {
+        id: 1,
+        ...bookDto,
+        patientId: patient.id,
+        status: 'PENDING',
+      };
       prisma.appointment.create.mockResolvedValue(created);
 
       const result = await service.bookAppointment(patient as any, bookDto);
@@ -999,9 +1128,9 @@ describe('SchedulingService', () => {
     it('should throw NotFoundException if not found', async () => {
       prisma.appointment.findUnique.mockResolvedValue(null);
       const patient = createMockUser();
-      await expect(
-        service.getAppointment(99, patient as any),
-      ).rejects.toThrow(NotFoundException);
+      await expect(service.getAppointment(99, patient as any)).rejects.toThrow(
+        NotFoundException,
+      );
     });
 
     it('should throw ForbiddenException for non-owner patient', async () => {
@@ -1009,9 +1138,9 @@ describe('SchedulingService', () => {
       const apt = { id: 1, patientId: 'other-user', doctorId: 42 };
       prisma.appointment.findUnique.mockResolvedValue(apt);
 
-      await expect(
-        service.getAppointment(1, patient as any),
-      ).rejects.toThrow(ForbiddenException);
+      await expect(service.getAppointment(1, patient as any)).rejects.toThrow(
+        ForbiddenException,
+      );
     });
 
     it('should allow admin access', async () => {

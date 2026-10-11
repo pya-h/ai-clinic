@@ -33,10 +33,7 @@ export class NurseController {
   })
   @Roles(UserRolesEnum.DOCTOR)
   @Post('assign')
-  async assignNurse(
-    @CurrentUser() user: User,
-    @Body() dto: AssignNurseDto,
-  ) {
+  async assignNurse(@CurrentUser() user: User, @Body() dto: AssignNurseDto) {
     return this.nurseService.assignNurse(user, dto);
   }
 
@@ -51,7 +48,10 @@ export class NurseController {
     return this.nurseService.updatePermissions(user, id, dto);
   }
 
-  @ApiOperation({ description: 'Cancel a pending invitation, or deactivate a nurse assignment.' })
+  @ApiOperation({
+    description:
+      'Cancel a pending invitation, or deactivate a nurse assignment.',
+  })
   @Roles(UserRolesEnum.DOCTOR)
   @Delete('assignment/:id')
   async removeAssignment(
@@ -61,14 +61,19 @@ export class NurseController {
     return this.nurseService.removeAssignment(user, id);
   }
 
-  @ApiOperation({ description: 'List the pending nurse invitations sent to the current user.' })
+  @ApiOperation({
+    description: 'List the pending nurse invitations sent to the current user.',
+  })
   @Roles(UserRolesEnum.PATIENT, UserRolesEnum.NONE, UserRolesEnum.NURSE)
   @Get('invitations')
   async getMyInvitations(@CurrentUser() user: User) {
     return this.nurseService.getMyInvitations(user);
   }
 
-  @ApiOperation({ description: "Accept a nurse invitation: join the doctor's team, becoming a NURSE if needed." })
+  @ApiOperation({
+    description:
+      "Accept a nurse invitation: join the doctor's team, becoming a NURSE if needed.",
+  })
   @Roles(UserRolesEnum.PATIENT, UserRolesEnum.NONE, UserRolesEnum.NURSE)
   @HttpCode(HttpStatus.OK)
   @Post('invitations/:id/accept')
@@ -90,14 +95,19 @@ export class NurseController {
     return this.nurseService.declineInvitation(user, id);
   }
 
-  @ApiOperation({ description: 'Get nurse dashboard with assignments and stats.' })
+  @ApiOperation({
+    description: 'Get nurse dashboard with assignments and stats.',
+  })
   @Roles(UserRolesEnum.NURSE)
   @Get('dashboard')
   async getDashboard(@CurrentUser() user: User) {
     return this.nurseService.getDashboard(user);
   }
 
-  @ApiOperation({ description: 'List nurse assignments for the current user (doctor sees their nurses, nurse sees their doctors).' })
+  @ApiOperation({
+    description:
+      'List nurse assignments for the current user (doctor sees their nurses, nurse sees their doctors).',
+  })
   @Roles(UserRolesEnum.DOCTOR, UserRolesEnum.NURSE)
   @Get('assignments')
   async getMyAssignments(@CurrentUser() user: User) {

@@ -73,7 +73,8 @@ export class DoctorController {
   }
 
   @ApiOperation({
-    description: 'List verified doctors with optional filters. Public endpoint.',
+    description:
+      'List verified doctors with optional filters. Public endpoint.',
   })
   @Get()
   async findAll(@Query() filters: DoctorFilterDto) {
@@ -81,16 +82,14 @@ export class DoctorController {
   }
 
   @ApiOperation({
-    description: 'Upload a document for doctor verification (medical license, board cert, ID, etc.).',
+    description:
+      'Upload a document for doctor verification (medical license, board cert, ID, etc.).',
   })
   @ApiConsumes('multipart/form-data')
   @UseGuards(CookieAuthGuard, RolesGuard)
   @Roles(UserRolesEnum.DOCTOR)
   @Post('documents')
-  async uploadDocument(
-    @CurrentUser() user: User,
-    @Req() req: FastifyRequest,
-  ) {
+  async uploadDocument(@CurrentUser() user: User, @Req() req: FastifyRequest) {
     const data = await req.file();
     if (!data) {
       throw new BadRequestException('No file provided.');
@@ -117,7 +116,7 @@ export class DoctorController {
   }
 
   @ApiOperation({
-    description: 'Get the current doctor\'s own profile (including unverified).',
+    description: "Get the current doctor's own profile (including unverified).",
   })
   @UseGuards(CookieAuthGuard, RolesGuard)
   @Roles(UserRolesEnum.DOCTOR)

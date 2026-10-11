@@ -92,7 +92,11 @@ export class DoctorService {
 
     // Matching the reason read above, so a newer rejection is never silently cleared.
     const { count } = await this.prisma.doctorProfile.updateMany({
-      where: { id: profile.id, verified: false, rejectionReason: profile.rejectionReason },
+      where: {
+        id: profile.id,
+        verified: false,
+        rejectionReason: profile.rejectionReason,
+      },
       data: { rejectionReason: null },
     });
     if (count === 0) {
@@ -131,8 +135,18 @@ export class DoctorService {
       const searchWhere = {
         user: {
           OR: [
-            { firstname: { contains: filters.search, mode: 'insensitive' as const } },
-            { lastname: { contains: filters.search, mode: 'insensitive' as const } },
+            {
+              firstname: {
+                contains: filters.search,
+                mode: 'insensitive' as const,
+              },
+            },
+            {
+              lastname: {
+                contains: filters.search,
+                mode: 'insensitive' as const,
+              },
+            },
           ],
         },
       };
@@ -154,7 +168,9 @@ export class DoctorService {
         skip,
         take,
         include: {
-          user: { select: { id: true, firstname: true, lastname: true, avatar: true } },
+          user: {
+            select: { id: true, firstname: true, lastname: true, avatar: true },
+          },
           _count: { select: { reviewsAbout: true } },
         },
         orderBy: { createdAt: 'desc' },
@@ -171,9 +187,7 @@ export class DoctorService {
           _count: { rating: true },
         })
       : [];
-    const ratingMap = new Map(
-      ratings.map((r) => [r.doctorId, r]),
-    );
+    const ratingMap = new Map(ratings.map((r) => [r.doctorId, r]));
 
     const data = profiles.map((profile) => {
       const agg = ratingMap.get(profile.id);
@@ -198,7 +212,9 @@ export class DoctorService {
       this.prisma.doctorProfile.findUnique({
         where: { id },
         include: {
-          user: { select: { id: true, firstname: true, lastname: true, avatar: true } },
+          user: {
+            select: { id: true, firstname: true, lastname: true, avatar: true },
+          },
         },
       }),
       this.prisma.doctorReview.aggregate({
@@ -214,9 +230,10 @@ export class DoctorService {
 
     return {
       ...profile,
-      averageRating: ratingAgg._count.rating > 0
-        ? Math.round((ratingAgg._avg.rating ?? 0) * 10) / 10
-        : null,
+      averageRating:
+        ratingAgg._count.rating > 0
+          ? Math.round((ratingAgg._avg.rating ?? 0) * 10) / 10
+          : null,
       totalReviews: ratingAgg._count.rating,
     };
   }
@@ -256,7 +273,15 @@ export class DoctorService {
     const profile = await this.prisma.doctorProfile.findUnique({
       where: { userId: user.id },
       include: {
-        user: { select: { id: true, firstname: true, lastname: true, avatar: true, email: true } },
+        user: {
+          select: {
+            id: true,
+            firstname: true,
+            lastname: true,
+            avatar: true,
+            email: true,
+          },
+        },
       },
     });
     if (!profile) {
@@ -285,21 +310,37 @@ export class DoctorService {
         where: {
           doctorId: profile.id,
           dateTime: { gte: new Date() },
-          status: { in: [AppointmentStatusEnum.PENDING, AppointmentStatusEnum.CONFIRMED] },
+          status: {
+            in: [
+              AppointmentStatusEnum.PENDING,
+              AppointmentStatusEnum.CONFIRMED,
+            ],
+          },
         },
       }),
       this.prisma.consultation.count({
-        where: { doctorId: profile.id, status: ConsultationStatusEnum.IN_PROGRESS },
+        where: {
+          doctorId: profile.id,
+          status: ConsultationStatusEnum.IN_PROGRESS,
+        },
       }),
       this.prisma.matchRequest.count({
         where: { matchedDoctorId: profile.id, status: MatchStatusEnum.MATCHED },
       }),
-      this.prisma.consultation.groupBy({
-        by: ['patientId'],
-        where: { doctorId: profile.id, status: ConsultationStatusEnum.COMPLETED },
-      }).then((groups) => groups.length),
+      this.prisma.consultation
+        .groupBy({
+          by: ['patientId'],
+          where: {
+            doctorId: profile.id,
+            status: ConsultationStatusEnum.COMPLETED,
+          },
+        })
+        .then((groups) => groups.length),
       this.prisma.consultation.count({
-        where: { doctorId: profile.id, status: ConsultationStatusEnum.COMPLETED },
+        where: {
+          doctorId: profile.id,
+          status: ConsultationStatusEnum.COMPLETED,
+        },
       }),
       this.prisma.appointment.count({
         where: { doctorId: profile.id },

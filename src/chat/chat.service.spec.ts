@@ -48,10 +48,8 @@ describe('ChatService', () => {
 
   // ── Random test data factories ─────────────────────────────
   const uuid = () => randomUUID();
-  const randName = () =>
-    'User' + Math.random().toString(36).substring(2, 8);
-  const randEmail = () =>
-    `${randName().toLowerCase()}@test.com`;
+  const randName = () => 'User' + Math.random().toString(36).substring(2, 8);
+  const randEmail = () => `${randName().toLowerCase()}@test.com`;
 
   const patientId = uuid();
   const doctorId = uuid();
@@ -88,8 +86,20 @@ describe('ChatService', () => {
     createdAt: new Date(),
     updatedAt: new Date(),
     parties: [
-      { userId: patientId, chatId, joinedAt: new Date(), lastSeenAt: null as null, user: mockPatient },
-      { userId: doctorId, chatId, joinedAt: new Date(), lastSeenAt: null as null, user: mockDoctor },
+      {
+        userId: patientId,
+        chatId,
+        joinedAt: new Date(),
+        lastSeenAt: null as null,
+        user: mockPatient,
+      },
+      {
+        userId: doctorId,
+        chatId,
+        joinedAt: new Date(),
+        lastSeenAt: null as null,
+        user: mockDoctor,
+      },
     ],
     messages: [] as any[],
   };
@@ -278,12 +288,20 @@ describe('ChatService', () => {
 
     describe('linked to a consultation', () => {
       const consultationId = uuid();
-      const consultationBetween = (patientUserId: string, doctorUserId: string) => ({
+      const consultationBetween = (
+        patientUserId: string,
+        doctorUserId: string,
+      ) => ({
         id: consultationId,
         patientId: patientUserId,
         doctor: { userId: doctorUserId },
       });
-      const otherDoctor = () => createMockUser({ id: uuid(), email: randEmail(), role: UserRolesEnum.DOCTOR });
+      const otherDoctor = () =>
+        createMockUser({
+          id: uuid(),
+          email: randEmail(),
+          role: UserRolesEnum.DOCTOR,
+        });
 
       beforeEach(() => {
         prisma.chat.findFirst.mockResolvedValue(null);
@@ -293,68 +311,123 @@ describe('ChatService', () => {
       it.each([
         ['the patient', () => [mockPatient, mockDoctor] as const],
         ['the doctor', () => [mockDoctor, mockPatient] as const],
-      ])('should link the chat when %s starts it with the other party', async (_case, pair) => {
-        const [initiator, participant] = pair();
-        prisma.user.findUnique.mockResolvedValueOnce(initiator).mockResolvedValueOnce(participant);
-        prisma.consultation.findUnique.mockResolvedValue(consultationBetween(patientId, doctorId));
-        // A doctor may start chats only with their own patients.
-        prisma.doctorProfile.findUnique.mockResolvedValue({ id: Math.floor(Math.random() * 1e5) + 1 });
-        prisma.consultation.findFirst.mockResolvedValue({ id: consultationId });
+      ])(
+        'should link the chat when %s starts it with the other party',
+        async (_case, pair) => {
+          const [initiator, participant] = pair();
+          prisma.user.findUnique
+            .mockResolvedValueOnce(initiator)
+            .mockResolvedValueOnce(participant);
+          prisma.consultation.findUnique.mockResolvedValue(
+            consultationBetween(patientId, doctorId),
+          );
+          // A doctor may start chats only with their own patients.
+          prisma.doctorProfile.findUnique.mockResolvedValue({
+            id: Math.floor(Math.random() * 1e5) + 1,
+          });
+          prisma.consultation.findFirst.mockResolvedValue({
+            id: consultationId,
+          });
 
-        await service.createChat(initiator.id, { participantId: participant.id, consultationId });
+          await service.createChat(initiator.id, {
+            participantId: participant.id,
+            consultationId,
+          });
 
-        expect(prisma.chat.create).toHaveBeenCalledWith(
-          expect.objectContaining({ data: expect.objectContaining({ consultationId }) }),
-        );
-      });
+          expect(prisma.chat.create).toHaveBeenCalledWith(
+            expect.objectContaining({
+              data: expect.objectContaining({ consultationId }),
+            }),
+          );
+        },
+      );
 
       it("should refuse linking a chat with another doctor to the patient's consultation (403)", async () => {
         const doctorB = otherDoctor();
-        prisma.user.findUnique.mockResolvedValueOnce(mockPatient).mockResolvedValueOnce(doctorB);
-        prisma.consultation.findUnique.mockResolvedValue(consultationBetween(patientId, doctorId));
+        prisma.user.findUnique
+          .mockResolvedValueOnce(mockPatient)
+          .mockResolvedValueOnce(doctorB);
+        prisma.consultation.findUnique.mockResolvedValue(
+          consultationBetween(patientId, doctorId),
+        );
 
         await expect(
-          service.createChat(patientId, { participantId: doctorB.id, consultationId }),
-        ).rejects.toThrow(new ForbiddenException('A chat can only be linked to a consultation between its two participants'));
+          service.createChat(patientId, {
+            participantId: doctorB.id,
+            consultationId,
+          }),
+        ).rejects.toThrow(
+          new ForbiddenException(
+            'A chat can only be linked to a consultation between its two participants',
+          ),
+        );
         expect(prisma.chat.create).not.toHaveBeenCalled();
       });
 
       it("should refuse an admin linking their chat to someone's consultation (403)", async () => {
-        prisma.user.findUnique.mockResolvedValueOnce(mockAdmin).mockResolvedValueOnce(mockPatient);
-        prisma.consultation.findUnique.mockResolvedValue(consultationBetween(patientId, doctorId));
+        prisma.user.findUnique
+          .mockResolvedValueOnce(mockAdmin)
+          .mockResolvedValueOnce(mockPatient);
+        prisma.consultation.findUnique.mockResolvedValue(
+          consultationBetween(patientId, doctorId),
+        );
 
         await expect(
-          service.createChat(adminId, { participantId: patientId, consultationId }),
+          service.createChat(adminId, {
+            participantId: patientId,
+            consultationId,
+          }),
         ).rejects.toThrow(ForbiddenException);
         expect(prisma.chat.create).not.toHaveBeenCalled();
       });
 
       it('should return 404 for a consultation that does not exist', async () => {
-        prisma.user.findUnique.mockResolvedValueOnce(mockPatient).mockResolvedValueOnce(mockDoctor);
+        prisma.user.findUnique
+          .mockResolvedValueOnce(mockPatient)
+          .mockResolvedValueOnce(mockDoctor);
         prisma.consultation.findUnique.mockResolvedValue(null);
 
-        await expect(service.createChat(patientId, { participantId: doctorId, consultationId })).rejects.toThrow(
-          NotFoundException,
-        );
+        await expect(
+          service.createChat(patientId, {
+            participantId: doctorId,
+            consultationId,
+          }),
+        ).rejects.toThrow(NotFoundException);
       });
 
       it('should return 409 when the consultation already has a chat', async () => {
-        prisma.user.findUnique.mockResolvedValueOnce(mockPatient).mockResolvedValueOnce(mockDoctor);
-        prisma.consultation.findUnique.mockResolvedValue(consultationBetween(patientId, doctorId));
+        prisma.user.findUnique
+          .mockResolvedValueOnce(mockPatient)
+          .mockResolvedValueOnce(mockDoctor);
+        prisma.consultation.findUnique.mockResolvedValue(
+          consultationBetween(patientId, doctorId),
+        );
         prisma.chat.create.mockRejectedValue(
-          new Prisma.PrismaClientKnownRequestError('Unique constraint failed', { code: 'P2002', clientVersion: 'test' }),
+          new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+            code: 'P2002',
+            clientVersion: 'test',
+          }),
         );
 
-        await expect(service.createChat(patientId, { participantId: doctorId, consultationId })).rejects.toThrow(
+        await expect(
+          service.createChat(patientId, {
+            participantId: doctorId,
+            consultationId,
+          }),
+        ).rejects.toThrow(
           new ConflictException('This consultation already has a chat'),
         );
       });
 
       it('should rethrow other create errors', async () => {
-        prisma.user.findUnique.mockResolvedValueOnce(mockPatient).mockResolvedValueOnce(mockDoctor);
+        prisma.user.findUnique
+          .mockResolvedValueOnce(mockPatient)
+          .mockResolvedValueOnce(mockDoctor);
         prisma.chat.create.mockRejectedValue(new Error('connection reset'));
 
-        await expect(service.createChat(patientId, { participantId: doctorId })).rejects.toThrow('connection reset');
+        await expect(
+          service.createChat(patientId, { participantId: doctorId }),
+        ).rejects.toThrow('connection reset');
       });
     });
 
@@ -392,7 +465,9 @@ describe('ChatService', () => {
       prisma.chat.findFirst.mockResolvedValue(null);
       prisma.chat.create.mockResolvedValue(mockChat);
 
-      const result = await service.createChat(nurseId, { participantId: patientId });
+      const result = await service.createChat(nurseId, {
+        participantId: patientId,
+      });
       expect(result).toBeDefined();
     });
 
@@ -430,15 +505,19 @@ describe('ChatService', () => {
       prisma.chat.findFirst.mockResolvedValue(null);
       prisma.chat.create.mockResolvedValue(mockChat);
 
-      const result = await service.createChat(patientId, { participantId: nurseId });
+      const result = await service.createChat(patientId, {
+        participantId: nurseId,
+      });
       expect(result).toBeDefined();
     });
   });
 
   describe('createChat — who may start a chat', () => {
     const { PATIENT, DOCTOR, NURSE, NONE } = UserRolesEnum;
-    const userWith = (role: UserRolesEnum, overrides: Record<string, unknown> = {}) =>
-      createMockUser({ id: uuid(), email: randEmail(), role, ...overrides });
+    const userWith = (
+      role: UserRolesEnum,
+      overrides: Record<string, unknown> = {},
+    ) => createMockUser({ id: uuid(), email: randEmail(), role, ...overrides });
     const randomProfileId = () => 1 + Math.floor(Math.random() * 100_000);
 
     const startChat = async (initiator: any, participant: any) => {
@@ -447,11 +526,15 @@ describe('ChatService', () => {
         .mockResolvedValueOnce(participant);
       prisma.chat.findFirst.mockResolvedValue(null);
       prisma.chat.create.mockResolvedValue(mockChat);
-      return service.createChat(initiator.id, { participantId: participant.id });
+      return service.createChat(initiator.id, {
+        participantId: participant.id,
+      });
     };
 
     it('should let a patient start a chat with any doctor, without a relationship', async () => {
-      await expect(startChat(userWith(PATIENT), userWith(DOCTOR))).resolves.toBeDefined();
+      await expect(
+        startChat(userWith(PATIENT), userWith(DOCTOR)),
+      ).resolves.toBeDefined();
 
       expect(prisma.consultation.findFirst).not.toHaveBeenCalled();
       expect(prisma.appointment.findFirst).not.toHaveBeenCalled();
@@ -496,12 +579,18 @@ describe('ChatService', () => {
     });
 
     it('should reject a doctor starting a chat with an unrelated patient', async () => {
-      prisma.doctorProfile.findUnique.mockResolvedValue({ id: randomProfileId() });
+      prisma.doctorProfile.findUnique.mockResolvedValue({
+        id: randomProfileId(),
+      });
       prisma.consultation.findFirst.mockResolvedValue(null);
       prisma.appointment.findFirst.mockResolvedValue(null);
 
-      await expect(startChat(userWith(DOCTOR), userWith(PATIENT))).rejects.toThrow(
-        new ForbiddenException('You can only start chats with your own patients'),
+      await expect(
+        startChat(userWith(DOCTOR), userWith(PATIENT)),
+      ).rejects.toThrow(
+        new ForbiddenException(
+          'You can only start chats with your own patients',
+        ),
       );
       expect(prisma.chat.create).not.toHaveBeenCalled();
     });
@@ -509,9 +598,9 @@ describe('ChatService', () => {
     it('should reject a doctor without a profile starting a chat with a patient', async () => {
       prisma.doctorProfile.findUnique.mockResolvedValue(null);
 
-      await expect(startChat(userWith(DOCTOR), userWith(PATIENT))).rejects.toThrow(
-        ForbiddenException,
-      );
+      await expect(
+        startChat(userWith(DOCTOR), userWith(PATIENT)),
+      ).rejects.toThrow(ForbiddenException);
       expect(prisma.consultation.findFirst).not.toHaveBeenCalled();
       expect(prisma.chat.create).not.toHaveBeenCalled();
     });
@@ -533,14 +622,21 @@ describe('ChatService', () => {
     it.each([
       ['an unverified profile', { verified: false }],
       ['no profile', null],
-    ])('should reject a doctor with %s starting a chat with a nurse', async (_case, profile) => {
-      prisma.doctorProfile.findUnique.mockResolvedValue(profile);
+    ])(
+      'should reject a doctor with %s starting a chat with a nurse',
+      async (_case, profile) => {
+        prisma.doctorProfile.findUnique.mockResolvedValue(profile);
 
-      await expect(startChat(userWith(DOCTOR), userWith(NURSE))).rejects.toThrow(
-        new ForbiddenException('Only verified doctors can start chats with nurses'),
-      );
-      expect(prisma.chat.create).not.toHaveBeenCalled();
-    });
+        await expect(
+          startChat(userWith(DOCTOR), userWith(NURSE)),
+        ).rejects.toThrow(
+          new ForbiddenException(
+            'Only verified doctors can start chats with nurses',
+          ),
+        );
+        expect(prisma.chat.create).not.toHaveBeenCalled();
+      },
+    );
 
     it('should let a doctor no longer verified reopen their existing chat with a nurse', async () => {
       prisma.user.findUnique
@@ -549,7 +645,9 @@ describe('ChatService', () => {
       prisma.chat.findFirst.mockResolvedValue(mockChat);
       prisma.doctorProfile.findUnique.mockResolvedValue({ verified: false });
 
-      const result = await service.createChat(uuid(), { participantId: uuid() });
+      const result = await service.createChat(uuid(), {
+        participantId: uuid(),
+      });
 
       expect(result.id).toBe(chatId);
       expect(prisma.doctorProfile.findUnique).not.toHaveBeenCalled();
@@ -558,13 +656,19 @@ describe('ChatService', () => {
     it('should let a nurse start a chat with a doctor they are actively assigned to', async () => {
       const nurse = userWith(NURSE);
       const doctor = userWith(DOCTOR);
-      prisma.doctorNurseAssignment.findFirst.mockResolvedValue({ id: randomProfileId() });
+      prisma.doctorNurseAssignment.findFirst.mockResolvedValue({
+        id: randomProfileId(),
+      });
 
       await expect(startChat(nurse, doctor)).resolves.toBeDefined();
 
       expect(prisma.doctorNurseAssignment.findFirst).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: { nurseId: nurse.id, isActive: true, doctor: { userId: doctor.id } },
+          where: {
+            nurseId: nurse.id,
+            isActive: true,
+            doctor: { userId: doctor.id },
+          },
         }),
       );
       expect(prisma.chat.create).toHaveBeenCalled();
@@ -573,8 +677,12 @@ describe('ChatService', () => {
     it('should reject a nurse starting a chat with a doctor they are not assigned to', async () => {
       prisma.doctorNurseAssignment.findFirst.mockResolvedValue(null);
 
-      await expect(startChat(userWith(NURSE), userWith(DOCTOR))).rejects.toThrow(
-        new ForbiddenException('You can only start chats with doctors you are assigned to'),
+      await expect(
+        startChat(userWith(NURSE), userWith(DOCTOR)),
+      ).rejects.toThrow(
+        new ForbiddenException(
+          'You can only start chats with doctors you are assigned to',
+        ),
       );
       expect(prisma.chat.create).not.toHaveBeenCalled();
     });
@@ -588,48 +696,69 @@ describe('ChatService', () => {
       ['role-less user', 'nurse', NONE, NURSE],
       ['role-less user', 'patient', NONE, PATIENT],
       ['role-less user', 'role-less user', NONE, NONE],
-    ])('should reject a %s starting a chat with a %s', async (_from, _to, fromRole, toRole) => {
-      await expect(startChat(userWith(fromRole), userWith(toRole))).rejects.toThrow(
-        new ForbiddenException('You cannot start a chat with this user'),
-      );
-      expect(prisma.chat.create).not.toHaveBeenCalled();
-    });
+    ])(
+      'should reject a %s starting a chat with a %s',
+      async (_from, _to, fromRole, toRole) => {
+        await expect(
+          startChat(userWith(fromRole), userWith(toRole)),
+        ).rejects.toThrow(
+          new ForbiddenException('You cannot start a chat with this user'),
+        );
+        expect(prisma.chat.create).not.toHaveBeenCalled();
+      },
+    );
 
     it('should reject a patient starting a chat with a role-less user', async () => {
-      await expect(startChat(userWith(PATIENT), userWith(NONE))).rejects.toThrow(
-        new BadRequestException('Patients can only chat with doctors or nurses'),
+      await expect(
+        startChat(userWith(PATIENT), userWith(NONE)),
+      ).rejects.toThrow(
+        new BadRequestException(
+          'Patients can only chat with doctors or nurses',
+        ),
       );
     });
 
     it('should reject a doctor starting a chat with an admin account', async () => {
-      await expect(startChat(userWith(DOCTOR), mockAdmin)).rejects.toThrow(ForbiddenException);
+      await expect(startChat(userWith(DOCTOR), mockAdmin)).rejects.toThrow(
+        ForbiddenException,
+      );
     });
 
     it.each([
       ['admin', { isAdmin: true }],
       ['superadmin', { isSuperAdmin: true }],
-    ])('should let a doctor-role %s start a chat with another doctor', async (_name, flags) => {
-      await expect(startChat(userWith(DOCTOR, flags), userWith(DOCTOR))).resolves.toBeDefined();
-      expect(prisma.chat.create).toHaveBeenCalled();
-    });
+    ])(
+      'should let a doctor-role %s start a chat with another doctor',
+      async (_name, flags) => {
+        await expect(
+          startChat(userWith(DOCTOR, flags), userWith(DOCTOR)),
+        ).resolves.toBeDefined();
+        expect(prisma.chat.create).toHaveBeenCalled();
+      },
+    );
 
     it.each([
       ['a nurse reopening a chat an unassigned doctor started', NURSE, DOCTOR],
       ['a doctor reopening a chat with another doctor', DOCTOR, DOCTOR],
       ['a doctor reopening a chat with an unrelated patient', DOCTOR, PATIENT],
-    ])('should return the existing chat for %s, without checking the rules', async (_case, fromRole, toRole) => {
-      prisma.user.findUnique
-        .mockResolvedValueOnce(userWith(fromRole))
-        .mockResolvedValueOnce(userWith(toRole));
-      prisma.chat.findFirst.mockResolvedValue(mockChat);
+    ])(
+      'should return the existing chat for %s, without checking the rules',
+      async (_case, fromRole, toRole) => {
+        prisma.user.findUnique
+          .mockResolvedValueOnce(userWith(fromRole))
+          .mockResolvedValueOnce(userWith(toRole));
+        prisma.chat.findFirst.mockResolvedValue(mockChat);
 
-      const result = await service.createChat(uuid(), { participantId: uuid() });
+        const result = await service.createChat(uuid(), {
+          participantId: uuid(),
+        });
 
-      expect(result.id).toBe(chatId);
-      expect(prisma.doctorNurseAssignment.findFirst).not.toHaveBeenCalled();
-      expect(prisma.doctorProfile.findUnique).not.toHaveBeenCalled();
-      expect(prisma.chat.create).not.toHaveBeenCalled();
-    });
+        expect(result.id).toBe(chatId);
+        expect(prisma.doctorNurseAssignment.findFirst).not.toHaveBeenCalled();
+        expect(prisma.doctorProfile.findUnique).not.toHaveBeenCalled();
+        expect(prisma.chat.create).not.toHaveBeenCalled();
+      },
+    );
 
     it('should still refuse a banned initiator who already has a chat', async () => {
       prisma.user.findUnique
@@ -680,17 +809,17 @@ describe('ChatService', () => {
     it('should throw NotFoundException when chat not found', async () => {
       prisma.chat.findUnique.mockResolvedValue(null);
 
-      await expect(
-        service.getChatById(uuid(), patientId),
-      ).rejects.toThrow(NotFoundException);
+      await expect(service.getChatById(uuid(), patientId)).rejects.toThrow(
+        NotFoundException,
+      );
     });
 
     it('should throw ForbiddenException when user is not a participant', async () => {
       prisma.chat.findUnique.mockResolvedValue(mockChat);
 
-      await expect(
-        service.getChatById(chatId, uuid()),
-      ).rejects.toThrow(ForbiddenException);
+      await expect(service.getChatById(chatId, uuid())).rejects.toThrow(
+        ForbiddenException,
+      );
     });
   });
 
@@ -713,7 +842,10 @@ describe('ChatService', () => {
   describe('sendMessage', () => {
     it('should send a text message', async () => {
       prisma.chat.findUnique.mockResolvedValue(mockChat);
-      prisma.user.findUnique.mockResolvedValue({ isActive: true, isBanned: false });
+      prisma.user.findUnique.mockResolvedValue({
+        isActive: true,
+        isBanned: false,
+      });
       prisma.message.create.mockResolvedValue(mockMessage);
       prisma.chat.update.mockResolvedValue(mockChat);
 
@@ -762,7 +894,10 @@ describe('ChatService', () => {
 
     it('should throw ForbiddenException when sender is deactivated', async () => {
       prisma.chat.findUnique.mockResolvedValue(mockChat);
-      prisma.user.findUnique.mockResolvedValue({ isActive: false, isBanned: false });
+      prisma.user.findUnique.mockResolvedValue({
+        isActive: false,
+        isBanned: false,
+      });
 
       await expect(
         service.sendMessage(chatId, patientId, { content: 'hi' }),
@@ -771,7 +906,10 @@ describe('ChatService', () => {
 
     it('should throw ForbiddenException when sender is banned', async () => {
       prisma.chat.findUnique.mockResolvedValue(mockChat);
-      prisma.user.findUnique.mockResolvedValue({ isActive: true, isBanned: true });
+      prisma.user.findUnique.mockResolvedValue({
+        isActive: true,
+        isBanned: true,
+      });
 
       await expect(
         service.sendMessage(chatId, patientId, { content: 'hi' }),
@@ -780,7 +918,10 @@ describe('ChatService', () => {
 
     it('should handle repliedToId correctly', async () => {
       prisma.chat.findUnique.mockResolvedValue(mockChat);
-      prisma.user.findUnique.mockResolvedValue({ isActive: true, isBanned: false });
+      prisma.user.findUnique.mockResolvedValue({
+        isActive: true,
+        isBanned: false,
+      });
       prisma.message.findUnique.mockResolvedValue({
         id: BigInt(5),
         chatId,
@@ -824,9 +965,9 @@ describe('ChatService', () => {
     it('should throw if user is not a participant', async () => {
       prisma.chat.findUnique.mockResolvedValue(mockChat);
 
-      await expect(
-        service.getMessages(chatId, uuid(), 0, 50),
-      ).rejects.toThrow(ForbiddenException);
+      await expect(service.getMessages(chatId, uuid(), 0, 50)).rejects.toThrow(
+        ForbiddenException,
+      );
     });
   });
 
@@ -855,7 +996,10 @@ describe('ChatService', () => {
     it('should skip messages already read by the user', async () => {
       prisma.chat.findUnique.mockResolvedValue(mockChat);
       prisma.message.findMany.mockResolvedValue([
-        { id: BigInt(1), readBy: [{ userId: doctorId, readAt: new Date().toISOString() }] },
+        {
+          id: BigInt(1),
+          readBy: [{ userId: doctorId, readAt: new Date().toISOString() }],
+        },
       ]);
       prisma.message.update.mockResolvedValue({});
       prisma.chatParticipant.update.mockResolvedValue({});
@@ -941,9 +1085,9 @@ describe('ChatService', () => {
     it('should throw ForbiddenException if user is not the sender', async () => {
       prisma.message.findUnique.mockResolvedValue(mockMessage);
 
-      await expect(
-        service.deleteMessage(bigIntId, doctorId),
-      ).rejects.toThrow(ForbiddenException);
+      await expect(service.deleteMessage(bigIntId, doctorId)).rejects.toThrow(
+        ForbiddenException,
+      );
     });
   });
 
@@ -999,7 +1143,12 @@ describe('ChatService', () => {
       const msgWithReply = {
         ...mockMessage,
         repliedToId: BigInt(5),
-        repliedTo: { id: BigInt(5), content: 'Original', senderId: doctorId, type: MessageTypeEnum.TEXT },
+        repliedTo: {
+          id: BigInt(5),
+          content: 'Original',
+          senderId: doctorId,
+          type: MessageTypeEnum.TEXT,
+        },
       };
       const serialized = service.serializeMessage(msgWithReply);
       expect(serialized.repliedToId).toBe('5');

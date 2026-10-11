@@ -1,6 +1,9 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
-import { FastifyAdapter, NestFastifyApplication } from '@nestjs/platform-fastify';
+import {
+  FastifyAdapter,
+  NestFastifyApplication,
+} from '@nestjs/platform-fastify';
 import { ExceptionTemplateFilter } from './common/filters/exception-template.filter';
 import { ResponseTemplateInterceptor } from './common/interceptors/response-template.interceptor';
 import { RequestLoggingInterceptor } from './common/interceptors/request-logging.interceptor';
@@ -26,8 +29,7 @@ async function bootstrap() {
   );
 
   const corsOrigin = process.env.CORS_ORIGIN || 'http://localhost:5173';
-  if(corsOrigin.trim() !== "*") {
-
+  if (corsOrigin.trim() !== '*') {
     if (!process.env.CORS_ORIGIN) {
       logger.warn('CORS_ORIGIN not set — defaulting to http://localhost:5173');
     }

@@ -1,5 +1,9 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { ForbiddenException, NotFoundException, StreamableFile } from '@nestjs/common';
+import {
+  ForbiddenException,
+  NotFoundException,
+  StreamableFile,
+} from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { Readable } from 'stream';
 import { FileUploadController } from './file-upload.controller';
@@ -13,11 +17,19 @@ describe('FileUploadController', () => {
   let reply: { header: jest.Mock };
 
   const buildUser = (overrides: Record<string, unknown> = {}) =>
-    ({ id: randomUUID(), isAdmin: false, isSuperAdmin: false, ...overrides }) as any;
+    ({
+      id: randomUUID(),
+      isAdmin: false,
+      isSuperAdmin: false,
+      ...overrides,
+    }) as any;
 
   beforeEach(async () => {
     fileUploadService = {
-      openFile: jest.fn().mockResolvedValue({ stream: Readable.from(['data']), mimeType: 'image/png' }),
+      openFile: jest.fn().mockResolvedValue({
+        stream: Readable.from(['data']),
+        mimeType: 'image/png',
+      }),
     };
     prisma = { doctorDocument: { findFirst: jest.fn() } };
     reply = { header: jest.fn() };
@@ -41,16 +53,24 @@ describe('FileUploadController', () => {
 
       expect(result).toBeInstanceOf(StreamableFile);
       expect(result.options.type).toBe('image/png');
-      expect(fileUploadService.openFile).toHaveBeenCalledWith('avatars', fileName);
-      expect(reply.header).toHaveBeenCalledWith('Cross-Origin-Resource-Policy', 'cross-origin');
+      expect(fileUploadService.openFile).toHaveBeenCalledWith(
+        'avatars',
+        fileName,
+      );
+      expect(reply.header).toHaveBeenCalledWith(
+        'Cross-Origin-Resource-Policy',
+        'cross-origin',
+      );
     });
 
     it('should propagate NotFoundException for a missing avatar', async () => {
-      fileUploadService.openFile.mockRejectedValue(new NotFoundException('File not found.'));
-
-      await expect(controller.getAvatar(`${randomUUID()}.png`, reply as any)).rejects.toThrow(
-        NotFoundException,
+      fileUploadService.openFile.mockRejectedValue(
+        new NotFoundException('File not found.'),
       );
+
+      await expect(
+        controller.getAvatar(`${randomUUID()}.png`, reply as any),
+      ).rejects.toThrow(NotFoundException);
     });
   });
 
@@ -59,7 +79,9 @@ describe('FileUploadController', () => {
     const ownerUserId = randomUUID();
 
     beforeEach(() => {
-      prisma.doctorDocument.findFirst.mockResolvedValue({ doctor: { userId: ownerUserId } });
+      prisma.doctorDocument.findFirst.mockResolvedValue({
+        doctor: { userId: ownerUserId },
+      });
       fileUploadService.openFile.mockResolvedValue({
         stream: Readable.from(['%PDF']),
         mimeType: 'application/pdf',
@@ -67,7 +89,11 @@ describe('FileUploadController', () => {
     });
 
     it('should look the document up by its stored URL', async () => {
-      await controller.getDoctorDocument(fileName, buildUser({ id: ownerUserId }), reply as any);
+      await controller.getDoctorDocument(
+        fileName,
+        buildUser({ id: ownerUserId }),
+        reply as any,
+      );
 
       expect(prisma.doctorDocument.findFirst).toHaveBeenCalledWith({
         where: { fileUrl: `/uploads/doctor-documents/${fileName}` },
@@ -79,14 +105,27 @@ describe('FileUploadController', () => {
       ['the owning doctor', { id: ownerUserId }],
       ['an admin', { isAdmin: true }],
       ['a super admin', { isSuperAdmin: true }],
-    ])('should stream the document to %s without caching', async (_label, overrides) => {
-      const result = await controller.getDoctorDocument(fileName, buildUser(overrides), reply as any);
+    ])(
+      'should stream the document to %s without caching',
+      async (_label, overrides) => {
+        const result = await controller.getDoctorDocument(
+          fileName,
+          buildUser(overrides),
+          reply as any,
+        );
 
-      expect(result).toBeInstanceOf(StreamableFile);
-      expect(result.options.type).toBe('application/pdf');
-      expect(fileUploadService.openFile).toHaveBeenCalledWith('doctor-documents', fileName);
-      expect(reply.header).toHaveBeenCalledWith('Cache-Control', 'private, no-store');
-    });
+        expect(result).toBeInstanceOf(StreamableFile);
+        expect(result.options.type).toBe('application/pdf');
+        expect(fileUploadService.openFile).toHaveBeenCalledWith(
+          'doctor-documents',
+          fileName,
+        );
+        expect(reply.header).toHaveBeenCalledWith(
+          'Cache-Control',
+          'private, no-store',
+        );
+      },
+    );
 
     it('should forbid any other user without reading the file', async () => {
       await expect(
@@ -99,7 +138,11 @@ describe('FileUploadController', () => {
       prisma.doctorDocument.findFirst.mockResolvedValue(null);
 
       await expect(
-        controller.getDoctorDocument(fileName, buildUser({ isAdmin: true }), reply as any),
+        controller.getDoctorDocument(
+          fileName,
+          buildUser({ isAdmin: true }),
+          reply as any,
+        ),
       ).rejects.toThrow(NotFoundException);
       expect(fileUploadService.openFile).not.toHaveBeenCalled();
     });

@@ -8,7 +8,11 @@
  *   - SuperAdminGuard    — superAdmin-only check
  *   - OptionalAuthGuard  — optional session (guest-friendly)
  */
-import { ExecutionContext, ForbiddenException, UnauthorizedException } from '@nestjs/common';
+import {
+  ExecutionContext,
+  ForbiddenException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { CookieAuthGuard } from './cookie-auth.guard';
 import { AdminGuard } from './admin.guard';
@@ -82,7 +86,9 @@ describe('CookieAuthGuard', () => {
     const ctx = createMockContext({ id: randomUuid(), isActive: false });
     expect(() => guard.canActivate(ctx)).toThrow(ForbiddenException);
     expect(() => guard.canActivate(ctx)).toThrow('Account is deactivated');
-    expect((ctx.switchToHttp().getRequest() as any).session.delete).toHaveBeenCalled();
+    expect(
+      (ctx.switchToHttp().getRequest() as any).session.delete,
+    ).toHaveBeenCalled();
   });
 
   it('should set request.user and return true for valid active session', () => {
@@ -138,7 +144,8 @@ describe('CookieAuthGuard', () => {
       ...overrides,
     });
 
-    const requestOf = (ctx: ExecutionContext) => ctx.switchToHttp().getRequest() as any;
+    const requestOf = (ctx: ExecutionContext) =>
+      ctx.switchToHttp().getRequest() as any;
 
     it('should verify user status from DB and return true for active user', async () => {
       const user = sessionUser();
@@ -156,20 +163,34 @@ describe('CookieAuthGuard', () => {
 
     it('should throw ForbiddenException when DB shows user is banned', async () => {
       const user = { id: randomUuid(), isActive: true, role: 'PATIENT' };
-      mockPrisma.user.findFirst.mockResolvedValue({ isActive: true, isBanned: true, banReason: 'spam' });
+      mockPrisma.user.findFirst.mockResolvedValue({
+        isActive: true,
+        isBanned: true,
+        banReason: 'spam',
+      });
       const ctx = createMockContext(user);
 
-      await expect(guardWithPrisma.canActivate(ctx)).rejects.toThrow(ForbiddenException);
+      await expect(guardWithPrisma.canActivate(ctx)).rejects.toThrow(
+        ForbiddenException,
+      );
     });
 
     it('should throw ForbiddenException and clear the session when DB shows user is deactivated', async () => {
       const user = { id: randomUuid(), isActive: true, role: 'PATIENT' };
-      mockPrisma.user.findFirst.mockResolvedValue({ isActive: false, isBanned: false, banReason: null });
+      mockPrisma.user.findFirst.mockResolvedValue({
+        isActive: false,
+        isBanned: false,
+        banReason: null,
+      });
       const ctx = createMockContext(user);
 
-      await expect(guardWithPrisma.canActivate(ctx)).rejects.toThrow(ForbiddenException);
+      await expect(guardWithPrisma.canActivate(ctx)).rejects.toThrow(
+        ForbiddenException,
+      );
       // Otherwise the user can't even log out: /auth/logout is behind this guard.
-      expect((ctx.switchToHttp().getRequest() as any).session.delete).toHaveBeenCalled();
+      expect(
+        (ctx.switchToHttp().getRequest() as any).session.delete,
+      ).toHaveBeenCalled();
     });
 
     it('should log warning and return true when user not found in DB', async () => {
@@ -183,7 +204,9 @@ describe('CookieAuthGuard', () => {
 
     it('should fall through on DB error (trust session)', async () => {
       const user = { id: randomUuid(), isActive: true, role: 'PATIENT' };
-      mockPrisma.user.findFirst.mockRejectedValue(new Error('DB connection lost'));
+      mockPrisma.user.findFirst.mockRejectedValue(
+        new Error('DB connection lost'),
+      );
       const ctx = createMockContext(user);
 
       const result = await guardWithPrisma.canActivate(ctx);
@@ -216,15 +239,22 @@ describe('CookieAuthGuard', () => {
 
     it('should strip admin rights from a demoted admin and save that in the session', async () => {
       const user = sessionUser({ role: 'NONE', isAdmin: true });
-      mockPrisma.user.findFirst.mockResolvedValue(dbStatus({ role: 'NONE', isAdmin: false }));
+      mockPrisma.user.findFirst.mockResolvedValue(
+        dbStatus({ role: 'NONE', isAdmin: false }),
+      );
       const ctx = createMockContext(user);
 
       await guardWithPrisma.canActivate(ctx);
 
       const refreshed = { ...user, isAdmin: false };
       expect(requestOf(ctx).user).toEqual(refreshed);
-      expect(requestOf(ctx).session.set).toHaveBeenCalledWith('user', refreshed);
-      expect(() => new AdminGuard().canActivate(ctx)).toThrow(ForbiddenException);
+      expect(requestOf(ctx).session.set).toHaveBeenCalledWith(
+        'user',
+        refreshed,
+      );
+      expect(() => new AdminGuard().canActivate(ctx)).toThrow(
+        ForbiddenException,
+      );
     });
 
     it('should apply a role change made after login', async () => {
@@ -255,7 +285,9 @@ describe('CookieAuthGuard', () => {
       const user = sessionUser({ isAdmin: true });
       mockPrisma.user.findFirst.mockResolvedValue(dbStatus({ isAdmin: false }));
 
-      await guardWithPrisma.canActivate(createMockContext({ ...user, isAdmin: false }));
+      await guardWithPrisma.canActivate(
+        createMockContext({ ...user, isAdmin: false }),
+      );
       const ctx = createMockContext(user);
       await guardWithPrisma.canActivate(ctx);
 
@@ -265,10 +297,14 @@ describe('CookieAuthGuard', () => {
 
     it('should re-read the DB after UserStatusCache.invalidate instead of waiting for the TTL', async () => {
       const user = sessionUser({ role: 'NONE', isAdmin: true });
-      mockPrisma.user.findFirst.mockResolvedValueOnce(dbStatus({ role: 'NONE', isAdmin: true }));
+      mockPrisma.user.findFirst.mockResolvedValueOnce(
+        dbStatus({ role: 'NONE', isAdmin: true }),
+      );
       await guardWithPrisma.canActivate(createMockContext(user));
 
-      mockPrisma.user.findFirst.mockResolvedValueOnce(dbStatus({ role: 'NONE', isAdmin: false }));
+      mockPrisma.user.findFirst.mockResolvedValueOnce(
+        dbStatus({ role: 'NONE', isAdmin: false }),
+      );
       const staleCtx = createMockContext(user);
       await guardWithPrisma.canActivate(staleCtx);
       expect(requestOf(staleCtx).user.isAdmin).toBe(true);
@@ -284,19 +320,25 @@ describe('CookieAuthGuard', () => {
     it('should not let a request that read before a demotion keep admin rights for later requests', async () => {
       const user = sessionUser({ role: 'NONE', isAdmin: true });
       let finishRead!: (value: unknown) => void;
-      mockPrisma.user.findFirst.mockReturnValueOnce(new Promise((resolve) => (finishRead = resolve)));
+      mockPrisma.user.findFirst.mockReturnValueOnce(
+        new Promise((resolve) => (finishRead = resolve)),
+      );
 
       const inFlight = guardWithPrisma.canActivate(createMockContext(user));
       UserStatusCache.invalidate(user.id);
       finishRead(dbStatus({ role: 'NONE', isAdmin: true }));
       await inFlight;
 
-      mockPrisma.user.findFirst.mockResolvedValueOnce(dbStatus({ role: 'NONE', isAdmin: false }));
+      mockPrisma.user.findFirst.mockResolvedValueOnce(
+        dbStatus({ role: 'NONE', isAdmin: false }),
+      );
       const ctx = createMockContext(user);
       await guardWithPrisma.canActivate(ctx);
 
       expect(requestOf(ctx).user.isAdmin).toBe(false);
-      expect(() => new AdminGuard().canActivate(ctx)).toThrow(ForbiddenException);
+      expect(() => new AdminGuard().canActivate(ctx)).toThrow(
+        ForbiddenException,
+      );
     });
 
     it('should apply a ban right after UserStatusCache.invalidate', async () => {
@@ -304,17 +346,23 @@ describe('CookieAuthGuard', () => {
       mockPrisma.user.findFirst.mockResolvedValueOnce(dbStatus());
       await guardWithPrisma.canActivate(createMockContext(user));
 
-      mockPrisma.user.findFirst.mockResolvedValueOnce(dbStatus({ isBanned: true, banReason: 'abuse' }));
+      mockPrisma.user.findFirst.mockResolvedValueOnce(
+        dbStatus({ isBanned: true, banReason: 'abuse' }),
+      );
       UserStatusCache.invalidate(user.id);
       const ctx = createMockContext(user);
 
-      await expect(guardWithPrisma.canActivate(ctx)).rejects.toThrow('Reason: abuse');
+      await expect(guardWithPrisma.canActivate(ctx)).rejects.toThrow(
+        'Reason: abuse',
+      );
       expect(requestOf(ctx).session.delete).toHaveBeenCalled();
     });
 
     it('should leave the session user in place when the DB is unreachable', async () => {
       const user = sessionUser({ isAdmin: true });
-      mockPrisma.user.findFirst.mockRejectedValue(new Error('DB connection lost'));
+      mockPrisma.user.findFirst.mockRejectedValue(
+        new Error('DB connection lost'),
+      );
       const ctx = createMockContext(user);
 
       await guardWithPrisma.canActivate(ctx);
@@ -344,17 +392,29 @@ describe('AdminGuard', () => {
   });
 
   it('should throw ForbiddenException for non-admin user', () => {
-    const ctx = createMockContext(null, { id: randomUuid(), isAdmin: false, isSuperAdmin: false });
+    const ctx = createMockContext(null, {
+      id: randomUuid(),
+      isAdmin: false,
+      isSuperAdmin: false,
+    });
     expect(() => guard.canActivate(ctx)).toThrow(ForbiddenException);
   });
 
   it('should return true for admin user', () => {
-    const ctx = createMockContext(null, { id: randomUuid(), isAdmin: true, isSuperAdmin: false });
+    const ctx = createMockContext(null, {
+      id: randomUuid(),
+      isAdmin: true,
+      isSuperAdmin: false,
+    });
     expect(guard.canActivate(ctx)).toBe(true);
   });
 
   it('should return true for superAdmin user', () => {
-    const ctx = createMockContext(null, { id: randomUuid(), isAdmin: false, isSuperAdmin: true });
+    const ctx = createMockContext(null, {
+      id: randomUuid(),
+      isAdmin: false,
+      isSuperAdmin: true,
+    });
     expect(guard.canActivate(ctx)).toBe(true);
   });
 });
@@ -449,12 +509,18 @@ describe('SuperAdminGuard', () => {
   });
 
   it('should throw ForbiddenException for non-superAdmin user', () => {
-    const ctx = createMockContext(null, { id: randomUuid(), isSuperAdmin: false });
+    const ctx = createMockContext(null, {
+      id: randomUuid(),
+      isSuperAdmin: false,
+    });
     expect(() => guard.canActivate(ctx)).toThrow(ForbiddenException);
   });
 
   it('should return true for superAdmin user', () => {
-    const ctx = createMockContext(null, { id: randomUuid(), isSuperAdmin: true });
+    const ctx = createMockContext(null, {
+      id: randomUuid(),
+      isSuperAdmin: true,
+    });
     expect(guard.canActivate(ctx)).toBe(true);
   });
 });
@@ -466,7 +532,8 @@ describe('SuperAdminGuard', () => {
 describe('OptionalAuthGuard', () => {
   let guard: OptionalAuthGuard;
 
-  const requestOf = (ctx: ExecutionContext) => ctx.switchToHttp().getRequest() as any;
+  const requestOf = (ctx: ExecutionContext) =>
+    ctx.switchToHttp().getRequest() as any;
 
   beforeEach(() => {
     guard = new OptionalAuthGuard();
@@ -505,14 +572,21 @@ describe('OptionalAuthGuard', () => {
   it.each([
     ['deactivated', { isActive: false }],
     ['banned', { isBanned: true }],
-  ])('should treat a session that already says %s as a guest and clear it', async (_case, flags) => {
-    const ctx = createMockContext({ id: randomUuid(), role: 'PATIENT', ...flags });
+  ])(
+    'should treat a session that already says %s as a guest and clear it',
+    async (_case, flags) => {
+      const ctx = createMockContext({
+        id: randomUuid(),
+        role: 'PATIENT',
+        ...flags,
+      });
 
-    await expect(guard.canActivate(ctx)).resolves.toBe(true);
+      await expect(guard.canActivate(ctx)).resolves.toBe(true);
 
-    expect(requestOf(ctx).user).toBeNull();
-    expect(requestOf(ctx).session.delete).toHaveBeenCalled();
-  });
+      expect(requestOf(ctx).user).toBeNull();
+      expect(requestOf(ctx).session.delete).toHaveBeenCalled();
+    },
+  );
 
   describe('with PrismaService (DB verification)', () => {
     let mockPrisma: { user: { findFirst: jest.Mock } };
@@ -537,7 +611,9 @@ describe('OptionalAuthGuard', () => {
     });
 
     beforeEach(() => {
-      mockPrisma = { user: { findFirst: jest.fn().mockResolvedValue(dbStatus()) } };
+      mockPrisma = {
+        user: { findFirst: jest.fn().mockResolvedValue(dbStatus()) },
+      };
       guard = new OptionalAuthGuard(mockPrisma as any);
       (UserStatusCache as any).entries.clear();
     });
@@ -559,26 +635,34 @@ describe('OptionalAuthGuard', () => {
     it.each([
       ['banned', { isBanned: true, banReason: 'abuse' }],
       ['deactivated', { isActive: false }],
-    ])('should treat a user %s since login as a guest and clear the session', async (_case, flags) => {
-      mockPrisma.user.findFirst.mockResolvedValue(dbStatus(flags));
-      const ctx = createMockContext(sessionUser());
+    ])(
+      'should treat a user %s since login as a guest and clear the session',
+      async (_case, flags) => {
+        mockPrisma.user.findFirst.mockResolvedValue(dbStatus(flags));
+        const ctx = createMockContext(sessionUser());
 
-      await expect(guard.canActivate(ctx)).resolves.toBe(true);
+        await expect(guard.canActivate(ctx)).resolves.toBe(true);
 
-      expect(requestOf(ctx).user).toBeNull();
-      expect(requestOf(ctx).session.delete).toHaveBeenCalled();
-    });
+        expect(requestOf(ctx).user).toBeNull();
+        expect(requestOf(ctx).session.delete).toHaveBeenCalled();
+      },
+    );
 
     it('should apply role and admin changes made since login and save them in the session', async () => {
       const user = sessionUser({ role: 'PATIENT', isAdmin: true });
-      mockPrisma.user.findFirst.mockResolvedValue(dbStatus({ role: 'NURSE', isAdmin: false }));
+      mockPrisma.user.findFirst.mockResolvedValue(
+        dbStatus({ role: 'NURSE', isAdmin: false }),
+      );
       const ctx = createMockContext(user);
 
       await guard.canActivate(ctx);
 
       const refreshed = { ...user, role: 'NURSE', isAdmin: false };
       expect(requestOf(ctx).user).toEqual(refreshed);
-      expect(requestOf(ctx).session.set).toHaveBeenCalledWith('user', refreshed);
+      expect(requestOf(ctx).session.set).toHaveBeenCalledWith(
+        'user',
+        refreshed,
+      );
     });
 
     it('should treat a user missing from the DB as a guest', async () => {
@@ -591,7 +675,9 @@ describe('OptionalAuthGuard', () => {
     });
 
     it('should fall back to a guest, keeping the session, when the DB is unreachable', async () => {
-      mockPrisma.user.findFirst.mockRejectedValue(new Error('DB connection lost'));
+      mockPrisma.user.findFirst.mockRejectedValue(
+        new Error('DB connection lost'),
+      );
       const ctx = createMockContext(sessionUser());
 
       await expect(guard.canActivate(ctx)).resolves.toBe(true);

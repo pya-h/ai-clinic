@@ -116,8 +116,12 @@ export class FileUploadService {
     folder: UploadFolder,
     fileName: string,
   ): Promise<{ stream: Readable; mimeType: string }> {
-    const mimeType = MIME_TYPE_BY_EXTENSION[path.extname(fileName).toLowerCase()];
-    if (!STORED_FILE_NAME.test(fileName) || !ALLOWED_MIME_TYPES[folder].includes(mimeType)) {
+    const mimeType =
+      MIME_TYPE_BY_EXTENSION[path.extname(fileName).toLowerCase()];
+    if (
+      !STORED_FILE_NAME.test(fileName) ||
+      !ALLOWED_MIME_TYPES[folder].includes(mimeType)
+    ) {
       throw new NotFoundException('File not found.');
     }
 
