@@ -370,7 +370,7 @@ Socket.IO namespaces on the same port. The handshake must carry the session cook
 | Server → client | `chat:message`, `chat:typing`, `chat:read`, `chat:edited`, `chat:deleted`, `user:online`, `chat:error` |
 
 - On connect a socket joins the rooms of all its user's chats.
-- `chat:join` marks the chat as open for that socket and marks its message notifications read; `chat:leave` closes it.
+- `chat:join` marks the chat as open for that socket and marks its message notifications read; `chat:leave` closes it (the socket keeps receiving the chat's live events).
 - Participants who don't have the chat open on any socket get one grouped `NEW_CHAT_MESSAGE` notification per chat, updated as messages arrive. Messages sent over HTTP are delivered the same way.
 
 ### `/matching`
