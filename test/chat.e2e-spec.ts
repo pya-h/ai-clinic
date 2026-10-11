@@ -765,7 +765,7 @@ describe('Chat (e2e)', () => {
             senderId: patientUser.id,
           }),
         });
-        // Nobody is connected, so the other participant counts as offline.
+        // Nobody is connected, so nobody has the chat open.
         await flushPromises();
         expect(notifications.onNewChatMessage).toHaveBeenCalledWith(
           chatId,

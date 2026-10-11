@@ -87,6 +87,7 @@ describe('ChatGateway', () => {
 
     notificationService = {
       onNewChatMessage: jest.fn().mockResolvedValue(undefined),
+      markChatMessagesRead: jest.fn().mockResolvedValue({ count: 0 }),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -354,14 +355,14 @@ describe('ChatGateway', () => {
       senderId,
     });
 
-    /** Users in `online` have a socket in their personal room. */
-    const withOnlineUsers = (online: string[]) => {
+    /** Users in `viewing` have the message's chat open (a socket in its viewing room); everyone is online. */
+    const withViewers = (chatId: string, viewing: string[]) => {
       (gateway.server.in as jest.Mock).mockImplementation((room: string) => ({
-        fetchSockets: jest
-          .fn()
-          .mockResolvedValue(
-            online.some((id) => room === `user:${id}`) ? [{ id: 'socket' }] : [],
-          ),
+        fetchSockets: jest.fn().mockResolvedValue(
+          room === `chat-open:${chatId}`
+            ? viewing.map((id) => ({ id: randomUUID(), data: { user: { id } } }))
+            : [{ id: randomUUID(), data: { user: { id: 'whoever' } } }],
+        ),
       }));
     };
 
@@ -376,32 +377,46 @@ describe('ChatGateway', () => {
       });
     });
 
-    it('should notify only the offline participants other than the sender', async () => {
-      const [sender, offline, online] = [randomUUID(), randomUUID(), randomUUID()];
+    it("should notify the participants who don't have the chat open, other than the sender", async () => {
+      const [sender, notViewing, viewing] = [randomUUID(), randomUUID(), randomUUID()];
       const message = buildMessage(sender);
       const senderName = `Name ${randomUUID().slice(0, 6)}`;
-      chatService.getChatParticipantUserIds.mockResolvedValue([sender, offline, online]);
-      withOnlineUsers([sender, online]);
+      chatService.getChatParticipantUserIds.mockResolvedValue([sender, notViewing, viewing]);
+      withViewers(message.chatId, [sender, viewing]);
 
       gateway.announceNewMessage(message as any, senderName);
       await flushPromises();
 
       expect(chatService.getChatParticipantUserIds).toHaveBeenCalledWith(message.chatId);
+      expect(gateway.server.in).toHaveBeenCalledWith(`chat-open:${message.chatId}`);
       expect(notificationService.onNewChatMessage).toHaveBeenCalledTimes(1);
       expect(notificationService.onNewChatMessage).toHaveBeenCalledWith(
         message.chatId,
         sender,
-        offline,
+        notViewing,
         senderName,
       );
     });
 
-    it('should notify nobody when every other participant is online', async () => {
+    it('should notify an online participant who has only another chat open', async () => {
       const [sender, other] = [randomUUID(), randomUUID()];
+      const message = buildMessage(sender);
       chatService.getChatParticipantUserIds.mockResolvedValue([sender, other]);
-      withOnlineUsers([other]);
+      withViewers(randomUUID(), [other]);
 
-      gateway.announceNewMessage(buildMessage(sender) as any, 'Jane Roe');
+      gateway.announceNewMessage(message as any, 'Jane Roe');
+      await flushPromises();
+
+      expect(notificationService.onNewChatMessage).toHaveBeenCalledWith(message.chatId, sender, other, 'Jane Roe');
+    });
+
+    it('should notify nobody when every other participant has the chat open', async () => {
+      const [sender, other] = [randomUUID(), randomUUID()];
+      const message = buildMessage(sender);
+      chatService.getChatParticipantUserIds.mockResolvedValue([sender, other]);
+      withViewers(message.chatId, [other]);
+
+      gateway.announceNewMessage(message as any, 'Jane Roe');
       await flushPromises();
 
       expect(notificationService.onNewChatMessage).not.toHaveBeenCalled();
@@ -411,7 +426,7 @@ describe('ChatGateway', () => {
       const [sender, offline] = [randomUUID(), randomUUID()];
       const message = buildMessage(sender);
       chatService.getChatParticipantUserIds.mockResolvedValue([sender, offline]);
-      withOnlineUsers([sender]);
+      withViewers(message.chatId, [sender]);
       (gateway.server.to as jest.Mock).mockImplementation(() => {
         throw new Error('adapter down');
       });
@@ -641,7 +656,7 @@ describe('ChatGateway', () => {
   // ─── handleJoin ───
 
   describe('handleJoin (chat:join)', () => {
-    it('should join the chat room after verifying participation', async () => {
+    it('should join the chat room and mark the socket as viewing it after verifying participation', async () => {
       const client = createMockSocket();
 
       await gateway.handleJoin(client as any, { chatId: 'chat-1' });
@@ -651,6 +666,38 @@ describe('ChatGateway', () => {
         'user-1',
       );
       expect(client.join).toHaveBeenCalledWith('chat:chat-1');
+      expect(client.join).toHaveBeenCalledWith('chat-open:chat-1');
+    });
+
+    it("should mark the user's notifications about the chat's messages read", async () => {
+      const chatId = randomUUID();
+
+      await gateway.handleJoin(createMockSocket() as any, { chatId });
+      await flushPromises();
+
+      expect(notificationService.markChatMessagesRead).toHaveBeenCalledWith('user-1', chatId);
+    });
+
+    it('should still join, and log, when marking the notifications read fails', async () => {
+      const client = createMockSocket();
+      notificationService.markChatMessagesRead.mockRejectedValue(new Error('DB down'));
+      const logError = jest.spyOn((gateway as any).logger, 'error').mockImplementation(() => undefined);
+
+      await expect(gateway.handleJoin(client as any, { chatId: 'chat-1' })).resolves.toBeUndefined();
+      await flushPromises();
+
+      expect(client.join).toHaveBeenCalledWith('chat-open:chat-1');
+      expect(logError).toHaveBeenCalledWith('Marking chat notifications read failed: DB down');
+    });
+
+    it('should neither join nor mark anything read for a non-participant', async () => {
+      const client = createMockSocket();
+      chatService.assertChatParticipant.mockRejectedValue(new Error('not a participant'));
+
+      await expect(gateway.handleJoin(client as any, { chatId: 'chat-1' })).rejects.toThrow('not a participant');
+
+      expect(client.join).not.toHaveBeenCalled();
+      expect(notificationService.markChatMessagesRead).not.toHaveBeenCalled();
     });
 
     it('should throw WsException when chatId is missing', async () => {
@@ -665,12 +712,13 @@ describe('ChatGateway', () => {
   // ─── handleLeave ───
 
   describe('handleLeave (chat:leave)', () => {
-    it('should leave the chat room', () => {
+    it('should leave the chat room and stop viewing it', () => {
       const client = createMockSocket();
 
       gateway.handleLeave(client as any, { chatId: 'chat-1' });
 
       expect(client.leave).toHaveBeenCalledWith('chat:chat-1');
+      expect(client.leave).toHaveBeenCalledWith('chat-open:chat-1');
     });
 
     it('should throw WsException when chatId is missing', () => {

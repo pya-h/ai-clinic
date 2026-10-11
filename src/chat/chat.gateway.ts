@@ -23,6 +23,12 @@ import { UserStatusCache, accountBlockReason } from '../auth/user-status';
 import { sessionUserFromCookieHeader } from '../auth/socket-session';
 
 /**
+ * Sockets with a chat open (between chat:join and chat:leave). Every socket is in
+ * all of its user's `chat:` rooms from connect, so those can't tell who is reading.
+ */
+const viewingRoom = (chatId: string) => `chat-open:${chatId}`;
+
+/**
  * Chat WebSocket Gateway
  *
  * Provides real-time messaging (chat:message), typing indicators (chat:typing),
@@ -363,6 +369,11 @@ export class ChatGateway
     await this.chatService.assertChatParticipant(payload.chatId, user.id);
 
     client.join(`chat:${payload.chatId}`);
+    client.join(viewingRoom(payload.chatId));
+
+    this.notificationService
+      .markChatMessagesRead(user.id, payload.chatId)
+      .catch((e) => this.logger.error(`Marking chat notifications read failed: ${e.message}`));
   }
 
   @SubscribeMessage('chat:leave')
@@ -379,13 +390,15 @@ export class ChatGateway
     }
 
     client.leave(`chat:${payload.chatId}`);
+    client.leave(viewingRoom(payload.chatId));
   }
 
   // ─────────────────────────── Helpers ───────────────────────────
 
   /**
    * Delivers a saved message the same way whether it was sent over WebSocket
-   * or HTTP: pushed to the chat room, with offline participants notified.
+   * or HTTP: pushed to the chat room, with participants who don't have the chat
+   * open (offline, or online elsewhere) notified.
    */
   announceNewMessage(message: Message, senderName: string): void {
     // The message is already saved; a failed push must not fail the send.
@@ -397,7 +410,7 @@ export class ChatGateway
       this.logger.error(`Chat broadcast failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
     }
 
-    this.notifyOfflineParticipants(
+    this.notifyParticipantsNotViewing(
       message.chatId,
       message.senderId,
       senderName,
@@ -431,24 +444,24 @@ export class ChatGateway
     }
   }
 
-  private async notifyOfflineParticipants(
+  private async notifyParticipantsNotViewing(
     chatId: string,
     senderId: string,
     senderName: string,
   ): Promise<void> {
     const participantIds = await this.chatService.getChatParticipantUserIds(chatId);
+    const viewers = new Set(
+      (await this.server.in(viewingRoom(chatId)).fetchSockets()).map((socket) => socket.data.user?.id),
+    );
 
     for (const participantUserId of participantIds) {
-      if (participantUserId === senderId) continue;
-      const sockets = await this.server.in(`user:${participantUserId}`).fetchSockets();
-      if (sockets.length === 0) {
-        await this.notificationService.onNewChatMessage(
-          chatId,
-          senderId,
-          participantUserId,
-          senderName,
-        );
-      }
+      if (participantUserId === senderId || viewers.has(participantUserId)) continue;
+      await this.notificationService.onNewChatMessage(
+        chatId,
+        senderId,
+        participantUserId,
+        senderName,
+      );
     }
   }
 

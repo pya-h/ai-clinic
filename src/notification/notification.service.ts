@@ -17,6 +17,8 @@ import { WebPushChannel } from './channels/web-push.channel';
 @Injectable()
 export class NotificationService {
   private readonly logger = new Logger(NotificationService.name);
+  // Per recipient and chat; see onNewChatMessage.
+  private readonly chatMessageQueue = new Map<string, Promise<void>>();
 
   constructor(
     private readonly prisma: PrismaService,
@@ -197,6 +199,10 @@ export class NotificationService {
     );
   }
 
+  /**
+   * Keeps one unread notification per chat: further messages update its count,
+   * text and time instead of adding more. Push is sent for every message.
+   */
   async onNewChatMessage(
     chatId: string,
     senderId: string,
@@ -205,14 +211,78 @@ export class NotificationService {
   ): Promise<void> {
     if (senderId === recipientUserId) return;
 
+    // One at a time per recipient and chat, so a burst of messages updates a single notification.
+    const key = `${recipientUserId}:${chatId}`;
+    const next = (this.chatMessageQueue.get(key) ?? Promise.resolve())
+      .catch(() => undefined)
+      .then(() => this.notifyChatMessage(chatId, senderId, recipientUserId, senderName));
+    this.chatMessageQueue.set(key, next);
+    try {
+      await next;
+    } finally {
+      if (this.chatMessageQueue.get(key) === next) this.chatMessageQueue.delete(key);
+    }
+  }
+
+  /** Marks the user's unread notifications about a chat's messages as read (they opened it). */
+  async markChatMessagesRead(userId: string, chatId: string): Promise<{ count: number }> {
+    return this.prisma.notification.updateMany({
+      where: this.unreadChatMessageWhere(userId, chatId),
+      data: { isRead: true, readAt: new Date() },
+    });
+  }
+
+  private async notifyChatMessage(
+    chatId: string,
+    senderId: string,
+    recipientUserId: string,
+    senderName: string,
+  ): Promise<void> {
+    const unread = await this.prisma.notification.findFirst({
+      where: this.unreadChatMessageWhere(recipientUserId, chatId),
+      orderBy: { createdAt: 'desc' },
+    });
+
+    if (unread) {
+      const previousCount = Number((unread.data as { count?: unknown } | null)?.count) || 1;
+      const content = chatMessageContent(senderName, previousCount + 1);
+      const data = { chatId, senderId, count: previousCount + 1 };
+      // Conditional: if the user read it meanwhile, a new notification starts below.
+      const { count: updated } = await this.prisma.notification.updateMany({
+        where: { id: unread.id, isRead: false },
+        data: { ...content, data, createdAt: new Date(), sentAt: null },
+      });
+      if (updated === 1) {
+        try {
+          await this.pushChannel.send(recipientUserId, content.title, content.body, data);
+          await this.prisma.notification.update({ where: { id: unread.id }, data: { sentAt: new Date() } });
+        } catch (err) {
+          this.logger.error(
+            `Notification dispatch failed for user ${recipientUserId}: ${err instanceof Error ? err.message : 'Unknown error'}`,
+          );
+        }
+        return;
+      }
+    }
+
+    const content = chatMessageContent(senderName, 1);
     await this.send(
       recipientUserId,
       NotificationTypeEnum.NEW_CHAT_MESSAGE,
-      'New Message',
-      `${senderName} sent you a message.`,
-      { chatId, senderId },
+      content.title,
+      content.body,
+      { chatId, senderId, count: 1 },
       NotificationChannelEnum.PUSH,
     );
+  }
+
+  private unreadChatMessageWhere(userId: string, chatId: string) {
+    return {
+      userId,
+      type: NotificationTypeEnum.NEW_CHAT_MESSAGE,
+      isRead: false,
+      data: { path: ['chatId'], equals: chatId },
+    };
   }
 
   async onNewReview(
@@ -325,4 +395,10 @@ export class NotificationService {
       NotificationChannelEnum.BOTH,
     );
   }
+}
+
+function chatMessageContent(senderName: string, count: number): { title: string; body: string } {
+  return count === 1
+    ? { title: 'New Message', body: `${senderName} sent you a message.` }
+    : { title: 'New Messages', body: `${senderName} sent you ${count} messages.` };
 }

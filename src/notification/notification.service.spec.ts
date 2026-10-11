@@ -13,7 +13,8 @@
  *   onNewConsultation    — sends CONSULTATION_REQUEST via BOTH
  *   onDoctorDecision     — accepted vs declined title/body, BOTH channel
  *   onPaymentConfirmed   — sends TWO notifications (doctor BOTH, patient PUSH)
- *   onNewChatMessage     — sends PUSH, skips self-message
+ *   onNewChatMessage     — sends PUSH, skips self-message, one unread notification per chat (count updated, serialized)
+ *   markChatMessagesRead — marks the chat's unread message notifications read
  *   onNewReview          — sends PUSH to doctor
  *   onDoctorVerified     — sends BOTH to doctor
  *   onDoctorRejected     — sends BOTH to doctor with the reason, DOCTOR_VERIFIED type, approved=false
@@ -568,11 +569,20 @@ describe('NotificationService', () => {
             type: NotificationTypeEnum.NEW_CHAT_MESSAGE,
             title: 'New Message',
             body: `${senderName} sent you a message.`,
-            data: { chatId, senderId },
+            data: { chatId, senderId, count: 1 },
             channel: NotificationChannelEnum.PUSH,
           }),
         }),
       );
+      expect(prisma.notification.findFirst).toHaveBeenCalledWith({
+        where: {
+          userId: recipientUserId,
+          type: NotificationTypeEnum.NEW_CHAT_MESSAGE,
+          isRead: false,
+          data: { path: ['chatId'], equals: chatId },
+        },
+        orderBy: { createdAt: 'desc' },
+      });
       expect(pushChannel.send).toHaveBeenCalledTimes(1);
       expect(emailChannel.send).not.toHaveBeenCalled();
     });
@@ -585,6 +595,176 @@ describe('NotificationService', () => {
       expect(prisma.notification.create).not.toHaveBeenCalled();
       expect(pushChannel.send).not.toHaveBeenCalled();
       expect(emailChannel.send).not.toHaveBeenCalled();
+    });
+
+    describe('with an unread notification for the chat', () => {
+      const senderId = randomUUID();
+      const recipientUserId = randomUUID();
+      const senderName = `Dr. ${randomUUID().slice(0, 6)}`;
+
+      it.each([
+        ['a single message', { chatId, senderId, count: 1 }, 2],
+        ['a single message from before counts existed', { chatId, senderId }, 2],
+        ['several messages', { chatId, senderId, count: 3 + Math.floor(Math.random() * 20) }, null],
+      ])('should update the notification of %s instead of adding one, and push', async (_case, data, expected) => {
+        const count = expected ?? (data as { count: number }).count + 1;
+        const unread = buildNotification({ userId: recipientUserId, type: NotificationTypeEnum.NEW_CHAT_MESSAGE, data });
+        prisma.notification.findFirst.mockResolvedValue(unread);
+        prisma.notification.updateMany.mockResolvedValue({ count: 1 });
+        prisma.notification.update.mockResolvedValue(unread);
+
+        await service.onNewChatMessage(chatId, senderId, recipientUserId, senderName);
+
+        const body = `${senderName} sent you ${count} messages.`;
+        expect(prisma.notification.updateMany).toHaveBeenCalledWith({
+          where: { id: unread.id, isRead: false },
+          data: {
+            title: 'New Messages',
+            body,
+            data: { chatId, senderId, count },
+            createdAt: expect.any(Date),
+            sentAt: null,
+          },
+        });
+        expect(prisma.notification.create).not.toHaveBeenCalled();
+        expect(pushChannel.send).toHaveBeenCalledWith(recipientUserId, 'New Messages', body, {
+          chatId,
+          senderId,
+          count,
+        });
+        expect(prisma.notification.update).toHaveBeenCalledWith({
+          where: { id: unread.id },
+          data: { sentAt: expect.any(Date) },
+        });
+      });
+
+      it('should start a new notification when the user read the old one meanwhile', async () => {
+        prisma.notification.findFirst.mockResolvedValue(
+          buildNotification({ type: NotificationTypeEnum.NEW_CHAT_MESSAGE, data: { chatId, senderId, count: 4 } }),
+        );
+        prisma.notification.updateMany.mockResolvedValue({ count: 0 });
+        const created = buildNotification({ userId: recipientUserId });
+        prisma.notification.create.mockResolvedValue(created);
+        prisma.notification.update.mockResolvedValue(created);
+
+        await service.onNewChatMessage(chatId, senderId, recipientUserId, senderName);
+
+        expect(prisma.notification.create).toHaveBeenCalledWith({
+          data: expect.objectContaining({
+            title: 'New Message',
+            body: `${senderName} sent you a message.`,
+            data: { chatId, senderId, count: 1 },
+          }),
+        });
+        expect(pushChannel.send).toHaveBeenCalledTimes(1);
+      });
+
+      it('should keep the updated notification and log when the push fails', async () => {
+        prisma.notification.findFirst.mockResolvedValue(
+          buildNotification({ type: NotificationTypeEnum.NEW_CHAT_MESSAGE, data: { chatId, senderId, count: 1 } }),
+        );
+        prisma.notification.updateMany.mockResolvedValue({ count: 1 });
+        pushChannel.send.mockRejectedValue(new Error('push down'));
+        const logError = jest.spyOn((service as any).logger, 'error').mockImplementation(() => undefined);
+
+        await expect(service.onNewChatMessage(chatId, senderId, recipientUserId, senderName)).resolves.toBeUndefined();
+
+        expect(logError).toHaveBeenCalledWith(expect.stringContaining('push down'));
+        expect(prisma.notification.update).not.toHaveBeenCalled();
+        expect(prisma.notification.create).not.toHaveBeenCalled();
+      });
+    });
+
+    describe('a burst of messages', () => {
+      /** An in-memory notification table that answers the queries onNewChatMessage makes. */
+      const useInMemoryTable = () => {
+        const rows: any[] = [];
+        prisma.notification.findFirst.mockImplementation(async ({ where }: any) => {
+          await new Promise((r) => setTimeout(r, Math.random() * 5));
+          return (
+            rows.find(
+              (n) => n.userId === where.userId && !n.isRead && n.data.chatId === where.data.equals,
+            ) ?? null
+          );
+        });
+        prisma.notification.create.mockImplementation(async ({ data }: any) => {
+          await new Promise((r) => setTimeout(r, Math.random() * 5));
+          const row = buildNotification({ ...data });
+          rows.push(row);
+          return row;
+        });
+        prisma.notification.updateMany.mockImplementation(async ({ where, data }: any) => {
+          const row = rows.find((n) => n.id === where.id && !n.isRead);
+          if (row) Object.assign(row, data);
+          return { count: row ? 1 : 0 };
+        });
+        prisma.notification.update.mockImplementation(async ({ where }: any) => rows.find((n) => n.id === where.id));
+        return rows;
+      };
+
+      it('should leave one notification counting every message, not one per message', async () => {
+        const rows = useInMemoryTable();
+        const [senderId, recipientUserId] = [randomUUID(), randomUUID()];
+        const burst = 3 + Math.floor(Math.random() * 6);
+
+        await Promise.all(
+          Array.from({ length: burst }, () => service.onNewChatMessage(chatId, senderId, recipientUserId, 'Dr. Burst')),
+        );
+
+        expect(rows).toHaveLength(1);
+        expect(rows[0].data).toEqual({ chatId, senderId, count: burst });
+        expect(rows[0].body).toBe(`Dr. Burst sent you ${burst} messages.`);
+        expect(pushChannel.send).toHaveBeenCalledTimes(burst);
+      });
+
+      it('should keep separate notifications per chat and per recipient', async () => {
+        const rows = useInMemoryTable();
+        const [senderId, recipientA, recipientB, otherChat] = [randomUUID(), randomUUID(), randomUUID(), randomUUID()];
+
+        await Promise.all([
+          service.onNewChatMessage(chatId, senderId, recipientA, 'Dr. A'),
+          service.onNewChatMessage(otherChat, senderId, recipientA, 'Dr. A'),
+          service.onNewChatMessage(chatId, senderId, recipientB, 'Dr. A'),
+          service.onNewChatMessage(chatId, senderId, recipientA, 'Dr. A'),
+        ]);
+
+        const counts = rows.map((n) => `${n.userId === recipientA ? 'A' : 'B'}:${n.data.chatId === chatId ? 'chat' : 'other'}:${n.data.count}`);
+        expect(counts.sort()).toEqual(['A:chat:2', 'A:other:1', 'B:chat:1']);
+      });
+
+      it('should process the next message when the previous one failed', async () => {
+        const rows = useInMemoryTable();
+        const [senderId, recipientUserId] = [randomUUID(), randomUUID()];
+        prisma.notification.findFirst.mockRejectedValueOnce(new Error('DB blip'));
+
+        const results = await Promise.allSettled([
+          service.onNewChatMessage(chatId, senderId, recipientUserId, 'Dr. X'),
+          service.onNewChatMessage(chatId, senderId, recipientUserId, 'Dr. X'),
+        ]);
+
+        expect(results.map((r) => r.status)).toEqual(['rejected', 'fulfilled']);
+        expect(rows).toHaveLength(1);
+        expect((service as any).chatMessageQueue.size).toBe(0);
+      });
+    });
+  });
+
+  describe('markChatMessagesRead()', () => {
+    it("should mark only that user's unread notifications about that chat's messages", async () => {
+      const count = Math.floor(Math.random() * 5);
+      prisma.notification.updateMany.mockResolvedValue({ count });
+
+      await expect(service.markChatMessagesRead(userId, chatId)).resolves.toEqual({ count });
+
+      expect(prisma.notification.updateMany).toHaveBeenCalledWith({
+        where: {
+          userId,
+          type: NotificationTypeEnum.NEW_CHAT_MESSAGE,
+          isRead: false,
+          data: { path: ['chatId'], equals: chatId },
+        },
+        data: { isRead: true, readAt: expect.any(Date) },
+      });
     });
   });
 
