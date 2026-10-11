@@ -25,14 +25,14 @@ export class AvailableSlotsQueryDto {
     description: 'Start date for slot search (YYYY-MM-DD or ISO string).',
     example: '2026-03-10',
   })
-  @IsDateString()
+  @IsDateString({ strict: true })
   start: string;
 
   @ApiProperty({
     description: 'End date for slot search (YYYY-MM-DD or ISO string).',
     example: '2026-03-17',
   })
-  @IsDateString()
+  @IsDateString({ strict: true })
   @Validate(DateRangeLimitConstraint)
   end: string;
 

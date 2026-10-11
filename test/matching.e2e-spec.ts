@@ -275,7 +275,7 @@ describe('Matching (e2e)', () => {
       }
     });
 
-    it('should return 409 without offering anything when the offer fails, and still time the request out', async () => {
+    it('should return 409 without offering anything when the offer fails, and retire the request so the patient can retry', async () => {
       sessionUser = patientUser;
       const specialty = randomSpecialty();
       const doctorProfile = {
@@ -310,7 +310,11 @@ describe('Matching (e2e)', () => {
         expect(JSON.parse(res.body).message).toBe('Match request status changed concurrently.');
         expect(toSpy).not.toHaveBeenCalledWith(`user:${doctorUser.id}`);
         expect(app.get(NotificationService).onMatchFound).not.toHaveBeenCalled();
-        expect(timers.has(matchRequestId)).toBe(true);
+        expect(timers.has(matchRequestId)).toBe(false);
+        expect(prisma.matchRequest.updateMany).toHaveBeenLastCalledWith({
+          where: { id: matchRequestId, status: { in: ['SEARCHING', 'MATCHED'] } },
+          data: { status: 'TIMEOUT', resolvedAt: expect.any(Date) },
+        });
       } finally {
         toSpy.mockRestore();
         clearTimeout(timers.get(matchRequestId));

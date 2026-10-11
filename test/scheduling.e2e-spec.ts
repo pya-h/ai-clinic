@@ -297,6 +297,27 @@ describe('Scheduling (e2e)', () => {
 
       expect(res.statusCode).toBe(HttpStatus.BAD_REQUEST);
     });
+
+    // Loosely validated, these rolled over (2026-02-30 → March 2) and listed another day's slots.
+    it.each([
+      ['start=2026-02-30&end=2026-03-05'],
+      ['start=2026-04-01&end=2026-04-31'],
+      ['start=2027-02-29&end=2027-03-01'],
+    ])('should return 400 for a date that does not exist (%s)', async (query) => {
+      const res = await app.inject({ method: 'GET', url: `/scheduling/doctor/1/slots?${query}` });
+
+      expect(res.statusCode).toBe(HttpStatus.BAD_REQUEST);
+      expect(prisma.doctorProfile.findUnique).not.toHaveBeenCalled();
+    });
+
+    it('should accept a leap day that exists', async () => {
+      prisma.doctorProfile.findUnique.mockResolvedValue({ id: 1, verified: true });
+      prisma.doctorAvailability.findMany.mockResolvedValue([]);
+
+      const res = await app.inject({ method: 'GET', url: '/scheduling/doctor/1/slots?start=2028-02-29&end=2028-03-01' });
+
+      expect(res.statusCode).toBe(HttpStatus.OK);
+    });
   });
 
   // ─── GET /scheduling/doctor/:doctorId/durations (public) ───
@@ -357,6 +378,24 @@ describe('Scheduling (e2e)', () => {
 
       expect(res.statusCode).toBe(HttpStatus.FORBIDDEN);
     });
+
+    it.each(['2030-04-31T10:00:00.000Z', '2031-02-29T09:30:00Z'])(
+      'should return 400 for a dateTime that does not exist (%s) instead of booking another day',
+      async (dateTime) => {
+        sessionUser = patientUser;
+
+        const res = await app.inject({
+          method: 'POST',
+          url: '/scheduling/book',
+          payload: { doctorId: 1, dateTime, durationMinutes: 30, price: 50, method: 'CHAT' },
+        });
+
+        expect(res.statusCode).toBe(HttpStatus.BAD_REQUEST);
+        // Refused by validation, before the service looks anything up.
+        expect(prisma.doctorProfile.findUnique).not.toHaveBeenCalled();
+        expect(prisma.appointment.create).not.toHaveBeenCalled();
+      },
+    );
   });
 
   // ─── GET /scheduling/appointments ───

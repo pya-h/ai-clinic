@@ -211,33 +211,54 @@ export class NotificationService {
   ): Promise<void> {
     if (senderId === recipientUserId) return;
 
-    // One at a time per recipient and chat, so a burst of messages updates a single notification.
-    const key = `${recipientUserId}:${chatId}`;
-    const next = (this.chatMessageQueue.get(key) ?? Promise.resolve())
-      .catch(() => undefined)
-      .then(() => this.notifyChatMessage(chatId, senderId, recipientUserId, senderName));
-    this.chatMessageQueue.set(key, next);
+    // One write at a time per recipient and chat, so a burst of messages updates a single notification.
+    const saved = await this.inChatQueue(recipientUserId, chatId, () =>
+      this.saveChatMessageNotification(chatId, senderId, recipientUserId, senderName),
+    );
+    // Outside the queue, so a slow push can't hold up the chat's next notifications.
     try {
-      await next;
-    } finally {
-      if (this.chatMessageQueue.get(key) === next) this.chatMessageQueue.delete(key);
+      await this.pushChannel.send(recipientUserId, saved.title, saved.body, saved.data);
+      await this.prisma.notification.update({ where: { id: saved.id }, data: { sentAt: new Date() } });
+    } catch (err) {
+      this.logger.error(
+        `Notification dispatch failed for user ${recipientUserId}: ${err instanceof Error ? err.message : 'Unknown error'}`,
+      );
     }
   }
 
-  /** Marks the user's unread notifications about a chat's messages as read (they opened it). */
+  /**
+   * Marks the user's unread notifications about a chat's messages as read (they opened it).
+   * Queued behind notifications still being written for that chat, so none is left unread.
+   */
   async markChatMessagesRead(userId: string, chatId: string): Promise<{ count: number }> {
-    return this.prisma.notification.updateMany({
-      where: this.unreadChatMessageWhere(userId, chatId),
-      data: { isRead: true, readAt: new Date() },
-    });
+    return this.inChatQueue(userId, chatId, () =>
+      this.prisma.notification.updateMany({
+        where: this.unreadChatMessageWhere(userId, chatId),
+        data: { isRead: true, readAt: new Date() },
+      }),
+    );
   }
 
-  private async notifyChatMessage(
+  private inChatQueue<T>(userId: string, chatId: string, task: () => Promise<T>): Promise<T> {
+    const key = `${userId}:${chatId}`;
+    const result = (this.chatMessageQueue.get(key) ?? Promise.resolve()).then(task);
+    const tail = result.then(
+      () => undefined,
+      () => undefined,
+    );
+    this.chatMessageQueue.set(key, tail);
+    void tail.then(() => {
+      if (this.chatMessageQueue.get(key) === tail) this.chatMessageQueue.delete(key);
+    });
+    return result;
+  }
+
+  private async saveChatMessageNotification(
     chatId: string,
     senderId: string,
     recipientUserId: string,
     senderName: string,
-  ): Promise<void> {
+  ): Promise<{ id: number; title: string; body: string; data: Record<string, unknown> }> {
     const unread = await this.prisma.notification.findFirst({
       where: this.unreadChatMessageWhere(recipientUserId, chatId),
       orderBy: { createdAt: 'desc' },
@@ -252,28 +273,21 @@ export class NotificationService {
         where: { id: unread.id, isRead: false },
         data: { ...content, data, createdAt: new Date(), sentAt: null },
       });
-      if (updated === 1) {
-        try {
-          await this.pushChannel.send(recipientUserId, content.title, content.body, data);
-          await this.prisma.notification.update({ where: { id: unread.id }, data: { sentAt: new Date() } });
-        } catch (err) {
-          this.logger.error(
-            `Notification dispatch failed for user ${recipientUserId}: ${err instanceof Error ? err.message : 'Unknown error'}`,
-          );
-        }
-        return;
-      }
+      if (updated === 1) return { id: unread.id, ...content, data };
     }
 
     const content = chatMessageContent(senderName, 1);
-    await this.send(
-      recipientUserId,
-      NotificationTypeEnum.NEW_CHAT_MESSAGE,
-      content.title,
-      content.body,
-      { chatId, senderId, count: 1 },
-      NotificationChannelEnum.PUSH,
-    );
+    const data = { chatId, senderId, count: 1 };
+    const created = await this.prisma.notification.create({
+      data: {
+        userId: recipientUserId,
+        type: NotificationTypeEnum.NEW_CHAT_MESSAGE,
+        ...content,
+        data,
+        channel: NotificationChannelEnum.PUSH,
+      },
+    });
+    return { id: created.id, ...content, data };
   }
 
   private unreadChatMessageWhere(userId: string, chatId: string) {

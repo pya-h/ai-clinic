@@ -329,6 +329,43 @@ describe('SchedulingService', () => {
 
     beforeEach(() => {
       prisma.doctorProfile.findUnique.mockResolvedValue(mockDoctor);
+      // The dates below are in March 2026; past days have no slots.
+      jest.useFakeTimers({ now: new Date('2026-03-01T00:00:00.000Z'), doNotFake: ['nextTick', 'setImmediate'] });
+    });
+
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
+    describe('around today', () => {
+      // 2026-03-09 Mon … 2026-03-12 Thu, open 09:00-12:00 every day, hourly slots.
+      beforeEach(() => {
+        prisma.doctorAvailability.findMany.mockResolvedValue(
+          [1, 2, 3, 4].map((dayOfWeek) => ({ dayOfWeek, startTime: '09:00', endTime: '12:00', isActive: true })),
+        );
+        prisma.slotDuration.findMany.mockResolvedValue([{ minutes: 60, isActive: true }]);
+        prisma.availabilityException.findMany.mockResolvedValue([]);
+        prisma.appointment.findMany.mockResolvedValue([]);
+      });
+
+      it('should list no slots for days before today, nor started ones today', async () => {
+        jest.setSystemTime(new Date('2026-03-11T10:15:00.000Z'));
+
+        const result = await service.getAvailableSlots(42, new Date('2026-03-09'), new Date('2026-03-12'));
+
+        expect(result.map((s) => `${s.date} ${s.startTime}`)).toEqual([
+          '2026-03-11 11:00',
+          '2026-03-12 09:00',
+          '2026-03-12 10:00',
+          '2026-03-12 11:00',
+        ]);
+      });
+
+      it('should list nothing for a range entirely in the past', async () => {
+        jest.setSystemTime(new Date(Date.UTC(2026, 2, 13, Math.floor(Math.random() * 24))));
+
+        expect(await service.getAvailableSlots(42, new Date('2026-03-09'), new Date('2026-03-12'))).toEqual([]);
+      });
     });
 
     it('should throw NotFoundException for unverified doctor', async () => {

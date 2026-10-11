@@ -33,7 +33,7 @@ export class BookAppointmentDto {
     description: 'Appointment date and time in ISO-8601 format.',
     example: '2026-03-15T10:00:00.000Z',
   })
-  @IsDateString()
+  @IsDateString({ strict: true })
   dateTime: string;
 
   @ApiProperty({

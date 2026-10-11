@@ -49,6 +49,14 @@ function dockerIgnored(file: string, patterns: string[]): boolean {
  */
 describe('build configuration', () => {
   const serverRoot = path.resolve(__dirname, '..');
+
+  it.each(['package-lock.json', 'yarn.lock', 'npm-shrinkwrap.json'])(
+    'should have no %s next to pnpm-lock.yaml (pnpm is the package manager; another lockfile goes stale)',
+    (lockfile) => {
+      expect(existsSync(path.join(serverRoot, 'pnpm-lock.yaml'))).toBe(true);
+      expect(existsSync(path.join(serverRoot, lockfile))).toBe(false);
+    },
+  );
   const read = (file: string) =>
     readFileSync(path.join(serverRoot, file), 'utf8');
 

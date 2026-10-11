@@ -13,7 +13,7 @@ export class CreateExceptionDto {
     description: 'The date of the exception (YYYY-MM-DD or ISO string).',
     example: '2026-03-15',
   })
-  @IsDateString()
+  @IsDateString({ strict: true })
   date: string;
 
   @ApiPropertyOptional({

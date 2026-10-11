@@ -18,7 +18,9 @@ export class CookieAuthGuard implements CanActivate {
       throw new UnauthorizedException('Not authenticated');
     }
 
+    // A blocked account's session is of no use; clearing it also lets the client log out.
     if (user.isActive === false) {
+      session.delete();
       throw new ForbiddenException('Account is deactivated');
     }
 
@@ -53,7 +55,7 @@ export class CookieAuthGuard implements CanActivate {
 
     const blockReason = accountBlockReason(status);
     if (blockReason) {
-      if (status.isBanned) session.delete();
+      session.delete();
       throw new ForbiddenException(blockReason);
     }
 

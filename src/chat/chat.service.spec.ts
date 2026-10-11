@@ -21,6 +21,7 @@
  */
 import { Test, TestingModule } from '@nestjs/testing';
 import {
+  ConflictException,
   BadRequestException,
   ForbiddenException,
   NotFoundException,
@@ -28,7 +29,7 @@ import {
 import { ChatService } from './chat.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { NurseService } from '../nurse/nurse.service';
-import { MessageTypeEnum, UserRolesEnum } from '@prisma/client';
+import { MessageTypeEnum, Prisma, UserRolesEnum } from '@prisma/client';
 import {
   createMockPrismaService,
   MockPrismaService,
@@ -273,6 +274,88 @@ describe('ChatService', () => {
           }),
         }),
       );
+    });
+
+    describe('linked to a consultation', () => {
+      const consultationId = uuid();
+      const consultationBetween = (patientUserId: string, doctorUserId: string) => ({
+        id: consultationId,
+        patientId: patientUserId,
+        doctor: { userId: doctorUserId },
+      });
+      const otherDoctor = () => createMockUser({ id: uuid(), email: randEmail(), role: UserRolesEnum.DOCTOR });
+
+      beforeEach(() => {
+        prisma.chat.findFirst.mockResolvedValue(null);
+        prisma.chat.create.mockResolvedValue(mockChat);
+      });
+
+      it.each([
+        ['the patient', () => [mockPatient, mockDoctor] as const],
+        ['the doctor', () => [mockDoctor, mockPatient] as const],
+      ])('should link the chat when %s starts it with the other party', async (_case, pair) => {
+        const [initiator, participant] = pair();
+        prisma.user.findUnique.mockResolvedValueOnce(initiator).mockResolvedValueOnce(participant);
+        prisma.consultation.findUnique.mockResolvedValue(consultationBetween(patientId, doctorId));
+        // A doctor may start chats only with their own patients.
+        prisma.doctorProfile.findUnique.mockResolvedValue({ id: Math.floor(Math.random() * 1e5) + 1 });
+        prisma.consultation.findFirst.mockResolvedValue({ id: consultationId });
+
+        await service.createChat(initiator.id, { participantId: participant.id, consultationId });
+
+        expect(prisma.chat.create).toHaveBeenCalledWith(
+          expect.objectContaining({ data: expect.objectContaining({ consultationId }) }),
+        );
+      });
+
+      it("should refuse linking a chat with another doctor to the patient's consultation (403)", async () => {
+        const doctorB = otherDoctor();
+        prisma.user.findUnique.mockResolvedValueOnce(mockPatient).mockResolvedValueOnce(doctorB);
+        prisma.consultation.findUnique.mockResolvedValue(consultationBetween(patientId, doctorId));
+
+        await expect(
+          service.createChat(patientId, { participantId: doctorB.id, consultationId }),
+        ).rejects.toThrow(new ForbiddenException('A chat can only be linked to a consultation between its two participants'));
+        expect(prisma.chat.create).not.toHaveBeenCalled();
+      });
+
+      it("should refuse an admin linking their chat to someone's consultation (403)", async () => {
+        prisma.user.findUnique.mockResolvedValueOnce(mockAdmin).mockResolvedValueOnce(mockPatient);
+        prisma.consultation.findUnique.mockResolvedValue(consultationBetween(patientId, doctorId));
+
+        await expect(
+          service.createChat(adminId, { participantId: patientId, consultationId }),
+        ).rejects.toThrow(ForbiddenException);
+        expect(prisma.chat.create).not.toHaveBeenCalled();
+      });
+
+      it('should return 404 for a consultation that does not exist', async () => {
+        prisma.user.findUnique.mockResolvedValueOnce(mockPatient).mockResolvedValueOnce(mockDoctor);
+        prisma.consultation.findUnique.mockResolvedValue(null);
+
+        await expect(service.createChat(patientId, { participantId: doctorId, consultationId })).rejects.toThrow(
+          NotFoundException,
+        );
+      });
+
+      it('should return 409 when the consultation already has a chat', async () => {
+        prisma.user.findUnique.mockResolvedValueOnce(mockPatient).mockResolvedValueOnce(mockDoctor);
+        prisma.consultation.findUnique.mockResolvedValue(consultationBetween(patientId, doctorId));
+        prisma.chat.create.mockRejectedValue(
+          new Prisma.PrismaClientKnownRequestError('Unique constraint failed', { code: 'P2002', clientVersion: 'test' }),
+        );
+
+        await expect(service.createChat(patientId, { participantId: doctorId, consultationId })).rejects.toThrow(
+          new ConflictException('This consultation already has a chat'),
+        );
+      });
+
+      it('should rethrow other create errors', async () => {
+        prisma.user.findUnique.mockResolvedValueOnce(mockPatient).mockResolvedValueOnce(mockDoctor);
+        prisma.chat.create.mockRejectedValue(new Error('connection reset'));
+
+        await expect(service.createChat(patientId, { participantId: doctorId })).rejects.toThrow('connection reset');
+      });
     });
 
     it('should reject nurse→patient chat when nurse lacks CHAT_WITH_PATIENTS permission', async () => {

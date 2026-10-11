@@ -234,6 +234,35 @@ describe('ChatGateway', () => {
       expect(gateway.server.to).toHaveBeenCalledWith('chat:chat-1');
     });
 
+    it.each([
+      ['a javascript: fileUrl', { fileUrl: 'javascript:alert(document.cookie)' }],
+      ['a plain-http fileUrl', { fileUrl: `http://example.com/${randomUUID()}.png` }],
+      ['a SYSTEM type', { type: MessageTypeEnum.SYSTEM }],
+      ['a non-numeric repliedToId', { repliedToId: 'abc' }],
+      ['a non-string content', { content: { $ne: null } }],
+    ])('should refuse %s, as POST /chat/:id/message does, without saving', async (_case, extra) => {
+      const client = createMockSocket();
+
+      await expect(
+        gateway.handleMessage(client as any, { chatId: 'chat-1', content: 'Hello', ...(extra as any) }),
+      ).rejects.toThrow(WsException);
+
+      expect(chatService.sendMessage).not.toHaveBeenCalled();
+      expect(gateway.server.to).not.toHaveBeenCalled();
+    });
+
+    it.each([`/uploads/doctor-documents/${randomUUID()}.pdf`, `https://cdn.example.com/${randomUUID()}.png`])(
+      'should accept the file URL %s',
+      async (fileUrl) => {
+        const client = createMockSocket();
+        chatService.sendMessage.mockResolvedValue({ id: BigInt(1), chatId: 'chat-1', senderId: 'user-1' });
+
+        await gateway.handleMessage(client as any, { chatId: 'chat-1', content: 'File', type: MessageTypeEnum.FILE, fileUrl });
+
+        expect(chatService.sendMessage).toHaveBeenCalledWith('chat-1', 'user-1', expect.objectContaining({ fileUrl }));
+      },
+    );
+
     it('should throw WsException when chatId is missing', async () => {
       const client = createMockSocket();
 
@@ -691,13 +720,14 @@ describe('ChatGateway', () => {
     });
 
     it('should neither join nor mark anything read for a non-participant', async () => {
-      const client = createMockSocket();
+      const client: any = createMockSocket();
       chatService.assertChatParticipant.mockRejectedValue(new Error('not a participant'));
 
-      await expect(gateway.handleJoin(client as any, { chatId: 'chat-1' })).rejects.toThrow('not a participant');
+      await expect(gateway.handleJoin(client, { chatId: 'chat-1' })).rejects.toThrow('not a participant');
 
       expect(client.join).not.toHaveBeenCalled();
       expect(notificationService.markChatMessagesRead).not.toHaveBeenCalled();
+      expect(client.data.openChats.has('chat-1')).toBe(false);
     });
 
     it('should throw WsException when chatId is missing', async () => {
@@ -712,13 +742,60 @@ describe('ChatGateway', () => {
   // ─── handleLeave ───
 
   describe('handleLeave (chat:leave)', () => {
-    it('should leave the chat room and stop viewing it', () => {
+    it("should stop viewing the chat but keep its live events (the chat: room)", () => {
       const client = createMockSocket();
 
       gateway.handleLeave(client as any, { chatId: 'chat-1' });
 
-      expect(client.leave).toHaveBeenCalledWith('chat:chat-1');
+      expect(client.leave).toHaveBeenCalledTimes(1);
       expect(client.leave).toHaveBeenCalledWith('chat-open:chat-1');
+    });
+
+    it('should win over a join still waiting for its participant check (quick open-close)', async () => {
+      const client = createMockSocket();
+      const chatId = randomUUID();
+      let finishCheck!: () => void;
+      chatService.assertChatParticipant.mockReturnValue(new Promise<void>((resolve) => (finishCheck = resolve)));
+
+      const joining = gateway.handleJoin(client as any, { chatId });
+      gateway.handleLeave(client as any, { chatId });
+      finishCheck();
+      await joining;
+      await flushPromises();
+
+      expect(client.join).toHaveBeenCalledWith(`chat:${chatId}`);
+      expect(client.join).not.toHaveBeenCalledWith(`chat-open:${chatId}`);
+      expect(notificationService.markChatMessagesRead).not.toHaveBeenCalled();
+    });
+
+    it('should not mark viewing for a socket that disconnected during the check', async () => {
+      const client: any = createMockSocket();
+      let finishCheck!: () => void;
+      chatService.assertChatParticipant.mockReturnValue(new Promise<void>((resolve) => (finishCheck = resolve)));
+
+      const joining = gateway.handleJoin(client, { chatId: 'chat-1' });
+      client.disconnected = true;
+      finishCheck();
+      await joining;
+
+      expect(client.join).not.toHaveBeenCalledWith('chat-open:chat-1');
+    });
+
+    it('should view the chat again when it is reopened after a quick close', async () => {
+      const client = createMockSocket();
+      const chatId = randomUUID();
+      let finishFirst!: () => void;
+      chatService.assertChatParticipant
+        .mockReturnValueOnce(new Promise<void>((resolve) => (finishFirst = resolve)))
+        .mockResolvedValueOnce(undefined);
+
+      const first = gateway.handleJoin(client as any, { chatId });
+      gateway.handleLeave(client as any, { chatId });
+      const second = gateway.handleJoin(client as any, { chatId });
+      finishFirst();
+      await Promise.all([first, second]);
+
+      expect(client.join).toHaveBeenCalledWith(`chat-open:${chatId}`);
     });
 
     it('should throw WsException when chatId is missing', () => {

@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Injectable,
   NotFoundException,
@@ -10,6 +11,7 @@ import {
   Message,
   MessageTypeEnum,
   NursePermissionEnum,
+  Prisma,
   User,
   UserRolesEnum,
 } from '@prisma/client';
@@ -91,7 +93,7 @@ export class ChatService {
       await this.validateChatRules(initiator, participant);
     }
 
-    // If consultationId is given, verify it exists and either party is involved
+    // A chat can be linked only to the consultation between its own two participants.
     if (consultationId) {
       const consultation = await this.prisma.consultation.findUnique({
         where: { id: consultationId },
@@ -100,35 +102,39 @@ export class ChatService {
       if (!consultation) {
         throw new NotFoundException('Consultation not found');
       }
-      // Verify either the patient or doctor is one of the participants
-      const doctorUserId = consultation.doctor?.userId;
-      const involved = [consultation.patientId, doctorUserId].filter(Boolean);
-      if (
-        !involved.includes(initiatorId) &&
-        !involved.includes(participantId)
-      ) {
+      const involved = [consultation.patientId, consultation.doctor?.userId];
+      if (!involved.includes(initiatorId) || !involved.includes(participantId)) {
         throw new ForbiddenException(
-          'Neither participant is involved in this consultation',
+          'A chat can only be linked to a consultation between its two participants',
         );
       }
     }
 
     // Create chat + participants in a transaction
-    const chat = await this.prisma.chat.create({
-      data: {
-        topic: topic || null,
-        consultationId: consultationId || null,
-        parties: {
-          create: [
-            { userId: initiatorId },
-            { userId: participantId },
-          ],
+    let chat;
+    try {
+      chat = await this.prisma.chat.create({
+        data: {
+          topic: topic || null,
+          consultationId: consultationId || null,
+          parties: {
+            create: [
+              { userId: initiatorId },
+              { userId: participantId },
+            ],
+          },
         },
-      },
-      include: {
-        parties: { include: { user: { select: this.userSelect() } } },
-      },
-    });
+        include: {
+          parties: { include: { user: { select: this.userSelect() } } },
+        },
+      });
+    } catch (err) {
+      // Chat.consultationId is unique: e.g. the consultation's earlier chat was closed.
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+        throw new ConflictException('This consultation already has a chat');
+      }
+      throw err;
+    }
 
     const { parties, ...rest } = chat;
     return {

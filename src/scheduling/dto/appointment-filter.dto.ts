@@ -16,14 +16,14 @@ export class AppointmentFilterDto {
     description: 'Filter appointments from this date onward.',
   })
   @IsOptional()
-  @IsDateString()
+  @IsDateString({ strict: true })
   from?: string;
 
   @ApiPropertyOptional({
     description: 'Filter appointments up to this date.',
   })
   @IsOptional()
-  @IsDateString()
+  @IsDateString({ strict: true })
   to?: string;
 
   @ApiPropertyOptional({ description: 'Skip N items.' })

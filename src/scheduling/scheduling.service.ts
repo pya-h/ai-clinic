@@ -387,8 +387,9 @@ export class SchedulingService {
 
     // 5. For each day in range, generate available slots
     const slots: AvailableSlot[] = [];
-    const current = new Date(from);
     const now = new Date();
+    // Past days can't be booked, so they have no available slots.
+    const current = new Date(Math.max(from.getTime(), this.utcDayRange(now, now).from.getTime()));
     const todayStr = this.dateToString(now);
     const nowMinutes = now.getUTCHours() * 60 + now.getUTCMinutes();
 

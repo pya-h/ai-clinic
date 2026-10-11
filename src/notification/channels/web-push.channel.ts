@@ -3,6 +3,8 @@ import { ConfigService } from '@nestjs/config';
 import * as webpush from 'web-push';
 import { PrismaService } from '../../prisma/prisma.service';
 
+const PUSH_TIMEOUT_MS = 10_000;
+
 @Injectable()
 export class WebPushChannel {
   private readonly logger = new Logger(WebPushChannel.name);
@@ -53,6 +55,8 @@ export class WebPushChannel {
         await webpush.sendNotification(
           { endpoint: sub.endpoint, keys: sub.keys as any },
           payload,
+          // The endpoint is client-supplied; one that never answers must not hold the caller.
+          { timeout: PUSH_TIMEOUT_MS },
         );
       } catch (err: any) {
         if (err.statusCode === 410) {

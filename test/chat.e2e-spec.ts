@@ -698,6 +698,19 @@ describe('Chat (e2e)', () => {
   // ─── POST /chat/:id/message (send message — HTTP fallback) ───
 
   describe('POST /chat/:id/message', () => {
+    it('should refuse a SYSTEM message from a user (400), saving nothing', async () => {
+      sessionUser = patientUser;
+
+      const res = await app.inject({
+        method: 'POST',
+        url: `/chat/${randomUuid()}/message`,
+        payload: { content: 'The doctor has left the chat.', type: 'SYSTEM' },
+      });
+
+      expect(res.statusCode).toBe(HttpStatus.BAD_REQUEST);
+      expect(prisma.message.create).not.toHaveBeenCalled();
+    });
+
     it('should send a text message successfully', async () => {
       sessionUser = patientUser;
       const chatId = randomUuid();

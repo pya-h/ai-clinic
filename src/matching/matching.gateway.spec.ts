@@ -479,17 +479,64 @@ describe('MatchingGateway', () => {
       expect(gateway.server.to).not.toHaveBeenCalled();
     });
 
-    it('should still start the timeout when the offer fails', async () => {
+    it.each([
+      ['a concurrent change', new Error('status changed concurrently')],
+      ['a DB error', new Error('connection reset')],
+    ])('should retire the request and clear its timer when the offer fails with %s', async (_case, error) => {
       const request = buildRequest();
-      matchingService.matchDoctor.mockRejectedValue(new Error('status changed concurrently'));
+      matchingService.matchDoctor.mockRejectedValue(error);
       matchingService.timeoutRequest.mockResolvedValue({ ...request, status: MatchStatusEnum.TIMEOUT });
 
-      await expect(
-        gateway.dispatchMatchRequest(request as any, [buildCandidate()]),
-      ).rejects.toThrow('status changed concurrently');
+      await expect(gateway.dispatchMatchRequest(request as any, [buildCandidate()])).rejects.toThrow(error.message);
 
-      await jest.advanceTimersByTimeAsync(MATCH_TIMEOUT_MS);
+      expect(matchingService.timeoutRequest).toHaveBeenCalledTimes(1);
       expect(matchingService.timeoutRequest).toHaveBeenCalledWith(request.id);
+      expect((gateway as any).patientTimers.has(request.id)).toBe(false);
+      expect(jest.getTimerCount()).toBe(0);
+      expect(gateway.server.to).not.toHaveBeenCalled();
+    });
+
+    it('should still report the offer error, and log, when retiring the request fails too', async () => {
+      const request = buildRequest();
+      matchingService.matchDoctor.mockRejectedValue(new Error('offer failed'));
+      matchingService.timeoutRequest.mockRejectedValue(new Error('db down'));
+      const logError = jest.spyOn((gateway as any).logger, 'error').mockImplementation(() => undefined);
+
+      await expect(gateway.dispatchMatchRequest(request as any, [buildCandidate()])).rejects.toThrow('offer failed');
+
+      expect(logError).toHaveBeenCalledWith(`Retiring match request ${request.id} failed: db down`);
+      expect(jest.getTimerCount()).toBe(0);
+    });
+
+    it('should tell the doctor holding the offer when the request times out', async () => {
+      const request = buildRequest();
+      const doctorProfileId = randomInt(1, 100_000);
+      const doctorUserId = randomUUID();
+      matchingService.timeoutRequest.mockResolvedValue({
+        ...request,
+        status: MatchStatusEnum.TIMEOUT,
+        matchedDoctorId: doctorProfileId,
+      });
+      matchingService.getDoctorUserId.mockResolvedValue(doctorUserId);
+
+      await gateway.dispatchMatchRequest(request as any, []);
+      await jest.advanceTimersByTimeAsync(MATCH_TIMEOUT_MS);
+
+      expect(matchingService.getDoctorUserId).toHaveBeenCalledWith(doctorProfileId);
+      expect(gateway.server.to).toHaveBeenCalledWith(`user:${request.patientId}`);
+      expect(gateway.server.to).toHaveBeenCalledWith(`user:${doctorUserId}`);
+      expect((gateway.server as any)._toEmit).toHaveBeenCalledTimes(2);
+    });
+
+    it('should tell only the patient when no doctor held the offer at timeout', async () => {
+      const request = buildRequest();
+      matchingService.timeoutRequest.mockResolvedValue({ ...request, status: MatchStatusEnum.TIMEOUT });
+
+      await gateway.dispatchMatchRequest(request as any, []);
+      await jest.advanceTimersByTimeAsync(MATCH_TIMEOUT_MS);
+
+      expect(matchingService.getDoctorUserId).not.toHaveBeenCalled();
+      expect(gateway.server.to).toHaveBeenCalledTimes(1);
     });
 
     it('should replace (not orphan) a running timeout when dispatched again for the same request', async () => {

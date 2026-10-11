@@ -732,6 +732,39 @@ describe('NotificationService', () => {
         expect(counts.sort()).toEqual(['A:chat:2', 'A:other:1', 'B:chat:1']);
       });
 
+      it("should not let a push that never answers hold up the chat's next notifications", async () => {
+        const rows = useInMemoryTable();
+        const [senderId, recipientUserId] = [randomUUID(), randomUUID()];
+        pushChannel.send.mockReturnValueOnce(new Promise(() => undefined));
+
+        void service.onNewChatMessage(chatId, senderId, recipientUserId, 'Dr. Slow');
+        await service.onNewChatMessage(chatId, senderId, recipientUserId, 'Dr. Slow');
+
+        expect(rows).toHaveLength(1);
+        expect(rows[0].data.count).toBe(2);
+        expect((service as any).chatMessageQueue.size).toBe(0);
+      });
+
+      it('should mark read only after a notification already being written for the chat', async () => {
+        const rows = useInMemoryTable();
+        const recipientUserId = randomUUID();
+        prisma.notification.updateMany.mockImplementation(async ({ where, data }: any) => {
+          const matching = rows.filter((n) =>
+            where.id !== undefined ? n.id === where.id && !n.isRead : n.userId === where.userId && !n.isRead,
+          );
+          matching.forEach((n) => Object.assign(n, data));
+          return { count: matching.length };
+        });
+
+        const notified = service.onNewChatMessage(chatId, randomUUID(), recipientUserId, 'Dr. Race');
+        const marked = service.markChatMessagesRead(recipientUserId, chatId);
+        await Promise.all([notified, marked]);
+
+        expect(rows).toHaveLength(1);
+        expect(rows[0].isRead).toBe(true);
+        await expect(marked).resolves.toEqual({ count: 1 });
+      });
+
       it('should process the next message when the previous one failed', async () => {
         const rows = useInMemoryTable();
         const [senderId, recipientUserId] = [randomUUID(), randomUUID()];

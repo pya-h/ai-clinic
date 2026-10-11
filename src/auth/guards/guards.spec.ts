@@ -78,10 +78,11 @@ describe('CookieAuthGuard', () => {
     expect(() => guard.canActivate(ctx)).toThrow(UnauthorizedException);
   });
 
-  it('should throw ForbiddenException when user is inactive', () => {
+  it('should throw ForbiddenException and clear the session when user is inactive', () => {
     const ctx = createMockContext({ id: randomUuid(), isActive: false });
     expect(() => guard.canActivate(ctx)).toThrow(ForbiddenException);
     expect(() => guard.canActivate(ctx)).toThrow('Account is deactivated');
+    expect((ctx.switchToHttp().getRequest() as any).session.delete).toHaveBeenCalled();
   });
 
   it('should set request.user and return true for valid active session', () => {
@@ -161,12 +162,14 @@ describe('CookieAuthGuard', () => {
       await expect(guardWithPrisma.canActivate(ctx)).rejects.toThrow(ForbiddenException);
     });
 
-    it('should throw ForbiddenException when DB shows user is deactivated', async () => {
+    it('should throw ForbiddenException and clear the session when DB shows user is deactivated', async () => {
       const user = { id: randomUuid(), isActive: true, role: 'PATIENT' };
       mockPrisma.user.findFirst.mockResolvedValue({ isActive: false, isBanned: false, banReason: null });
       const ctx = createMockContext(user);
 
       await expect(guardWithPrisma.canActivate(ctx)).rejects.toThrow(ForbiddenException);
+      // Otherwise the user can't even log out: /auth/logout is behind this guard.
+      expect((ctx.switchToHttp().getRequest() as any).session.delete).toHaveBeenCalled();
     });
 
     it('should log warning and return true when user not found in DB', async () => {

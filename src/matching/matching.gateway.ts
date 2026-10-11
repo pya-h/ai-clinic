@@ -247,7 +247,16 @@ export class MatchingGateway
     this.startTimeout(matchRequest.id, matchRequest.patientId);
 
     if (doctors.length === 0) return matchRequest;
-    return this.offerToTopDoctor(matchRequest.id, doctors);
+    try {
+      return await this.offerToTopDoctor(matchRequest.id, doctors);
+    } catch (err) {
+      // Left active, the request would block the patient's retries until it timed out.
+      this.clearTimeout(matchRequest.id);
+      await this.matchingService
+        .timeoutRequest(matchRequest.id)
+        .catch((e) => this.logger.error(`Retiring match request ${matchRequest.id} failed: ${e.message}`));
+      throw err;
+    }
   }
 
   /** Never throws: the cancellation itself has already succeeded. */
@@ -303,6 +312,13 @@ export class MatchingGateway
           this.server
             .to(`user:${patientId}`)
             .emit('match:timeout', { matchRequestId });
+          // The doctor holding the offer can no longer accept it.
+          const doctorUserId = request.matchedDoctorId
+            ? await this.getDoctorUserId(request.matchedDoctorId)
+            : null;
+          if (doctorUserId) {
+            this.server.to(`user:${doctorUserId}`).emit('match:timeout', { matchRequestId });
+          }
         }
       } catch (err) {
         this.logger.error(`Timeout handler error: ${err instanceof Error ? err.message : 'Unknown error'}`);

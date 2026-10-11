@@ -21,6 +21,9 @@ import { WsRateLimiter } from '../common/tools/ws-rate-limiter';
 import { PrismaService } from '../prisma/prisma.service';
 import { UserStatusCache, accountBlockReason } from '../auth/user-status';
 import { sessionUserFromCookieHeader } from '../auth/socket-session';
+import { plainToInstance } from 'class-transformer';
+import { validate } from 'class-validator';
+import { SendMessageDto, USER_MESSAGE_TYPES } from './dto/send-message.dto';
 
 /**
  * Sockets with a chat open (between chat:join and chat:leave). Every socket is in
@@ -195,8 +198,14 @@ export class ChatGateway
     if (payload.content.length > 5000) {
       throw new WsException('Message content exceeds 5000 characters');
     }
-    if (payload.type && !Object.values(MessageTypeEnum).includes(payload.type)) {
+    if (payload.type && !USER_MESSAGE_TYPES.includes(payload.type)) {
       throw new WsException('Invalid message type');
+    }
+    // The rest of POST /chat/:id/message's rules (e.g. fileUrl only /uploads/ or https).
+    const { chatId: _chatId, ...message } = payload;
+    const [invalid] = await validate(plainToInstance(SendMessageDto, message));
+    if (invalid) {
+      throw new WsException(Object.values(invalid.constraints ?? {})[0] ?? `Invalid ${invalid.property}`);
     }
 
     await this.checkUserStatus(user.id);
@@ -366,9 +375,19 @@ export class ChatGateway
       throw new WsException('chatId is required');
     }
 
-    await this.chatService.assertChatParticipant(payload.chatId, user.id);
+    // chat:leave is handled at once, while this awaits the DB: a quick open-close
+    // must not leave the socket marked as viewing, so the intent is tracked here.
+    const openChats: Set<string> = (client.data.openChats ??= new Set<string>());
+    openChats.add(payload.chatId);
+    try {
+      await this.chatService.assertChatParticipant(payload.chatId, user.id);
+    } catch (err) {
+      openChats.delete(payload.chatId);
+      throw err;
+    }
 
     client.join(`chat:${payload.chatId}`);
+    if (!openChats.has(payload.chatId) || client.disconnected) return;
     client.join(viewingRoom(payload.chatId));
 
     this.notificationService
@@ -389,7 +408,8 @@ export class ChatGateway
       throw new WsException('chatId is required');
     }
 
-    client.leave(`chat:${payload.chatId}`);
+    // Only stops viewing: the socket keeps the chat's live events, as from connect.
+    client.data.openChats?.delete(payload.chatId);
     client.leave(viewingRoom(payload.chatId));
   }
 

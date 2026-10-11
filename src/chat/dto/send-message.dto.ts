@@ -1,6 +1,11 @@
-import { IsEnum, IsNotEmpty, IsOptional, IsString, Matches, MaxLength } from 'class-validator';
+import { IsIn, IsNotEmpty, IsOptional, IsString, Matches, MaxLength } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 import { MessageTypeEnum } from '@prisma/client';
+
+// SYSTEM messages come from the server, never from users.
+export const USER_MESSAGE_TYPES: MessageTypeEnum[] = Object.values(MessageTypeEnum).filter(
+  (type) => type !== MessageTypeEnum.SYSTEM,
+);
 
 export class SendMessageDto {
   @ApiProperty({
@@ -13,13 +18,13 @@ export class SendMessageDto {
   content: string;
 
   @ApiProperty({
-    description: 'Type of message (TEXT, IMAGE, FILE, AUDIO, VIDEO, SYSTEM)',
-    enum: MessageTypeEnum,
+    description: 'Type of message (TEXT, IMAGE, FILE, AUDIO, VIDEO)',
+    enum: USER_MESSAGE_TYPES,
     default: MessageTypeEnum.TEXT,
     required: false,
   })
   @IsOptional()
-  @IsEnum(MessageTypeEnum)
+  @IsIn(USER_MESSAGE_TYPES)
   type?: MessageTypeEnum;
 
   @ApiProperty({
