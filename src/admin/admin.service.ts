@@ -235,6 +235,7 @@ export class AdminService {
             firstname: true,
             lastname: true,
             email: true,
+            avatar: true,
           },
         },
         documents: { orderBy: { createdAt: 'desc' } },
