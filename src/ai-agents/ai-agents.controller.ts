@@ -112,11 +112,14 @@ export class AiAgentsController {
         this.soapService.containsSoapTag(messageText)
       ) {
         try {
-          await this.soapService.detectAndUpsert(
+          const soap = await this.soapService.detectAndUpsert(
             user.id,
             conversationId,
             messageText,
           );
+          if (soap) {
+            (msg as Record<string, unknown>).soapId = soap.id;
+          }
         } catch (err) {
           this.logger.error('Failed to save SOAP note during poll:', err);
         }
@@ -148,7 +151,34 @@ export class AiAgentsController {
     @CurrentUser() user: User,
     @Param('conversationId') conversationId: string,
   ) {
-    return this.aiService.getConversationHistory(user, conversationId);
+    const history = await this.aiService.getConversationHistory(
+      user,
+      conversationId,
+    );
+
+    const soapMsg = [...history]
+      .reverse()
+      .find(
+        (m) => m.role === 'bot' && this.soapService.containsSoapTag(m.text),
+      );
+
+    if (soapMsg) {
+      try {
+        const existing =
+          await this.soapService.getByConversation(conversationId);
+        if (!existing) {
+          await this.soapService.detectAndUpsert(
+            user.id,
+            conversationId,
+            soapMsg.text,
+          );
+        }
+      } catch (err) {
+        this.logger.error('Failed to backfill SOAP note from history:', err);
+      }
+    }
+
+    return history;
   }
 
   @ApiOperation({

@@ -36,6 +36,23 @@ export class SoapController {
 
   @ApiOperation({
     description:
+      'Get the SOAP note for a specific AI conversation, if one exists.',
+  })
+  @Get('conversation/:conversationId')
+  async getSoapByConversation(
+    @Param('conversationId') conversationId: string,
+    @CurrentUser() user: User,
+  ) {
+    return this.soapService.getForConversation(
+      conversationId,
+      user.id,
+      user.isAdmin || user.isSuperAdmin,
+      user.role,
+    );
+  }
+
+  @ApiOperation({
+    description:
       'Get a single SOAP note by ID. Allowed: owner, admins, doctors with a consultation linked to it, and their nurses with VIEW_SOAPS.',
   })
   @Get(':id')

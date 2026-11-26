@@ -35,6 +35,7 @@ describe('AiAgentsController', () => {
     soapService = {
       containsSoapTag: jest.fn().mockReturnValue(false),
       detectAndUpsert: jest.fn(),
+      getByConversation: jest.fn().mockResolvedValue(null),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -159,9 +160,10 @@ describe('AiAgentsController', () => {
       );
     });
 
-    it('should detect and upsert SOAP when message contains tag', async () => {
+    it('should detect, upsert SOAP, and attach soapId when message contains tag', async () => {
       const user = buildUser();
       const convoId = randomUuid();
+      const soapId = randomUuid();
       const soapText = '***SOAP***\nSubjective: pain\n***SOAP***';
       const messages = [
         { id: randomUuid(), payload: { text: soapText }, userId: 'bot' },
@@ -169,15 +171,16 @@ describe('AiAgentsController', () => {
 
       botpressService.pollForNewMessages.mockResolvedValue(messages);
       soapService.containsSoapTag.mockReturnValue(true);
-      soapService.detectAndUpsert.mockResolvedValue({ id: randomUuid() });
+      soapService.detectAndUpsert.mockResolvedValue({ id: soapId });
 
-      await controller.pollMessages(user as any, convoId);
+      const result = await controller.pollMessages(user as any, convoId);
 
       expect(soapService.detectAndUpsert).toHaveBeenCalledWith(
         user.id,
         convoId,
         soapText,
       );
+      expect((result[0] as any).soapId).toBe(soapId);
     });
 
     it('should not attempt SOAP detection for non-SOAP messages', async () => {
@@ -280,6 +283,49 @@ describe('AiAgentsController', () => {
       expect(botpressService.getConversationHistory).toHaveBeenCalledWith(
         user,
         convoId,
+      );
+      expect(soapService.getByConversation).not.toHaveBeenCalled();
+      expect(soapService.detectAndUpsert).not.toHaveBeenCalled();
+    });
+
+    it('should backfill missed SOAP note from history when DB has none', async () => {
+      const user = buildUser();
+      const convoId = randomUuid();
+      const soapText =
+        'SOAP Note\n\nS - Subjective\nتب\nO - Objective\nندارد\nA - Assessment\nویروس\nP - Plan\nاستراحت';
+      const history = [
+        {
+          id: randomUuid(),
+          role: 'user',
+          text: 'تب دارم',
+          createdAt: new Date().toISOString(),
+        },
+        {
+          id: randomUuid(),
+          role: 'bot',
+          text: soapText,
+          createdAt: new Date().toISOString(),
+        },
+      ];
+
+      botpressService.getConversationHistory.mockResolvedValue(history);
+      soapService.containsSoapTag.mockImplementation(
+        (text: string) => text === soapText,
+      );
+      soapService.getByConversation.mockResolvedValue(null);
+      soapService.detectAndUpsert.mockResolvedValue({ id: randomUuid() });
+
+      const result = await controller.getConversationHistory(
+        user as any,
+        convoId,
+      );
+
+      expect(result).toEqual(history);
+      expect(soapService.getByConversation).toHaveBeenCalledWith(convoId);
+      expect(soapService.detectAndUpsert).toHaveBeenCalledWith(
+        user.id,
+        convoId,
+        soapText,
       );
     });
   });

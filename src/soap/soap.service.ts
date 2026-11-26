@@ -28,8 +28,46 @@ export class SoapService {
     private readonly nurseService: NurseService,
   ) {}
 
-  private static readonly HEADING_RE =
-    /^[ \t]*\*{0,2}[ \t]*(Subjective|Objective|Assessment|Plan)[ \t]*:?[ \t]*\*{0,2}[ \t]*/gim;
+  private static readonly HWS =
+    '[ \\t\\u200B-\\u200F\\u202A-\\u202E\\u2066-\\u2069\\uFEFF]';
+
+  private static buildSectionHeadingPattern(
+    letter: string,
+    name: string,
+  ): string {
+    const h = SoapService.HWS;
+    const prefix = `(?:(?:#{1,6}|[-*•]|\\d+[.)])${h}+)?[*_]{0,3}${h}*`;
+    const core = [
+      `(?:${letter}${h}*[*_]{0,3}${h}*[-–—−:/.)]${h}*[*_]{0,3}${h}*)?${name}\\b(?:${h}*\\([^)\\r\\n]{1,40}\\))?`,
+      `${letter}${h}*\\(${h}*${name}${h}*\\)`,
+      `(?:${letter}${h}*[-–—−:/.)]${h}*)?[^\\r\\n(:*_#]{1,30}${h}*\\(${h}*${name}${h}*\\)`,
+    ].join('|');
+    // require ":", spaced dash, or end-of-line so prose like "Plan to follow up" is ignored
+    const suffix = `${h}*[*_]{0,3}${h}*(?::${h}*[*_]{0,3}${h}*|${h}+[-–—−]${h}+[*_]{0,3}${h}*|(?=\\r?$))`;
+    return `^${h}*${prefix}(?:${core})${suffix}`;
+  }
+
+  private static readonly SECTION_PATTERNS = (
+    [
+      ['subjective', 'S', 'Subjective'],
+      ['objective', 'O', 'Objective'],
+      ['assessment', 'A', 'Assessment'],
+      ['plan', 'P', 'Plan'],
+    ] as const
+  ).map(([key, letter, name]) => {
+    const pattern = SoapService.buildSectionHeadingPattern(letter, name);
+    return {
+      key,
+      pattern,
+      testRe: new RegExp(pattern, 'im'),
+    };
+  });
+
+  private hasAllSoapHeadings(text: string): boolean {
+    return SoapService.SECTION_PATTERNS.every(({ testRe }) =>
+      testRe.test(text),
+    );
+  }
 
   private deriveTitleFromSoap(parsed: {
     subjective: string;
@@ -46,7 +84,7 @@ export class SoapService {
       .replace(/\n+/g, ' ')
       .trim();
 
-    const sentenceEnd = clean.search(/[.!?]/);
+    const sentenceEnd = clean.search(/[.!?؟]/);
     if (sentenceEnd > 0 && sentenceEnd <= 80) {
       clean = clean.slice(0, sentenceEnd + 1);
     } else if (clean.length > 80) {
@@ -57,11 +95,7 @@ export class SoapService {
   }
 
   containsSoapTag(text: string): boolean {
-    if (text.includes(this.SOAP_TAG)) return true;
-    const headings = ['Subjective', 'Objective', 'Assessment', 'Plan'];
-    return headings.every((h) =>
-      new RegExp(`^[ \\t]*\\*{0,2}[ \\t]*${h}\\b`, 'im').test(text),
-    );
+    return text.includes(this.SOAP_TAG) || this.hasAllSoapHeadings(text);
   }
 
   extractSoapContent(text: string): string | null {
@@ -69,9 +103,14 @@ export class SoapService {
     const taggedMatch = text.match(taggedRegex);
     if (taggedMatch) return taggedMatch[1].trim();
 
-    const firstHeading = text.match(/^[ \t]*\*{0,2}[ \t]*Subjective\b/im);
+    if (!this.hasAllSoapHeadings(text)) return null;
+
+    const firstHeading = SoapService.SECTION_PATTERNS[0].testRe.exec(text);
     if (firstHeading && firstHeading.index !== undefined) {
-      return text.slice(firstHeading.index).trim();
+      return text
+        .slice(firstHeading.index)
+        .replace(/\*\*\*SOAP\*\*\*\s*$/, '')
+        .trim();
     }
     return null;
   }
@@ -90,22 +129,32 @@ export class SoapService {
       plan: '',
     };
 
-    const headings: { key: string; start: number; end: number }[] = [];
-    const re = new RegExp(SoapService.HEADING_RE.source, 'gim');
-    let m: RegExpExecArray | null;
-    while ((m = re.exec(rawNote)) !== null) {
-      headings.push({
-        key: m[1].toLowerCase(),
-        start: m.index,
-        end: m.index + m[0].length,
-      });
+    const headings: {
+      key: keyof typeof sections;
+      start: number;
+      end: number;
+    }[] = [];
+
+    for (const { key, pattern } of SoapService.SECTION_PATTERNS) {
+      const re = new RegExp(pattern, 'gim');
+      for (const m of rawNote.matchAll(re)) {
+        if (m.index !== undefined) {
+          headings.push({
+            key,
+            start: m.index,
+            end: m.index + m[0].length,
+          });
+        }
+      }
     }
+
+    headings.sort((a, b) => a.start - b.start);
 
     for (let i = 0; i < headings.length; i++) {
       const start = headings[i].end;
       const end =
         i + 1 < headings.length ? headings[i + 1].start : rawNote.length;
-      const key = headings[i].key as keyof typeof sections;
+      const key = headings[i].key;
       sections[key] = rawNote.slice(start, end).trim();
     }
 
@@ -250,6 +299,24 @@ export class SoapService {
     return { data, total, skip, take };
   }
 
+  async getForConversation(
+    conversationId: string,
+    requestingUserId: string,
+    isAdminOrSuperAdmin = false,
+    requestingUserRole?: UserRolesEnum,
+  ): Promise<PatientSOAP | null> {
+    const soap = await this.getByConversation(conversationId);
+    if (!soap) return null;
+
+    await this.assertCanReadSoap(
+      soap,
+      requestingUserId,
+      isAdminOrSuperAdmin,
+      requestingUserRole,
+    );
+    return soap;
+  }
+
   /**
    * Besides the owner and admins: a doctor with a consultation linked to the SOAP,
    * or a nurse with VIEW_SOAPS for such a doctor.
@@ -268,16 +335,31 @@ export class SoapService {
       throw new NotFoundException('SOAP note not found.');
     }
 
-    if (isAdminOrSuperAdmin) return soap;
+    await this.assertCanReadSoap(
+      soap,
+      requestingUserId,
+      isAdminOrSuperAdmin,
+      requestingUserRole,
+    );
+    return soap;
+  }
 
-    if (soap.userId === requestingUserId) return soap;
+  private async assertCanReadSoap(
+    soap: PatientSOAP,
+    requestingUserId: string,
+    isAdminOrSuperAdmin: boolean,
+    requestingUserRole?: UserRolesEnum,
+  ): Promise<void> {
+    if (isAdminOrSuperAdmin) return;
+
+    if (soap.userId === requestingUserId) return;
 
     if (requestingUserRole === UserRolesEnum.DOCTOR) {
       const linked = await this.prisma.consultation.findFirst({
         where: { soapId: soap.id, doctor: { userId: requestingUserId } },
         select: { id: true },
       });
-      if (linked) return soap;
+      if (linked) return;
     }
 
     if (requestingUserRole === UserRolesEnum.NURSE) {
@@ -290,7 +372,7 @@ export class SoapService {
           where: { soapId: soap.id, doctorId: { in: doctorIds } },
           select: { id: true },
         });
-        if (linked) return soap;
+        if (linked) return;
       }
     }
 

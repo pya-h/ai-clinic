@@ -298,4 +298,52 @@ describe('SOAP (e2e)', () => {
       expect(prisma.consultation.findFirst).not.toHaveBeenCalled();
     });
   });
+
+  // ─── GET /soap/conversation/:conversationId ───
+
+  describe('GET /soap/conversation/:conversationId', () => {
+    it('should return the SOAP for a non-UUID Botpress conversation ID owned by the user', async () => {
+      sessionUser = patientUser;
+      const convId = `conv_${randomUuid().slice(0, 8)}`;
+      const soap = buildSoap({ conversationId: convId });
+      prisma.patientSOAP.findUnique.mockResolvedValue(soap);
+
+      const res = await app.inject({
+        method: 'GET',
+        url: `/soap/conversation/${convId}`,
+      });
+
+      expect(res.statusCode).toBe(HttpStatus.OK);
+      expect(JSON.parse(res.body).contents.id).toBe(soap.id);
+    });
+
+    it('should return null when no SOAP exists for the conversation', async () => {
+      sessionUser = patientUser;
+      prisma.patientSOAP.findUnique.mockResolvedValue(null);
+
+      const res = await app.inject({
+        method: 'GET',
+        url: '/soap/conversation/conv_missing',
+      });
+
+      expect(res.statusCode).toBe(HttpStatus.OK);
+      expect(JSON.parse(res.body).contents).toBeNull();
+    });
+
+    it('should return 403 for another user requesting the conversation SOAP', async () => {
+      sessionUser = createMockUser();
+      const soap = buildSoap({
+        conversationId: 'conv_other',
+        userId: patientUser.id,
+      });
+      prisma.patientSOAP.findUnique.mockResolvedValue(soap);
+
+      const res = await app.inject({
+        method: 'GET',
+        url: '/soap/conversation/conv_other',
+      });
+
+      expect(res.statusCode).toBe(HttpStatus.FORBIDDEN);
+    });
+  });
 });
