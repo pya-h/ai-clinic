@@ -1,5 +1,5 @@
-import { PrismaClient } from '@prisma/client';
-import * as bcrypt from 'bcrypt';
+const { PrismaClient } = require('@prisma/client');
+const bcrypt = require('bcrypt');
 
 const prisma = new PrismaClient();
 
@@ -20,13 +20,14 @@ async function main() {
       isSuperAdmin: true,
     },
   });
+
   console.log('Superadmin created:', superadmin.id);
 }
 
 main()
-  .catch((e) => {
-    console.error(e);
-    process.exit(1);
+  .catch((error) => {
+    console.error('Database seed failed:', error);
+    process.exitCode = 1;
   })
   .finally(async () => {
     await prisma.$disconnect();

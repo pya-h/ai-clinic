@@ -93,7 +93,7 @@ The server starts on `http://localhost:8080` (or your configured `APP_PORT`). `G
 
 ### Docker
 
-`Dockerfile` builds a two-stage image (`node:22-alpine` build, `node:22-slim` runtime) that runs `prisma migrate deploy` and then `node dist/main` on start, listening on port 8080. Pass the environment variables above to the container and mount a volume at `/app/uploads` to keep uploaded files. The image installs production dependencies only, so run the seed from a development checkout against the same database.
+The repository-root `Dockerfile` builds the client and server together. At startup it runs `prisma migrate deploy`, optionally runs `prisma db seed` when `SEED_DATABASE=true`, then starts the server behind Nginx. The standalone `server/Dockerfile` builds only the API and runs migrations before starting it. Set `SUPERUSER_EMAIL` and `SUPERUSER_PASSWORD` on the container before enabling the seed; the seed uses the defaults listed below when those variables are absent.
 
 ## API Documentation
 
@@ -108,7 +108,7 @@ When `DEBUG=true`, Swagger docs are available at:
 server/
 ├── prisma/
 │   ├── schema.prisma        # 23 models, 22 enums
-│   ├── seed.ts              # Superadmin seeder
+│   ├── seed.cjs             # Superadmin seeder (runs without dev dependencies)
 │   └── migrations/          # 3 migrations
 ├── src/
 │   ├── main.ts              # Bootstrap (Fastify, CORS, Helmet, session, CSRF, pipes, WS adapter)

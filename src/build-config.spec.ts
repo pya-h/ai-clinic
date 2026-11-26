@@ -218,7 +218,7 @@ describe('build configuration', () => {
     })
       .filter((file) => file.endsWith('.ts') && !file.endsWith('.spec.ts'))
       .map((file) => read(path.join('src', file)))
-      .concat(read('prisma/seed.ts'));
+      .concat(read('prisma/seed.cjs'));
     const names = sources.flatMap((source) =>
       [...source.matchAll(/process\.env\.([A-Z][A-Z0-9_]*)/g)].map((m) => m[1]),
     );
