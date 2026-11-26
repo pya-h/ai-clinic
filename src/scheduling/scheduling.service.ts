@@ -2,14 +2,18 @@ import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
+  Inject,
   Injectable,
   Logger,
   NotFoundException,
+  Optional,
+  forwardRef,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   Appointment,
   AppointmentStatusEnum,
+  ConsultationStatusEnum,
   DoctorAvailability,
   AvailabilityException,
   Prisma,
@@ -26,6 +30,10 @@ import { AppointmentFilterDto } from './dto/appointment-filter.dto';
 import { CalendlyService } from '../calendly/calendly.service';
 import { NurseService } from '../nurse/nurse.service';
 import { NursePermissionEnum } from '@prisma/client';
+import { NotificationService } from '../notification/notification.service';
+
+/** Upper bound on BookAppointmentDto.durationMinutes, used to bound overlap lookback queries. */
+const MAX_APPOINTMENT_DURATION_MINUTES = 480;
 
 export interface AvailableSlot {
   date: string; // YYYY-MM-DD
@@ -42,6 +50,9 @@ export class SchedulingService {
     private readonly prisma: PrismaService,
     private readonly calendlyService: CalendlyService,
     private readonly nurseService: NurseService,
+    @Optional()
+    @Inject(forwardRef(() => NotificationService))
+    private readonly notificationService?: NotificationService,
   ) {}
 
   // ──────────────── Doctor ID Lookup ────────────────
@@ -98,6 +109,13 @@ export class SchedulingService {
       throw new BadRequestException('startTime must be before endTime.');
     }
 
+    await this.assertNoOverlappingAvailability(
+      doctorId,
+      dto.dayOfWeek,
+      dto.startTime,
+      dto.endTime,
+    );
+
     try {
       return await this.prisma.doctorAvailability.create({
         data: {
@@ -143,11 +161,20 @@ export class SchedulingService {
       throw new ForbiddenException('You do not own this availability slot.');
     }
 
+    const dayOfWeek = dto.dayOfWeek ?? existing.dayOfWeek;
     const startTime = dto.startTime ?? existing.startTime;
     const endTime = dto.endTime ?? existing.endTime;
     if (startTime >= endTime) {
       throw new BadRequestException('startTime must be before endTime.');
     }
+
+    await this.assertNoOverlappingAvailability(
+      doctorId,
+      dayOfWeek,
+      startTime,
+      endTime,
+      id,
+    );
 
     try {
       return await this.prisma.doctorAvailability.update({
@@ -215,6 +242,14 @@ export class SchedulingService {
   async getSlotDurations(doctorId: number): Promise<SlotDuration[]> {
     return this.prisma.slotDuration.findMany({
       where: { doctorId },
+      orderBy: { minutes: 'asc' },
+    });
+  }
+
+  async getPublicSlotDurations(doctorId: number): Promise<SlotDuration[]> {
+    await this.assertVerifiedActiveDoctor(doctorId);
+    return this.prisma.slotDuration.findMany({
+      where: { doctorId, isActive: true },
       orderBy: { minutes: 'asc' },
     });
   }
@@ -304,13 +339,8 @@ export class SchedulingService {
     endDate: Date,
     durationFilter?: number,
   ): Promise<AvailableSlot[]> {
-    // Validate doctor exists
-    const doctor = await this.prisma.doctorProfile.findUnique({
-      where: { id: doctorId },
-    });
-    if (!doctor || !doctor.verified) {
-      throw new NotFoundException('Doctor not found or not verified.');
-    }
+    // Validate doctor exists, is verified, and account is active
+    await this.assertVerifiedActiveDoctor(doctorId);
 
     // 1. Get doctor's weekly availability (active only)
     const availability = await this.prisma.doctorAvailability.findMany({
@@ -480,13 +510,8 @@ export class SchedulingService {
       throw new ForbiddenException('Only patients can book appointments.');
     }
 
-    // Validate doctor exists and is verified
-    const doctor = await this.prisma.doctorProfile.findUnique({
-      where: { id: dto.doctorId },
-    });
-    if (!doctor || !doctor.verified) {
-      throw new NotFoundException('Doctor not found or not verified.');
-    }
+    // Validate doctor exists, is verified, and account is active
+    const doctor = await this.assertVerifiedActiveDoctor(dto.doctorId);
 
     if (
       Array.isArray(doctor.visitMethods) &&
@@ -578,6 +603,9 @@ export class SchedulingService {
     const bookingEndTime = new Date(
       bookingDateTime.getTime() + dto.durationMinutes * 60000,
     );
+    const candidateLookbackStart = new Date(
+      bookingDateTime.getTime() - MAX_APPOINTMENT_DURATION_MINUTES * 60000,
+    );
     let appointment: Appointment;
 
     try {
@@ -592,7 +620,10 @@ export class SchedulingService {
                   AppointmentStatusEnum.NO_SHOW,
                 ],
               },
-              dateTime: { lt: bookingEndTime },
+              dateTime: {
+                gte: candidateLookbackStart,
+                lt: bookingEndTime,
+              },
             },
             select: { dateTime: true, durationMinutes: true },
           });
@@ -625,6 +656,14 @@ export class SchedulingService {
                 'Consultation doctor does not match the provided doctorId.',
               );
             }
+            if (
+              consultation.status === ConsultationStatusEnum.CANCELLED ||
+              consultation.status === ConsultationStatusEnum.COMPLETED
+            ) {
+              throw new BadRequestException(
+                `Cannot book an appointment for a ${consultation.status} consultation.`,
+              );
+            }
           }
 
           return tx.appointment.create({
@@ -644,13 +683,18 @@ export class SchedulingService {
         },
         { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
       );
-    } catch (error) {
+    } catch (error: any) {
       if (
         error instanceof Prisma.PrismaClientKnownRequestError &&
         error.code === 'P2034'
       ) {
         throw new ConflictException(
           'This time slot was just booked. Please try another.',
+        );
+      }
+      if (error?.code === 'P2002') {
+        throw new ConflictException(
+          'An appointment is already linked to this consultation.',
         );
       }
       throw error;
@@ -754,7 +798,8 @@ export class SchedulingService {
 
     if (
       appointment.status === AppointmentStatusEnum.CANCELLED ||
-      appointment.status === AppointmentStatusEnum.COMPLETED
+      appointment.status === AppointmentStatusEnum.COMPLETED ||
+      appointment.status === AppointmentStatusEnum.NO_SHOW
     ) {
       throw new BadRequestException(
         `Cannot cancel an appointment with status ${appointment.status}.`,
@@ -768,6 +813,7 @@ export class SchedulingService {
           notIn: [
             AppointmentStatusEnum.CANCELLED,
             AppointmentStatusEnum.COMPLETED,
+            AppointmentStatusEnum.NO_SHOW,
           ],
         },
       },
@@ -785,6 +831,23 @@ export class SchedulingService {
 
     this.logger.log(`Appointment ${id} cancelled by user ${user.id}.`);
 
+    const doctorUserId = (updated as any).doctor?.user?.id as
+      | string
+      | undefined;
+    const notifyTargetIds = [updated.patientId, doctorUserId].filter(
+      (targetId): targetId is string =>
+        Boolean(targetId) && targetId !== user.id,
+    );
+    for (const targetId of notifyTargetIds) {
+      this.notificationService
+        ?.onAppointmentCancelled(id, targetId, updated.dateTime)
+        .catch((err) => {
+          this.logger.error(
+            `Failed to send cancellation notification for appointment ${id}: ${err instanceof Error ? err.message : 'Unknown error'}`,
+          );
+        });
+    }
+
     this.calendlyService
       .cancelCalendlyEvent(id, 'Cancelled by user.')
       .catch((err) => {
@@ -798,6 +861,52 @@ export class SchedulingService {
   }
 
   // ──────────────── Private Helpers ────────────────
+
+  private async assertVerifiedActiveDoctor(doctorId: number) {
+    const doctor = await this.prisma.doctorProfile.findUnique({
+      where: { id: doctorId },
+      include: {
+        user: { select: { isActive: true, isBanned: true } },
+      },
+    });
+    if (
+      !doctor ||
+      !doctor.verified ||
+      doctor.user?.isActive === false ||
+      doctor.user?.isBanned === true
+    ) {
+      throw new NotFoundException('Doctor not found or not verified.');
+    }
+    return doctor;
+  }
+
+  private async assertNoOverlappingAvailability(
+    doctorId: number,
+    dayOfWeek: number,
+    startTime: string,
+    endTime: string,
+    excludeId?: number,
+  ): Promise<void> {
+    const existing = await this.prisma.doctorAvailability.findMany({
+      where: {
+        doctorId,
+        dayOfWeek,
+        ...(excludeId !== undefined ? { id: { not: excludeId } } : {}),
+      },
+    });
+    const newStart = this.timeToMinutes(startTime);
+    const newEnd = this.timeToMinutes(endTime);
+    const overlaps = (existing ?? []).some((slot) => {
+      const slotStart = this.timeToMinutes(slot.startTime);
+      const slotEnd = this.timeToMinutes(slot.endTime);
+      return newStart < slotEnd && newEnd > slotStart;
+    });
+    if (overlaps) {
+      throw new ConflictException(
+        'Availability window overlaps with an existing slot on this day.',
+      );
+    }
+  }
 
   private async assertAppointmentAccess(
     appointment: Appointment,
@@ -965,7 +1074,9 @@ export class SchedulingService {
       }
 
       let count = 0;
-      const current = new Date(from);
+      const current = new Date(
+        Math.max(from.getTime(), this.utcDayRange(now, now).from.getTime()),
+      );
 
       while (current < until) {
         const dateStr = this.dateToString(current);

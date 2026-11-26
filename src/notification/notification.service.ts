@@ -54,7 +54,7 @@ export class NotificationService {
         await this.pushChannel.send(userId, title, body, data);
       }
 
-      return this.prisma.notification.update({
+      return await this.prisma.notification.update({
         where: { id: notification.id },
         data: { sentAt: new Date() },
       });
@@ -435,6 +435,21 @@ export class NotificationService {
       'Doctor Match Accepted',
       `Dr. ${doctorName} has accepted your match request. A consultation has been created.`,
       { consultationId },
+      NotificationChannelEnum.BOTH,
+    );
+  }
+
+  async onAppointmentCancelled(
+    appointmentId: number,
+    recipientUserId: string,
+    dateTime: Date,
+  ): Promise<void> {
+    await this.send(
+      recipientUserId,
+      NotificationTypeEnum.APPOINTMENT_CANCELLED,
+      'Appointment Cancelled',
+      `Your appointment scheduled for ${dateTime.toISOString()} has been cancelled.`,
+      { appointmentId },
       NotificationChannelEnum.BOTH,
     );
   }

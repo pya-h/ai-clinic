@@ -1,7 +1,6 @@
 import {
   Body,
   Controller,
-  DefaultValuePipe,
   Delete,
   Get,
   HttpCode,
@@ -20,6 +19,7 @@ import { CurrentUser } from '../user/decorators/current-user.decorator';
 import { User } from '@prisma/client';
 import { SubscribePushDto } from './dto/subscribe-push.dto';
 import { UnsubscribePushDto } from './dto/unsubscribe-push.dto';
+import { PaginationOptionsDto } from '../common/dtos/pagination-options.dto';
 
 @ApiTags('Notification')
 @Controller('notification')
@@ -31,10 +31,13 @@ export class NotificationController {
   @Get()
   async getNotifications(
     @CurrentUser() user: User,
-    @Query('skip', new DefaultValuePipe(0), ParseIntPipe) skip: number,
-    @Query('take', new DefaultValuePipe(20), ParseIntPipe) take: number,
+    @Query() pagination: PaginationOptionsDto,
   ) {
-    return this.notificationService.getUserNotifications(user.id, skip, take);
+    return this.notificationService.getUserNotifications(
+      user.id,
+      +(pagination.skip ?? 0),
+      +(pagination.take ?? 20),
+    );
   }
 
   @ApiOperation({ description: 'Get unread notification count.' })

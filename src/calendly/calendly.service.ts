@@ -4,11 +4,19 @@ import {
   ForbiddenException,
   NotFoundException,
   InternalServerErrorException,
+  Optional,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { CacheService } from '../cache/cache.service';
-import { AppointmentStatusEnum, User, VisitMethodsEnum } from '@prisma/client';
+import {
+  AppointmentStatusEnum,
+  NursePermissionEnum,
+  User,
+  UserRolesEnum,
+  VisitMethodsEnum,
+} from '@prisma/client';
+import { NurseService } from '../nurse/nurse.service';
 import {
   CalendlyEventType,
   CalendlyEventTypeListResponse,
@@ -23,6 +31,7 @@ const EVENT_TYPES_KEY = 'event-types';
 const EVENT_TYPES_TTL = 60 * 60 * 1000; // 1 hour
 // Calendly's recommended tolerance for the signed timestamp.
 const WEBHOOK_TOLERANCE_SECONDS = 3 * 60;
+const CALENDLY_REQUEST_TIMEOUT_MS = 10_000;
 
 @Injectable()
 export class CalendlyService {
@@ -36,6 +45,7 @@ export class CalendlyService {
     private readonly config: ConfigService,
     private readonly prisma: PrismaService,
     private readonly cache: CacheService,
+    @Optional() private readonly nurseService?: NurseService,
   ) {
     this.apiKey = this.config.get<string>('calendly.apiKey') || '';
     this.organizationUri =
@@ -51,6 +61,8 @@ export class CalendlyService {
   // ──────────────── Event Type Mapping (B-89) ────────────────
 
   async getEventTypes(): Promise<CalendlyEventType[]> {
+    if (!this.isConfigured()) return [];
+
     const cached = await this.cache.get<CalendlyEventType[]>(
       CACHE_GROUP,
       EVENT_TYPES_KEY,
@@ -398,12 +410,20 @@ export class CalendlyService {
 
     if (user && !user.isAdmin && !user.isSuperAdmin) {
       if (appointment.patientId !== user.id) {
-        const doctorProfile = await this.prisma.doctorProfile.findUnique({
-          where: { id: appointment.doctorId },
-          select: { userId: true },
-        });
-        if (doctorProfile?.userId !== user.id) {
-          throw new ForbiddenException('Access denied.');
+        if (user.role === UserRolesEnum.NURSE && this.nurseService) {
+          await this.nurseService.assertNursePermission(
+            user.id,
+            appointment.doctorId,
+            NursePermissionEnum.MANAGE_APPOINTMENTS,
+          );
+        } else {
+          const doctorProfile = await this.prisma.doctorProfile.findUnique({
+            where: { id: appointment.doctorId },
+            select: { userId: true },
+          });
+          if (doctorProfile?.userId !== user.id) {
+            throw new ForbiddenException('Access denied.');
+          }
         }
       }
     }
@@ -452,6 +472,7 @@ export class CalendlyService {
           'Content-Type': 'application/json',
         },
         body: options?.body,
+        signal: AbortSignal.timeout(CALENDLY_REQUEST_TIMEOUT_MS),
       });
 
       if (!response.ok) {

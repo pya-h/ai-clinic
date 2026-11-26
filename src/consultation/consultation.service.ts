@@ -104,11 +104,19 @@ export class ConsultationService {
       throw new ForbiddenException('Only patients can create consultations.');
     }
 
-    // Validate doctor exists and is verified
+    // Validate doctor exists, is verified, and account is active
     const doctor = await this.prisma.doctorProfile.findUnique({
       where: { id: dto.doctorId },
+      include: {
+        user: { select: { isActive: true, isBanned: true } },
+      },
     });
-    if (!doctor || !doctor.verified) {
+    if (
+      !doctor ||
+      !doctor.verified ||
+      doctor.user?.isActive === false ||
+      doctor.user?.isBanned === true
+    ) {
       throw new NotFoundException('Doctor not found or not verified.');
     }
 

@@ -26,7 +26,9 @@ export class AdminUpdateUserDto {
   @ApiPropertyOptional({ description: 'Email address.' })
   @IsOptional()
   @IsEmail()
-  @Transform(({ value }) => value?.toLowerCase())
+  @Transform(({ value }) =>
+    typeof value === 'string' ? value.toLowerCase() : value,
+  )
   @MaxLength(255)
   email?: string;
 

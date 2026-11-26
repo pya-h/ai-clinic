@@ -593,6 +593,7 @@ describe('ChatGateway', () => {
       expect(client.to('chat:chat-1').emit).toHaveBeenCalledWith(
         'chat:typing',
         {
+          chatId: 'chat-1',
           userId: 'user-1',
           firstname: 'John',
           isTyping: true,

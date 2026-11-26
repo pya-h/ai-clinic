@@ -8,4 +8,5 @@ export interface IUserContext {
   client: chat.AuthenticatedClient;
   conversationId?: string;
   listener?: TConversationListener;
+  listenerConversationId?: string;
 }

@@ -239,7 +239,7 @@ export class SchedulingController {
   })
   @Get('doctor/:doctorId/durations')
   async getDoctorDurations(@Param('doctorId', ParseIntPipe) doctorId: number) {
-    return this.schedulingService.getSlotDurations(doctorId);
+    return this.schedulingService.getPublicSlotDurations(doctorId);
   }
 
   // ──────────────── Appointments (Authenticated) ────────────────

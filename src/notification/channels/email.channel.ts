@@ -6,15 +6,22 @@ import { PrismaService } from '../../prisma/prisma.service';
 @Injectable()
 export class EmailChannel {
   private readonly logger = new Logger(EmailChannel.name);
-  private transporter: nodemailer.Transporter;
+  private readonly transporter: nodemailer.Transporter | null;
 
   constructor(
     private readonly configService: ConfigService,
     private readonly prisma: PrismaService,
   ) {
+    const host = this.configService.get<string>('notification.smtp.host');
+    if (!host) {
+      this.transporter = null;
+      this.logger.warn('SMTP host not configured — email delivery disabled');
+      return;
+    }
+
     const port = this.configService.get<number>('notification.smtp.port');
     this.transporter = nodemailer.createTransport({
-      host: this.configService.get<string>('notification.smtp.host'),
+      host,
       port,
       secure: port === 465,
       auth: {
@@ -30,6 +37,8 @@ export class EmailChannel {
     body: string,
     data?: Record<string, any>,
   ): Promise<void> {
+    if (!this.transporter) return;
+
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
       select: { email: true, firstname: true },

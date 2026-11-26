@@ -224,6 +224,7 @@ export class MatchingService {
               status: {
                 in: [MatchStatusEnum.SEARCHING, MatchStatusEnum.MATCHED],
               },
+              createdAt: { gte: new Date(Date.now() - this.MATCH_TIMEOUT_MS) },
             },
           });
           if (activeRequest) {
@@ -305,6 +306,11 @@ export class MatchingService {
     if (!doctorProfile) {
       throw new NotFoundException('Doctor profile not found.');
     }
+    if (doctorProfile.verified === false) {
+      throw new ForbiddenException(
+        'Only verified doctors can accept match requests.',
+      );
+    }
 
     const [consultation, updated] = await this.prisma.$transaction(
       async (tx) => {
@@ -327,6 +333,24 @@ export class MatchingService {
           MatchStatusEnum.CONSULTATION_CREATED,
         );
 
+        // claim the match row first so concurrent accepts cannot create duplicate consultations
+        const claimed = await tx.matchRequest.updateMany({
+          where: {
+            id: matchRequestId,
+            status: fresh.status,
+            matchedDoctorId: doctorProfile.id,
+          },
+          data: {
+            status: MatchStatusEnum.CONSULTATION_CREATED,
+            resolvedAt: new Date(),
+          },
+        });
+        if (claimed.count === 0) {
+          throw new ConflictException(
+            'Match request status changed concurrently.',
+          );
+        }
+
         const cons = await tx.consultation.create({
           data: {
             patientId: fresh.patientId,
@@ -339,9 +363,7 @@ export class MatchingService {
         const upd = await tx.matchRequest.update({
           where: { id: matchRequestId },
           data: {
-            status: MatchStatusEnum.CONSULTATION_CREATED,
             consultationId: cons.id,
-            resolvedAt: new Date(),
           },
         });
 
@@ -390,12 +412,21 @@ export class MatchingService {
 
       this.validateTransition(fresh.status, MatchStatusEnum.SEARCHING);
 
-      await tx.matchRejection.create({
-        data: {
-          matchRequestId,
-          doctorId: doctorProfile.id,
-        },
-      });
+      try {
+        await tx.matchRejection.create({
+          data: {
+            matchRequestId,
+            doctorId: doctorProfile.id,
+          },
+        });
+      } catch (err: any) {
+        if (err?.code === 'P2002') {
+          throw new ConflictException(
+            'You have already rejected this match request.',
+          );
+        }
+        throw err;
+      }
 
       return tx.matchRequest.update({
         where: { id: matchRequestId },
@@ -446,6 +477,36 @@ export class MatchingService {
         resolvedAt: new Date(),
       },
     });
+    return this.prisma.matchRequest.findUniqueOrThrow({
+      where: { id: matchRequestId },
+    });
+  }
+
+  /** Transitions an active match request to TIMEOUT and returns it only if this call performed the transition. */
+  async timeoutRequestIfActive(
+    matchRequestId: string,
+  ): Promise<MatchRequest | null> {
+    const request = await this.getByIdRaw(matchRequestId);
+
+    if (
+      request.status !== MatchStatusEnum.SEARCHING &&
+      request.status !== MatchStatusEnum.MATCHED
+    ) {
+      return null;
+    }
+
+    const { count } = await this.prisma.matchRequest.updateMany({
+      where: {
+        id: matchRequestId,
+        status: { in: [MatchStatusEnum.SEARCHING, MatchStatusEnum.MATCHED] },
+      },
+      data: {
+        status: MatchStatusEnum.TIMEOUT,
+        resolvedAt: new Date(),
+      },
+    });
+    if (count === 0) return null;
+
     return this.prisma.matchRequest.findUniqueOrThrow({
       where: { id: matchRequestId },
     });
@@ -623,6 +684,7 @@ export class MatchingService {
       where: {
         patientId: userId,
         status: { in: [MatchStatusEnum.SEARCHING, MatchStatusEnum.MATCHED] },
+        createdAt: { gte: new Date(Date.now() - this.MATCH_TIMEOUT_MS) },
       },
       include: {
         matchedDoctor: {

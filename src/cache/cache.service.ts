@@ -28,12 +28,16 @@ export class CacheService {
   }
 
   async get<T>(group: string, key: string, updateDeadline?: boolean) {
-    const item = await this.cacheManager.get<T>(`${group}:${key}`);
+    const mapKey = `${group}:${key}`;
+    const item = await this.cacheManager.get<T>(mapKey);
     if (updateDeadline && item && this.delEvents?.[group]) {
-      const mapKey = `${group}:${key}`;
       const kwdi = this.keysWithDelEvent.get(mapKey);
       if (kwdi) {
-        kwdi.deadline = new Date(Date.now() + (kwdi.ttl ?? 0));
+        const ttl = kwdi.ttl ?? 0;
+        kwdi.deadline = new Date(Date.now() + ttl);
+        if (ttl > 0) {
+          await this.cacheManager.set<T>(mapKey, item, ttl);
+        }
       }
     }
 
@@ -59,23 +63,22 @@ export class CacheService {
     items: { k: string; v: T }[],
     ttl?: number,
   ): Promise<{ key: string; value: T }[]> {
-    if (this.delEvents[group]) {
-      const effectiveTtl = ttl ?? 0;
-      const deadline = new Date(Date.now() + effectiveTtl);
+    if (ttl && ttl > 0 && this.delEvents[group]) {
+      const deadline = new Date(Date.now() + ttl);
       items.forEach((item) => {
         const mapKey = `${group}:${item.k}`;
         this.keysWithDelEvent.set(mapKey, {
           group,
           key: item.k,
           deadline,
-          ttl: effectiveTtl,
+          ttl,
         });
       });
       return this.cacheManager.mset(
         items.map((i) => ({
           key: `${group}:${i.k}`,
           value: i.v,
-          ttl: effectiveTtl,
+          ttl,
         })),
       );
     }
@@ -97,13 +100,15 @@ export class CacheService {
       results.push(
         await this.cacheManager.mset(
           withDelEvents.map((i) => {
-            const mapKey = `${i.g}:${i.k}`;
-            this.keysWithDelEvent.set(mapKey, {
-              group: i.g,
-              key: i.k,
-              deadline: new Date(Date.now() + (i.ttl ?? 0)),
-              ttl: i.ttl ?? 0,
-            });
+            if (i.ttl && i.ttl > 0) {
+              const mapKey = `${i.g}:${i.k}`;
+              this.keysWithDelEvent.set(mapKey, {
+                group: i.g,
+                key: i.k,
+                deadline: new Date(Date.now() + i.ttl),
+                ttl: i.ttl,
+              });
+            }
             return { key: `${i.g}:${i.k}`, value: i.v, ttl: i.ttl };
           }),
         ),

@@ -62,6 +62,11 @@ export class NurseService {
     if (targetUser.isAdmin || targetUser.isSuperAdmin) {
       throw new BadRequestException('Cannot assign an admin as a nurse.');
     }
+    if (targetUser.isBanned === true || targetUser.isActive === false) {
+      throw new BadRequestException(
+        'Cannot invite a banned or deactivated user as a nurse.',
+      );
+    }
 
     const existing = await this.prisma.doctorNurseAssignment.findUnique({
       where: {
@@ -383,22 +388,36 @@ export class NurseService {
       include: this.assignmentInclude(),
     });
 
-    const doctorIds = assignments.map((a) => a.doctorId);
+    const appointmentDoctorIds = assignments
+      .filter((a) =>
+        a.permissions?.includes(NursePermissionEnum.MANAGE_APPOINTMENTS),
+      )
+      .map((a) => a.doctorId);
+    const consultationDoctorIds = assignments
+      .filter((a) =>
+        a.permissions?.includes(NursePermissionEnum.VIEW_CONSULTATION_NOTES),
+      )
+      .map((a) => a.doctorId);
 
     const [upcomingAppointments, activeConsultations] = await Promise.all([
-      doctorIds.length > 0
+      appointmentDoctorIds.length > 0
         ? this.prisma.appointment.count({
             where: {
-              doctorId: { in: doctorIds },
-              status: AppointmentStatusEnum.CONFIRMED,
+              doctorId: { in: appointmentDoctorIds },
+              status: {
+                in: [
+                  AppointmentStatusEnum.PENDING,
+                  AppointmentStatusEnum.CONFIRMED,
+                ],
+              },
               dateTime: { gte: new Date() },
             },
           })
         : 0,
-      doctorIds.length > 0
+      consultationDoctorIds.length > 0
         ? this.prisma.consultation.count({
             where: {
-              doctorId: { in: doctorIds },
+              doctorId: { in: consultationDoctorIds },
               status: ConsultationStatusEnum.IN_PROGRESS,
             },
           })

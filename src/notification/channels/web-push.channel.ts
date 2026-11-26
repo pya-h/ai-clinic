@@ -8,6 +8,7 @@ const PUSH_TIMEOUT_MS = 10_000;
 @Injectable()
 export class WebPushChannel {
   private readonly logger = new Logger(WebPushChannel.name);
+  private readonly configured: boolean;
 
   constructor(
     private readonly configService: ConfigService,
@@ -25,11 +26,14 @@ export class WebPushChannel {
 
     if (vapidPublicKey && vapidPrivateKey && vapidSubject) {
       webpush.setVapidDetails(vapidSubject, vapidPublicKey, vapidPrivateKey);
+      this.configured = true;
     } else if (vapidPublicKey && vapidPrivateKey) {
+      this.configured = false;
       this.logger.warn(
         'VAPID subject not configured — web push notifications disabled',
       );
     } else {
+      this.configured = false;
       this.logger.warn(
         'VAPID keys not configured — web push notifications disabled',
       );
@@ -42,6 +46,8 @@ export class WebPushChannel {
     body: string,
     data?: Record<string, any>,
   ): Promise<void> {
+    if (!this.configured) return;
+
     const subscriptions = await this.prisma.pushSubscription.findMany({
       where: { userId, isActive: true },
     });

@@ -1,5 +1,7 @@
 import {
+  IsDefined,
   IsNotEmpty,
+  IsObject,
   IsString,
   MaxLength,
   ValidateNested,
@@ -22,6 +24,8 @@ export class SubscribePushDto {
   @MaxLength(2048)
   endpoint: string;
 
+  @IsDefined()
+  @IsObject()
   @ValidateNested()
   @Type(() => PushKeysDto)
   keys: PushKeysDto;

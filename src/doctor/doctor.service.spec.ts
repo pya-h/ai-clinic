@@ -300,7 +300,7 @@ describe('DoctorService', () => {
       });
       expect(prisma.doctorProfile.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: { verified: true },
+          where: { verified: true, user: { isActive: true, isBanned: false } },
           skip: 0,
           take: 20,
         }),
@@ -363,6 +363,8 @@ describe('DoctorService', () => {
         expect.objectContaining({
           where: expect.objectContaining({
             user: {
+              isActive: true,
+              isBanned: false,
               OR: [
                 { firstname: { contains: searchTerm, mode: 'insensitive' } },
                 { lastname: { contains: searchTerm, mode: 'insensitive' } },

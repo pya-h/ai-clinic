@@ -14,7 +14,9 @@ export class UpdateUserDto {
   @ApiPropertyOptional({ description: 'User email' })
   @IsOptional()
   @IsEmail({}, { message: 'Email field must be a valid email address!' })
-  @Transform(({ value }) => value?.toLowerCase())
+  @Transform(({ value }) =>
+    typeof value === 'string' ? value.toLowerCase() : value,
+  )
   @MaxLength(255, {
     message: 'Email address can not be longer than 255 characters!',
   })

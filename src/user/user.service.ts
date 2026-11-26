@@ -30,7 +30,7 @@ export class UserService {
     }
     return this.prisma.user.findUnique({
       where: { id },
-      omit: { password: true },
+      omit: { password: true, botpressUserKey: true },
     });
   }
 
@@ -86,7 +86,11 @@ export class UserService {
     const hashedPassword = await this.utilsService.getHash(userData.password);
 
     try {
-      const { password: _, ...user } = await this.prisma.user.create({
+      const {
+        password: _,
+        botpressUserKey: _bpKey,
+        ...user
+      } = await this.prisma.user.create({
         data: {
           firstname: userData.firstname,
           lastname: userData.lastname,
@@ -206,11 +210,19 @@ export class UserService {
     const uploaded = await this.fileUploadService.uploadFile(file, 'avatars');
     const previousAvatar = await this.currentAvatar(user.id);
 
-    const updated = await this.prisma.user.update({
-      where: { id: user.id },
-      data: { avatar: uploaded.url },
-      select: { id: true, avatar: true },
-    });
+    let updated: { id: string; avatar: string | null };
+    try {
+      updated = await this.prisma.user.update({
+        where: { id: user.id },
+        data: { avatar: uploaded.url },
+        select: { id: true, avatar: true },
+      });
+    } catch (err) {
+      await Promise.resolve(
+        this.fileUploadService.deleteFile?.(uploaded.key),
+      ).catch(() => {});
+      throw err;
+    }
     await this.removeReplacedAvatar(previousAvatar, updated.avatar);
     return updated;
   }

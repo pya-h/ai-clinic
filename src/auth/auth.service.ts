@@ -33,7 +33,7 @@ export class AuthService {
       throw new ForbiddenException(blockReason);
     }
 
-    const { password: _, ...safeUser } = user;
+    const { password: _, botpressUserKey: _bpKey, ...safeUser } = user;
     (reply as any).request.session.set('user', safeUser);
     return safeUser;
   }

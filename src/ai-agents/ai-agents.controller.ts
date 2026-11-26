@@ -2,14 +2,12 @@ import {
   BadRequestException,
   Body,
   Controller,
-  DefaultValuePipe,
   ForbiddenException,
   Get,
   HttpCode,
   HttpStatus,
   Logger,
   Param,
-  ParseIntPipe,
   Patch,
   Post,
   Query,
@@ -31,6 +29,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { SoapService } from '../soap/soap.service';
 import { SendAiMessageDto } from './dto/send-ai-message.dto';
 import { RenameConversationDto } from './dto/rename-conversation.dto';
+import { PaginationOptionsDto } from '../common/dtos/pagination-options.dto';
 
 @ApiTags('Ai Agents')
 @Controller('ai-agents')
@@ -188,10 +187,13 @@ export class AiAgentsController {
   @Get('conversations')
   async listConversations(
     @CurrentUser() user: User,
-    @Query('skip', new DefaultValuePipe(0), ParseIntPipe) skip: number,
-    @Query('take', new DefaultValuePipe(20), ParseIntPipe) take: number,
+    @Query() pagination: PaginationOptionsDto,
   ) {
-    return this.aiService.listConversations(user.id, skip, take);
+    return this.aiService.listConversations(
+      user.id,
+      +(pagination.skip ?? 0),
+      +(pagination.take ?? 20),
+    );
   }
 
   @ApiOperation({ description: 'Rename an AI conversation.' })
@@ -261,7 +263,10 @@ export class AiAgentsController {
         Connection: 'keep-alive',
         'X-Accel-Buffering': 'no',
       };
-      if (requestOrigin && allowedOrigins.includes(requestOrigin)) {
+      if (
+        requestOrigin &&
+        (allowedOrigins.includes('*') || allowedOrigins.includes(requestOrigin))
+      ) {
         corsHeaders['Access-Control-Allow-Origin'] = requestOrigin;
         corsHeaders['Access-Control-Allow-Credentials'] = 'true';
       }

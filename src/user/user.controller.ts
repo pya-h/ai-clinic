@@ -105,8 +105,8 @@ export class UserController {
   @UseGuards(CookieAuthGuard, RolesGuard)
   @Roles(UserRolesEnum.DOCTOR)
   @Get('search')
-  async searchUsers(@Query('q') query: string) {
-    if (!query || query.trim().length < 2) {
+  async searchUsers(@Query('q') query: unknown) {
+    if (typeof query !== 'string' || query.trim().length < 2) {
       return [];
     }
     return this.userService.searchUsers(query.trim(), [UserRolesEnum.DOCTOR]);

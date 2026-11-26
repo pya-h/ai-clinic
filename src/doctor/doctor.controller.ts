@@ -90,19 +90,39 @@ export class DoctorController {
   @Roles(UserRolesEnum.DOCTOR)
   @Post('documents')
   async uploadDocument(@CurrentUser() user: User, @Req() req: FastifyRequest) {
-    const data = await req.file();
-    if (!data) {
+    // iterate all multipart parts so trailing fields like `type` are read after the file stream drains
+    let filePart: Awaited<ReturnType<FastifyRequest['file']>> | undefined;
+    let fileBuffer: Buffer | undefined;
+    let rawType: string | undefined;
+
+    for await (const part of req.parts()) {
+      if (part.type === 'file') {
+        if (!filePart) {
+          filePart = part;
+          fileBuffer = await part.toBuffer();
+        } else {
+          await part.toBuffer();
+        }
+      } else if (part.fieldname === 'type' && typeof part.value === 'string') {
+        rawType = part.value;
+      }
+    }
+
+    if (!filePart || !fileBuffer) {
       throw new BadRequestException('No file provided.');
     }
 
-    // Extract type from form field or default to OTHER
-    const typeField = (data.fields?.type as any)?.value;
+    const bufferedFile = Object.assign(filePart, {
+      toBuffer: async () => fileBuffer,
+    });
+
     const docType: DocumentTypeEnum =
-      typeField && Object.values(DocumentTypeEnum).includes(typeField)
-        ? typeField
+      rawType &&
+      Object.values(DocumentTypeEnum).includes(rawType as DocumentTypeEnum)
+        ? (rawType as DocumentTypeEnum)
         : DocumentTypeEnum.OTHER;
 
-    return this.doctorService.uploadDocument(user, data, docType);
+    return this.doctorService.uploadDocument(user, bufferedFile, docType);
   }
 
   @ApiOperation({

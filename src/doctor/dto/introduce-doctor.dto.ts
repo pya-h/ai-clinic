@@ -45,6 +45,14 @@ export class IntroduceDoctorDto {
   @IsEnumDetailed(DoctorSpecialtiesEnum, 'Specialty', true)
   secondarySpecialties?: DoctorSpecialtiesEnum[];
 
+  @ApiPropertyOptional({
+    description: 'The city or region where the doctor practices',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  location?: string;
+
   @ApiProperty({
     description: 'The address of the clinic where the doctor works',
   })
@@ -68,11 +76,12 @@ export class IntroduceDoctorDto {
   @ApiPropertyOptional({
     description:
       'How this doctor accepts patients. This should be an array of their accepted methods.',
-    required: true,
+    required: false,
     enum: VisitMethodsEnum,
     enumName: 'VisitMethodsEnum',
     isArray: true,
   })
+  @IsOptional()
   @IsArray()
   @IsEnumDetailed(VisitMethodsEnum, 'Visit Method', true)
   visitMethods?: VisitMethodsEnum[];
@@ -80,11 +89,12 @@ export class IntroduceDoctorDto {
   @ApiPropertyOptional({
     description:
       'What type of medical service(s) (or treatments) this doctor provides in his/her sessions.',
-    required: true,
+    required: false,
     enum: VisitTypesEnum,
     enumName: 'VisitTypesEnum',
     isArray: true,
   })
+  @IsOptional()
   @IsArray()
   @IsEnumDetailed(VisitTypesEnum, 'Visit Type', true)
   visitTypes?: VisitTypesEnum[];

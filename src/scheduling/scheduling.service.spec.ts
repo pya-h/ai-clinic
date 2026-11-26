@@ -824,101 +824,117 @@ describe('SchedulingService', () => {
     });
 
     it('should subtract appointments booked later on the last day of the range', async () => {
-      // 2026-03-10 = Tuesday
-      prisma.doctorAvailability.findMany.mockResolvedValue([
-        {
-          doctorId: doctorA,
-          dayOfWeek: 2,
-          startTime: '09:00',
-          endTime: '12:00',
-          isActive: true,
-        },
-        {
-          doctorId: doctorB,
-          dayOfWeek: 2,
-          startTime: '09:00',
-          endTime: '12:00',
-          isActive: true,
-        },
-      ]);
-      prisma.slotDuration.findMany.mockResolvedValue([
-        { doctorId: doctorA, minutes: 60, isActive: true },
-        { doctorId: doctorB, minutes: 60, isActive: true },
-      ]);
-      prisma.availabilityException.findMany.mockResolvedValue([]);
-      prisma.appointment.findMany.mockResolvedValue([
-        {
-          doctorId: doctorA,
-          dateTime: new Date('2026-03-10T10:00:00.000Z'),
-          durationMinutes: 60,
-          status: AppointmentStatusEnum.CONFIRMED,
-        },
-      ]);
-
-      const result = await service.countAvailableSlotsForDoctors(
-        [doctorA, doctorB],
-        new Date('2026-03-10'),
-        new Date('2026-03-10'),
-      );
-
-      expect(result.get(doctorA)).toBe(2);
-      expect(result.get(doctorB)).toBe(3);
-      expect(prisma.appointment.findMany).toHaveBeenCalledWith({
-        where: expect.objectContaining({
-          doctorId: { in: [doctorA, doctorB] },
-          dateTime: {
-            gte: new Date('2026-03-10T00:00:00.000Z'),
-            lt: new Date('2026-03-11T00:00:00.000Z'),
-          },
-        }),
+      jest.useFakeTimers({
+        now: new Date('2026-03-10T00:00:00.000Z'),
+        doNotFake: ['nextTick', 'setImmediate'],
       });
+      try {
+        // 2026-03-10 = Tuesday
+        prisma.doctorAvailability.findMany.mockResolvedValue([
+          {
+            doctorId: doctorA,
+            dayOfWeek: 2,
+            startTime: '09:00',
+            endTime: '12:00',
+            isActive: true,
+          },
+          {
+            doctorId: doctorB,
+            dayOfWeek: 2,
+            startTime: '09:00',
+            endTime: '12:00',
+            isActive: true,
+          },
+        ]);
+        prisma.slotDuration.findMany.mockResolvedValue([
+          { doctorId: doctorA, minutes: 60, isActive: true },
+          { doctorId: doctorB, minutes: 60, isActive: true },
+        ]);
+        prisma.availabilityException.findMany.mockResolvedValue([]);
+        prisma.appointment.findMany.mockResolvedValue([
+          {
+            doctorId: doctorA,
+            dateTime: new Date('2026-03-10T10:00:00.000Z'),
+            durationMinutes: 60,
+            status: AppointmentStatusEnum.CONFIRMED,
+          },
+        ]);
+
+        const result = await service.countAvailableSlotsForDoctors(
+          [doctorA, doctorB],
+          new Date('2026-03-10'),
+          new Date('2026-03-10'),
+        );
+
+        expect(result.get(doctorA)).toBe(2);
+        expect(result.get(doctorB)).toBe(3);
+        expect(prisma.appointment.findMany).toHaveBeenCalledWith({
+          where: expect.objectContaining({
+            doctorId: { in: [doctorA, doctorB] },
+            dateTime: {
+              gte: new Date('2026-03-10T00:00:00.000Z'),
+              lt: new Date('2026-03-11T00:00:00.000Z'),
+            },
+          }),
+        });
+      } finally {
+        jest.useRealTimers();
+      }
     });
 
     it('should honour a blocked exception on the first day when the range starts mid-day', async () => {
-      prisma.doctorAvailability.findMany.mockResolvedValue([
-        {
-          doctorId: doctorA,
-          dayOfWeek: 2,
-          startTime: '09:00',
-          endTime: '11:00',
-          isActive: true,
-        },
-        {
-          doctorId: doctorA,
-          dayOfWeek: 3,
-          startTime: '09:00',
-          endTime: '11:00',
-          isActive: true,
-        },
-      ]);
-      prisma.slotDuration.findMany.mockResolvedValue([
-        { doctorId: doctorA, minutes: 60, isActive: true },
-      ]);
-      prisma.availabilityException.findMany.mockResolvedValue([
-        {
-          doctorId: doctorA,
-          date: new Date('2026-03-10T00:00:00.000Z'),
-          isBlocked: true,
-        },
-      ]);
-      prisma.appointment.findMany.mockResolvedValue([]);
-
-      const result = await service.countAvailableSlotsForDoctors(
-        [doctorA],
-        new Date('2026-03-10T13:45:00.000Z'),
-        new Date('2026-03-11T13:45:00.000Z'),
-      );
-
-      expect(result.get(doctorA)).toBe(2);
-      expect(prisma.availabilityException.findMany).toHaveBeenCalledWith({
-        where: {
-          doctorId: { in: [doctorA] },
-          date: {
-            gte: new Date('2026-03-10T00:00:00.000Z'),
-            lt: new Date('2026-03-12T00:00:00.000Z'),
-          },
-        },
+      jest.useFakeTimers({
+        now: new Date('2026-03-10T00:00:00.000Z'),
+        doNotFake: ['nextTick', 'setImmediate'],
       });
+      try {
+        prisma.doctorAvailability.findMany.mockResolvedValue([
+          {
+            doctorId: doctorA,
+            dayOfWeek: 2,
+            startTime: '09:00',
+            endTime: '11:00',
+            isActive: true,
+          },
+          {
+            doctorId: doctorA,
+            dayOfWeek: 3,
+            startTime: '09:00',
+            endTime: '11:00',
+            isActive: true,
+          },
+        ]);
+        prisma.slotDuration.findMany.mockResolvedValue([
+          { doctorId: doctorA, minutes: 60, isActive: true },
+        ]);
+        prisma.availabilityException.findMany.mockResolvedValue([
+          {
+            doctorId: doctorA,
+            date: new Date('2026-03-10T00:00:00.000Z'),
+            isBlocked: true,
+          },
+        ]);
+        prisma.appointment.findMany.mockResolvedValue([]);
+
+        const result = await service.countAvailableSlotsForDoctors(
+          [doctorA],
+          new Date('2026-03-10T13:45:00.000Z'),
+          new Date('2026-03-11T13:45:00.000Z'),
+        );
+
+        expect(result.get(doctorA)).toBe(2);
+        expect(prisma.availabilityException.findMany).toHaveBeenCalledWith({
+          where: {
+            doctorId: { in: [doctorA] },
+            date: {
+              gte: new Date('2026-03-10T00:00:00.000Z'),
+              lt: new Date('2026-03-12T00:00:00.000Z'),
+            },
+          },
+        });
+      } finally {
+        jest.useRealTimers();
+      }
     });
 
     it('should not count slots of today that have already started', async () => {

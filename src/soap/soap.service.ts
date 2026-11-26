@@ -179,6 +179,11 @@ export class SoapService {
       `SOAP detected for conversation ${conversationId}, upserting...`,
     );
 
+    const existing = await this.prisma.patientSOAP.findUnique({
+      where: { conversationId },
+      select: { id: true },
+    });
+
     const soap = await this.prisma.patientSOAP.upsert({
       where: { conversationId },
       create: {
@@ -214,9 +219,11 @@ export class SoapService {
       }
     }
 
-    this.notificationService
-      .onSoapReady(userId, conversationId)
-      .catch((e) => this.logger.error(`Notification failed: ${e.message}`));
+    if (!existing) {
+      this.notificationService
+        .onSoapReady(userId, conversationId)
+        .catch((e) => this.logger.error(`Notification failed: ${e.message}`));
+    }
 
     return soap;
   }

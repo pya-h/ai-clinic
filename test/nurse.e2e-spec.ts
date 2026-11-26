@@ -748,7 +748,13 @@ describe('Nurse (e2e)', () => {
     it('should return dashboard with assignments and stats for nurse', async () => {
       sessionUser = nurseUser;
 
-      const assignment = buildAssignment();
+      const assignment = buildAssignment({
+        permissions: [
+          NursePermissionEnum.VIEW_PATIENTS,
+          NursePermissionEnum.MANAGE_APPOINTMENTS,
+          NursePermissionEnum.VIEW_CONSULTATION_NOTES,
+        ],
+      });
       prisma.doctorNurseAssignment.findMany.mockResolvedValue([assignment]);
       prisma.appointment.count.mockResolvedValue(3);
       prisma.consultation.count.mockResolvedValue(1);
@@ -766,6 +772,26 @@ describe('Nurse (e2e)', () => {
       expect(body.contents.stats).toBeDefined();
       expect(body.contents.stats.upcomingAppointments).toBe(3);
       expect(body.contents.stats.activeConsultations).toBe(1);
+      expect(body.contents.stats.assignedDoctors).toBe(1);
+    });
+
+    it('should zero out appointment and consultation stats when nurse lacks those permissions', async () => {
+      sessionUser = nurseUser;
+
+      const assignment = buildAssignment({
+        permissions: [NursePermissionEnum.VIEW_PATIENTS],
+      });
+      prisma.doctorNurseAssignment.findMany.mockResolvedValue([assignment]);
+
+      const res = await app.inject({
+        method: 'GET',
+        url: '/nurse/dashboard',
+      });
+
+      expect(res.statusCode).toBe(HttpStatus.OK);
+      const body = JSON.parse(res.body);
+      expect(body.contents.stats.upcomingAppointments).toBe(0);
+      expect(body.contents.stats.activeConsultations).toBe(0);
       expect(body.contents.stats.assignedDoctors).toBe(1);
     });
 

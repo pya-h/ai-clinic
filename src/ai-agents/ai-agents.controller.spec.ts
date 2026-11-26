@@ -338,7 +338,10 @@ describe('AiAgentsController', () => {
       const expected = { data: [] as any[], total: 0, skip: 0, take: 20 };
       botpressService.listConversations.mockResolvedValue(expected);
 
-      const result = await controller.listConversations(user as any, 0, 20);
+      const result = await controller.listConversations(user as any, {
+        skip: 0,
+        take: 20,
+      });
 
       expect(result).toEqual(expected);
       expect(botpressService.listConversations).toHaveBeenCalledWith(
@@ -353,7 +356,10 @@ describe('AiAgentsController', () => {
       const expected = { data: [] as any[], total: 50, skip: 10, take: 5 };
       botpressService.listConversations.mockResolvedValue(expected);
 
-      const result = await controller.listConversations(user as any, 10, 5);
+      const result = await controller.listConversations(user as any, {
+        skip: 10,
+        take: 5,
+      });
 
       expect(result).toEqual(expected);
       expect(botpressService.listConversations).toHaveBeenCalledWith(

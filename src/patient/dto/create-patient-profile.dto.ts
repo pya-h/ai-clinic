@@ -1,4 +1,5 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
+import { VisitMethodsEnum } from '@prisma/client';
 import {
   ArrayMaxSize,
   IsArray,
@@ -6,6 +7,7 @@ import {
   IsString,
   MaxLength,
 } from 'class-validator';
+import { IsEnumDetailed } from '../../common/decorators/is-enum-detailed.decorator';
 
 export class CreatePatientProfileDto {
   @ApiPropertyOptional({ description: 'Patient location / city' })
@@ -13,6 +15,17 @@ export class CreatePatientProfileDto {
   @IsString()
   @MaxLength(500)
   location?: string;
+
+  @ApiPropertyOptional({
+    description: 'Preferred visit methods',
+    enum: VisitMethodsEnum,
+    enumName: 'VisitMethodsEnum',
+    isArray: true,
+  })
+  @IsOptional()
+  @IsArray()
+  @IsEnumDetailed(VisitMethodsEnum, 'Visit Method', true)
+  visitMethods?: VisitMethodsEnum[];
 
   @ApiPropertyOptional({ description: 'Short bio about the patient' })
   @IsOptional()

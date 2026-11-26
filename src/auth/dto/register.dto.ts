@@ -22,7 +22,9 @@ export class RegistrationDto {
   @IsNotEmpty({ message: 'Email field is required!' })
   @IsEmail({}, { message: 'Email field is not a valid email address!' })
   @MaxLength(255)
-  @Transform(({ value }) => value?.toLowerCase())
+  @Transform(({ value }) =>
+    typeof value === 'string' ? value.toLowerCase() : value,
+  )
   email: string;
 
   @ApiProperty({

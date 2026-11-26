@@ -54,6 +54,10 @@ export class ExceptionTemplateFilter implements ExceptionFilter {
     const response = ctx.getResponse();
     const request = ctx.getRequest();
 
+    if (response.sent || response.raw?.headersSent) {
+      return;
+    }
+
     // Fastify-specific response handling
     response.status(status).send({
       status,

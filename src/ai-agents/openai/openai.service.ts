@@ -78,11 +78,12 @@ export class OpenAiService {
         { role: OpenAiChatRoles.USER, content: prompt },
       ],
     });
+    const replyContent = result.choices?.[0]?.message?.content ?? '';
     await this.updateChat(chatId, [
       { role: OpenAiChatRoles.USER, content: prompt },
       {
         role: OpenAiChatRoles.ASSISTANT,
-        content: result.choices[0].message.content ?? '',
+        content: replyContent,
       },
     ]);
     return result;
@@ -91,8 +92,8 @@ export class OpenAiService {
   async openNewChat(_userId: string, message: string): Promise<string> {
     const chatId = randomUUID();
     return (
-      (await this.runCompletion(chatId, message)).choices[0].message.content ??
-      ''
+      (await this.runCompletion(chatId, message)).choices?.[0]?.message
+        ?.content ?? ''
     );
   }
 }

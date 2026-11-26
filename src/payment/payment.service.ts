@@ -167,17 +167,31 @@ export class PaymentService {
           },
           data: { status: ConsultationStatusEnum.PAYMENT_CONFIRMED },
         });
-        const confirmedConsultation =
-          moved.count === 0
-            ? null
-            : await tx.consultation.findUniqueOrThrow({
-                where: { id: payment.consultationId },
-                select: {
-                  id: true,
-                  patientId: true,
-                  doctor: { select: { userId: true } },
-                },
-              });
+        if (moved.count === 0) {
+          const existingConsultation = await tx.consultation.findUnique({
+            where: { id: payment.consultationId },
+            select: { status: true },
+          });
+          // fail the transaction if the consultation was cancelled or completed
+          if (
+            existingConsultation &&
+            (existingConsultation.status === ConsultationStatusEnum.CANCELLED ||
+              existingConsultation.status === ConsultationStatusEnum.COMPLETED)
+          ) {
+            throw new ConflictException(
+              'Cannot confirm payment: linked consultation is no longer awaiting payment.',
+            );
+          }
+          return { paid, confirmedConsultation: null };
+        }
+        const confirmedConsultation = await tx.consultation.findUniqueOrThrow({
+          where: { id: payment.consultationId },
+          select: {
+            id: true,
+            patientId: true,
+            doctor: { select: { userId: true } },
+          },
+        });
 
         return { paid, confirmedConsultation };
       },

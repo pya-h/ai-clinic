@@ -757,6 +757,7 @@ describe('MatchingService', () => {
         status: MatchStatusEnum.MATCHED,
       };
       prisma.matchRequest.findUnique.mockResolvedValue(matchData);
+      prisma.matchRequest.updateMany.mockResolvedValue({ count: 1 });
       prisma.consultation.create.mockResolvedValue({
         id: consultationId,
         patientId: patient.id,
@@ -859,6 +860,7 @@ describe('MatchingService', () => {
         status: MatchStatusEnum.MATCHED,
         createdAt: createdPastTimeout(-randomInt(5_000, MATCH_TIMEOUT_MS)),
       });
+      prisma.matchRequest.updateMany.mockResolvedValue({ count: 1 });
       prisma.consultation.create.mockResolvedValue({ id: consultationId });
       prisma.matchRequest.update.mockResolvedValue({
         id: requestId,
@@ -880,6 +882,7 @@ describe('MatchingService', () => {
         status: MatchStatusEnum.MATCHED,
       };
       prisma.matchRequest.findUnique.mockResolvedValue(matchData);
+      prisma.matchRequest.updateMany.mockResolvedValue({ count: 1 });
       prisma.consultation.create.mockResolvedValue({
         id: consultationId,
         patientId: patient.id,
@@ -1569,12 +1572,13 @@ describe('MatchingService', () => {
       expect(result).toEqual(request);
       expect(prisma.matchRequest.findFirst).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: {
+          where: expect.objectContaining({
             patientId: patient.id,
             status: {
               in: [MatchStatusEnum.SEARCHING, MatchStatusEnum.MATCHED],
             },
-          },
+            createdAt: { gte: expect.any(Date) },
+          }),
         }),
       );
     });

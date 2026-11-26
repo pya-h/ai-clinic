@@ -143,20 +143,21 @@ export class MatchingGateway
     const user = await this.currentUser(client);
 
     try {
+      const safePayload = payload && typeof payload === 'object' ? payload : {};
       if (
-        payload.specialty &&
+        safePayload.specialty &&
         !Object.values(DoctorSpecialtiesEnum).includes(
-          payload.specialty as DoctorSpecialtiesEnum,
+          safePayload.specialty as DoctorSpecialtiesEnum,
         )
       ) {
-        throw new WsException(`Invalid specialty: ${payload.specialty}`);
+        throw new WsException(`Invalid specialty: ${safePayload.specialty}`);
       }
 
       const { matchRequest, doctors } =
         await this.matchingService.createMatchRequest(
           user,
-          payload.soapId,
-          payload.specialty as DoctorSpecialtiesEnum | undefined,
+          safePayload.soapId,
+          safePayload.specialty as DoctorSpecialtiesEnum | undefined,
         );
 
       client.emit('match:searching', {
@@ -185,7 +186,7 @@ export class MatchingGateway
     if (!client.data.user) throw new WsException('Unauthorized');
     this.rateLimit.check(client.data.user.id, 'match:accept');
     const user = await this.currentUser(client);
-    if (!payload.matchRequestId)
+    if (!payload || typeof payload !== 'object' || !payload.matchRequestId)
       throw new WsException('matchRequestId is required');
 
     try {
@@ -236,7 +237,7 @@ export class MatchingGateway
     if (!client.data.user) throw new WsException('Unauthorized');
     this.rateLimit.check(client.data.user.id, 'match:reject');
     const user = await this.currentUser(client);
-    if (!payload.matchRequestId)
+    if (!payload || typeof payload !== 'object' || !payload.matchRequestId)
       throw new WsException('matchRequestId is required');
 
     try {
@@ -261,12 +262,7 @@ export class MatchingGateway
         `match:reject error: ${err instanceof Error ? err.message : 'Unknown error'}`,
       );
       client.emit('match:error', {
-        message:
-          err instanceof Error
-            ? err instanceof Error
-              ? err.message
-              : 'Unknown error'
-            : 'Unknown error',
+        message: err instanceof Error ? err.message : 'Unknown error',
       });
     }
   }
@@ -281,7 +277,7 @@ export class MatchingGateway
     if (!client.data.user) throw new WsException('Unauthorized');
     this.rateLimit.check(client.data.user.id, 'match:cancel');
     const user = await this.currentUser(client);
-    if (!payload.matchRequestId)
+    if (!payload || typeof payload !== 'object' || !payload.matchRequestId)
       throw new WsException('matchRequestId is required');
 
     try {
@@ -415,9 +411,10 @@ export class MatchingGateway
       async () => {
         this.patientTimers.delete(matchRequestId);
         try {
-          const request =
-            await this.matchingService.timeoutRequest(matchRequestId);
-          if (request.status === MatchStatusEnum.TIMEOUT) {
+          const request = this.matchingService.timeoutRequestIfActive
+            ? await this.matchingService.timeoutRequestIfActive(matchRequestId)
+            : await this.matchingService.timeoutRequest(matchRequestId);
+          if (request && request.status === MatchStatusEnum.TIMEOUT) {
             await this.announceTimeout({
               id: matchRequestId,
               patientId,

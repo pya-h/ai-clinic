@@ -38,6 +38,8 @@ export class BotpressService {
 
   // DB conversation ID → replacement Botpress ID (after Botpress-side expiry)
   private readonly renewedConversations = new Map<string, string>();
+  // tracks live listeners outside cache-manager so TTL expiry still disconnects after store eviction
+  private readonly activeListeners = new Map<string, TConversationListener>();
 
   constructor(
     readonly configService: ConfigService,
@@ -422,10 +424,12 @@ export class BotpressService {
     const bpId = this.resolveBotpressId(conversationId);
 
     // If we already have a listener but it's for another conversation, disconnect it
+    const boundConversationId =
+      ctx.listenerConversationId ?? ctx.conversationId;
     if (
       ctx.listener &&
-      ctx.conversationId &&
-      ctx.conversationId !== conversationId
+      boundConversationId &&
+      boundConversationId !== conversationId
     ) {
       await this.releaseListener(user.id, ctx.listener);
     }
@@ -445,7 +449,9 @@ export class BotpressService {
       });
 
       ctx.listener = listener;
+      ctx.listenerConversationId = conversationId;
       ctx.conversationId = conversationId;
+      this.activeListeners.set(user.id, listener);
 
       listener.on('error', (error) => {
         this.logger.error(
@@ -454,6 +460,10 @@ export class BotpressService {
         );
         if (ctx.listener === listener) {
           ctx.listener = undefined;
+          ctx.listenerConversationId = undefined;
+        }
+        if (this.activeListeners.get(user.id) === listener) {
+          this.activeListeners.delete(user.id);
         }
       });
 
@@ -477,6 +487,10 @@ export class BotpressService {
         await listener?.disconnect?.();
       } catch (error) {
         this.logger.warn('Error disconnecting orphan listener:', error);
+      } finally {
+        if (listener && this.activeListeners.get(userId) === listener) {
+          this.activeListeners.delete(userId);
+        }
       }
       return;
     }
@@ -489,6 +503,10 @@ export class BotpressService {
           `Error disconnecting listener for user ${userId}:`,
           error,
         );
+      } finally {
+        if (this.activeListeners.get(userId) === listener) {
+          this.activeListeners.delete(userId);
+        }
       }
       return;
     }
@@ -502,6 +520,10 @@ export class BotpressService {
       );
     } finally {
       ctx.listener = undefined;
+      ctx.listenerConversationId = undefined;
+      if (this.activeListeners.get(userId) === listener) {
+        this.activeListeners.delete(userId);
+      }
     }
   }
 
@@ -510,9 +532,15 @@ export class BotpressService {
       this.cachingOptions.group,
       userId,
     );
-    if (ctx?.listener) {
+    const listener = ctx?.listener ?? this.activeListeners.get(userId);
+    this.activeListeners.delete(userId);
+    if (ctx) {
+      ctx.listener = undefined;
+      ctx.listenerConversationId = undefined;
+    }
+    if (listener) {
       try {
-        await ctx.listener.disconnect?.();
+        await listener.disconnect?.();
       } catch (error) {
         this.logger.warn(
           `Error disconnecting listener for user ${userId}:`,

@@ -49,7 +49,12 @@ export class DoctorService {
     }
     try {
       return await this.prisma.doctorProfile.create({
-        data: { ...data, userId: user.id },
+        data: {
+          ...data,
+          visitMethods: data.visitMethods ?? [],
+          visitTypes: data.visitTypes ?? [],
+          userId: user.id,
+        },
       });
     } catch (error: any) {
       if (error.code === 'P2002') {
@@ -114,7 +119,14 @@ export class DoctorService {
    * Public listing of verified doctors with optional filters and pagination.
    */
   async findAll(filters: DoctorFilterDto) {
-    const where: Prisma.DoctorProfileWhereInput = { verified: true };
+    const userWhere: Prisma.UserWhereInput = {
+      isActive: true,
+      isBanned: false,
+    };
+    const where: Prisma.DoctorProfileWhereInput = {
+      verified: true,
+      user: userWhere,
+    };
 
     if (filters.specialty) {
       where.specialty = filters.specialty;
@@ -132,31 +144,20 @@ export class DoctorService {
     }
 
     if (filters.search) {
-      const searchWhere = {
-        user: {
-          OR: [
-            {
-              firstname: {
-                contains: filters.search,
-                mode: 'insensitive' as const,
-              },
-            },
-            {
-              lastname: {
-                contains: filters.search,
-                mode: 'insensitive' as const,
-              },
-            },
-          ],
+      userWhere.OR = [
+        {
+          firstname: {
+            contains: filters.search,
+            mode: 'insensitive' as const,
+          },
         },
-      };
-      // Merge with existing OR (location) if present
-      if (where.OR) {
-        where.AND = [{ OR: where.OR }, searchWhere];
-        delete where.OR;
-      } else {
-        Object.assign(where, searchWhere);
-      }
+        {
+          lastname: {
+            contains: filters.search,
+            mode: 'insensitive' as const,
+          },
+        },
+      ];
     }
 
     const skip = filters.skip ? Number(filters.skip) : 0;
@@ -213,7 +214,14 @@ export class DoctorService {
         where: { id },
         include: {
           user: {
-            select: { id: true, firstname: true, lastname: true, avatar: true },
+            select: {
+              id: true,
+              firstname: true,
+              lastname: true,
+              avatar: true,
+              isActive: true,
+              isBanned: true,
+            },
           },
         },
       }),
@@ -224,12 +232,28 @@ export class DoctorService {
       }),
     ]);
 
-    if (!profile || !profile.verified) {
+    if (
+      !profile ||
+      !profile.verified ||
+      profile.user?.isActive === false ||
+      profile.user?.isBanned === true
+    ) {
       throw new NotFoundException('Doctor profile not found.');
     }
 
+    const { user, ...profileRest } = profile;
+    const publicUser = user
+      ? {
+          id: user.id,
+          firstname: user.firstname,
+          lastname: user.lastname,
+          avatar: user.avatar,
+        }
+      : user;
+
     return {
-      ...profile,
+      ...profileRest,
+      user: publicUser,
       averageRating:
         ratingAgg._count.rating > 0
           ? Math.round((ratingAgg._avg.rating ?? 0) * 10) / 10
@@ -258,15 +282,22 @@ export class DoctorService {
       'doctor-documents',
     );
 
-    return this.prisma.doctorDocument.create({
-      data: {
-        doctorId: profile.id,
-        type,
-        fileUrl: uploaded.url,
-        fileName: uploaded.fileName,
-        mimeType: uploaded.mimeType,
-      },
-    });
+    try {
+      return await this.prisma.doctorDocument.create({
+        data: {
+          doctorId: profile.id,
+          type,
+          fileUrl: uploaded.url,
+          fileName: uploaded.fileName,
+          mimeType: uploaded.mimeType,
+        },
+      });
+    } catch (err) {
+      await Promise.resolve(
+        this.fileUploadService.deleteFile?.(uploaded.key),
+      ).catch(() => {});
+      throw err;
+    }
   }
 
   async getMyProfile(user: User) {
