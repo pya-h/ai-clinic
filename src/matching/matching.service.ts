@@ -24,12 +24,11 @@ import {
 
 const WEIGHTS = {
   specialtyMatch: 55,
-  rating: 20,
-  availability: 15,
-  experience: 10,
-};
-
-const ONLINE_DOCTOR_BONUS = 4;
+  rating: 18,
+  availability: 14,
+  experience: 8,
+  onlinePresence: 5,
+} as const;
 
 // ────────────── State Machine ──────────────
 
@@ -72,7 +71,7 @@ export class MatchingService {
   private readonly logger = new Logger(MatchingService.name);
   private readonly MATCH_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
   private readonly TOP_N = 10;
-  private readonly onlineDoctorUserIds = new Set<string>();
+  private readonly onlineDoctorConnections = new Map<string, number>();
 
   constructor(
     private readonly prisma: PrismaService,
@@ -81,11 +80,23 @@ export class MatchingService {
   ) {}
 
   markDoctorOnline(userId: string): void {
-    this.onlineDoctorUserIds.add(userId);
+    this.onlineDoctorConnections.set(
+      userId,
+      (this.onlineDoctorConnections.get(userId) ?? 0) + 1,
+    );
   }
 
   markDoctorOffline(userId: string): void {
-    this.onlineDoctorUserIds.delete(userId);
+    const next = (this.onlineDoctorConnections.get(userId) ?? 0) - 1;
+    if (next > 0) {
+      this.onlineDoctorConnections.set(userId, next);
+    } else {
+      this.onlineDoctorConnections.delete(userId);
+    }
+  }
+
+  isDoctorOnline(userId: string): boolean {
+    return (this.onlineDoctorConnections.get(userId) ?? 0) > 0;
   }
 
   // ────────────── State Machine ──────────────
@@ -104,11 +115,19 @@ export class MatchingService {
     specialty?: DoctorSpecialtiesEnum;
     triageLevel?: TriageLevelEnum;
     excludeDoctorIds?: number[];
+    excludeUserId?: string;
   }): Promise<ScoredDoctor[]> {
     const doctors = await this.prisma.doctorProfile.findMany({
       where: {
         verified: true,
-        user: { isActive: true, isBanned: false },
+        user: {
+          isActive: true,
+          isBanned: false,
+          role: UserRolesEnum.DOCTOR,
+          ...(criteria.excludeUserId
+            ? { id: { not: criteria.excludeUserId } }
+            : {}),
+        },
         ...(criteria.excludeDoctorIds?.length
           ? { id: { notIn: criteria.excludeDoctorIds } }
           : {}),
@@ -188,7 +207,7 @@ export class MatchingService {
         } else if (doctor.secondarySpecialties.includes(criteria.specialty)) {
           specialtyScore = 0.55;
         } else if (doctor.specialty === DoctorSpecialtiesEnum.GENERAL) {
-          specialtyScore = 0.25;
+          specialtyScore = 0.15;
         }
       } else {
         specialtyScore = 0.5;
@@ -209,16 +228,17 @@ export class MatchingService {
       const consultationCount = doctor._count.consultations;
       const experienceScore = Math.min(consultationCount / 100, 1.0);
 
-      const onlineBonus = this.onlineDoctorUserIds.has(doctor.user.id)
-        ? ONLINE_DOCTOR_BONUS
-        : 0;
+      const isOnline = this.isDoctorOnline(doctor.user.id);
+      const onlineScore = isOnline ? WEIGHTS.onlinePresence : 0;
 
-      const totalScore =
+      const totalScore = Math.min(
+        100,
         WEIGHTS.specialtyMatch * specialtyScore +
-        WEIGHTS.rating * ratingScore +
-        WEIGHTS.availability * availabilityScore +
-        WEIGHTS.experience * experienceScore +
-        onlineBonus;
+          WEIGHTS.rating * ratingScore +
+          WEIGHTS.availability * availabilityScore +
+          WEIGHTS.experience * experienceScore +
+          onlineScore,
+      );
 
       return {
         doctorId: doctor.id,
@@ -232,10 +252,21 @@ export class MatchingService {
         totalReviews: ratingData.totalReviews,
         availableSlots: availableSlotCount,
         score: Math.round(totalScore * 100) / 100,
+        _online: isOnline ? 1 : 0,
       };
     });
 
-    return scored.sort((a, b) => b.score - a.score).slice(0, this.TOP_N);
+    return scored
+      .sort(
+        (a, b) =>
+          b.score - a.score ||
+          b._online - a._online ||
+          b.availableSlots - a.availableSlots ||
+          b.totalReviews - a.totalReviews ||
+          a.doctorId - b.doctorId,
+      )
+      .slice(0, this.TOP_N)
+      .map(({ _online: _unused, ...doc }) => doc);
   }
 
   // ────────────── Match Request Creation ──────────────
@@ -308,7 +339,11 @@ export class MatchingService {
       throw error;
     }
 
-    const doctors = await this.scoreDoctors({ specialty, triageLevel });
+    const doctors = await this.scoreDoctors({
+      specialty,
+      triageLevel,
+      excludeUserId: user.id,
+    });
 
     this.logger.log(
       `Match request ${matchRequest.id} created by patient ${user.id}, found ${doctors.length} candidates`,
@@ -324,6 +359,7 @@ export class MatchingService {
     doctorId: number,
   ): Promise<MatchRequest> {
     const request = await this.getByIdRaw(matchRequestId);
+    this.assertNotExpired(request);
     this.validateTransition(request.status, MatchStatusEnum.MATCHED);
 
     const { count } = await this.prisma.matchRequest.updateMany({
@@ -497,6 +533,7 @@ export class MatchingService {
       specialty: updated.specialty ?? undefined,
       triageLevel: updated.triageLevel ?? undefined,
       excludeDoctorIds: previouslyRejected,
+      excludeUserId: updated.patientId,
     });
 
     this.logger.log(
@@ -555,6 +592,7 @@ export class MatchingService {
       specialty: updated.specialty ?? undefined,
       triageLevel: updated.triageLevel ?? undefined,
       excludeDoctorIds: previouslyExcluded,
+      excludeUserId: updated.patientId,
     });
 
     return { matchRequest: updated, nextDoctors };

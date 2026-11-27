@@ -263,13 +263,16 @@ export class MatchingGateway
       });
 
       if (nextDoctors.length > 0) {
-        await this.offerToTopDoctor(matchRequest.id, nextDoctors);
+        await this.offerNextOrRetire(
+          matchRequest.id,
+          matchRequest.patientId,
+          nextDoctors,
+        );
       } else {
-        await this.matchingService.timeoutRequest(matchRequest.id);
-        this.clearTimeout(matchRequest.id);
-        this.server
-          .to(`user:${matchRequest.patientId}`)
-          .emit('match:timeout', { matchRequestId: matchRequest.id });
+        await this.retireExhaustedRequest(
+          matchRequest.id,
+          matchRequest.patientId,
+        );
       }
     } catch (err) {
       this.logger.error(
@@ -410,6 +413,13 @@ export class MatchingGateway
       doctorId: topDoctor.doctorId,
     });
 
+    if (matchRequest?.patientId) {
+      this.server.to(`user:${matchRequest.patientId}`).emit('match:offered', {
+        matchRequestId,
+        doctorId: topDoctor.doctorId,
+      });
+    }
+
     this.notificationService
       .onMatchFound(topDoctor.userId, matchRequestId)
       .catch((e) => this.logger.error(`Notification failed: ${e.message}`));
@@ -418,17 +428,65 @@ export class MatchingGateway
       matchRequestId,
       topDoctor.doctorId,
       topDoctor.userId,
+      matchRequest?.createdAt,
     );
 
     return matchRequest;
+  }
+
+  private async offerNextOrRetire(
+    matchRequestId: string,
+    patientId: string,
+    candidates: {
+      doctorId: number;
+      userId: string;
+      firstname: string;
+      lastname: string;
+    }[],
+  ): Promise<void> {
+    for (let i = 0; i < candidates.length; i++) {
+      try {
+        await this.offerToTopDoctor(matchRequestId, candidates.slice(i));
+        return;
+      } catch (err) {
+        this.logger.warn(
+          `Cascading offer to doctor ${candidates[i].doctorId} failed for ${matchRequestId}: ${err instanceof Error ? err.message : 'Unknown error'}`,
+        );
+      }
+    }
+    await this.retireExhaustedRequest(matchRequestId, patientId);
+  }
+
+  private async retireExhaustedRequest(
+    matchRequestId: string,
+    patientId: string,
+  ): Promise<void> {
+    this.clearTimeout(matchRequestId);
+    const timedOut = this.matchingService.timeoutRequestIfActive
+      ? await this.matchingService.timeoutRequestIfActive(matchRequestId)
+      : await this.matchingService.timeoutRequest(matchRequestId);
+    if (timedOut && timedOut.status === MatchStatusEnum.TIMEOUT) {
+      await this.announceTimeout({
+        id: matchRequestId,
+        patientId,
+        matchedDoctorId: null,
+      });
+    }
   }
 
   private startOfferTimeout(
     matchRequestId: string,
     offeredDoctorId: number,
     offeredDoctorUserId: string,
+    createdAt?: Date | string,
   ): void {
     this.clearOfferTimeout(matchRequestId);
+
+    const createdMs = createdAt ? new Date(createdAt).getTime() : NaN;
+    const remainingMs = Number.isNaN(createdMs)
+      ? OFFER_TIMEOUT_MS
+      : Math.max(1_000, 5 * 60 * 1000 - (Date.now() - createdMs));
+    const delayMs = Math.min(OFFER_TIMEOUT_MS, remainingMs);
 
     const timer = setTimeout(async () => {
       this.offerTimers.delete(matchRequestId);
@@ -444,22 +502,23 @@ export class MatchingGateway
           .emit('match:offer_expired', { matchRequestId });
 
         if (result.nextDoctors.length > 0) {
-          await this.offerToTopDoctor(matchRequestId, result.nextDoctors);
+          await this.offerNextOrRetire(
+            matchRequestId,
+            result.matchRequest.patientId,
+            result.nextDoctors,
+          );
         } else {
-          await this.matchingService.timeoutRequestIfActive(matchRequestId);
-          this.clearTimeout(matchRequestId);
-          await this.announceTimeout({
-            id: matchRequestId,
-            patientId: result.matchRequest.patientId,
-            matchedDoctorId: null,
-          });
+          await this.retireExhaustedRequest(
+            matchRequestId,
+            result.matchRequest.patientId,
+          );
         }
       } catch (err) {
         this.logger.error(
           `Offer cascade error for ${matchRequestId}: ${err instanceof Error ? err.message : 'Unknown error'}`,
         );
       }
-    }, OFFER_TIMEOUT_MS);
+    }, delayMs);
     timer.unref();
 
     this.offerTimers.set(matchRequestId, timer);
@@ -499,6 +558,7 @@ export class MatchingGateway
       },
       5 * 60 * 1000,
     );
+    timer.unref();
 
     this.patientTimers.set(matchRequestId, timer);
   }

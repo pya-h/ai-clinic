@@ -850,6 +850,34 @@ P - Plan
         expectedSpecialty: DoctorSpecialtiesEnum.GENERAL,
         expectedTriage: TriageLevelEnum.SEE_DOCTOR,
       },
+      {
+        label:
+          'Explicit Gastroenterology does not falsely collide with ENT substring',
+        text: '***SOAP***\nSubjective: Bloating\nObjective: Mild epigastric tenderness\nAssessment: Dyspepsia\nPlan: Outpatient review\nSuggested Specialty: Gastroenterology\n***SOAP***',
+        expectedSpecialty: DoctorSpecialtiesEnum.GASTROENTEROLOGY,
+        expectedTriage: TriageLevelEnum.SEE_DOCTOR,
+      },
+      {
+        label:
+          'Heartburn with negated chest pain and negated SOB routes to GASTROENTEROLOGY + SEE_DOCTOR (not CARDIOLOGY / EMERGENCY)',
+        text: '***SOAP***\nSubjective: Patient reports burning heartburn after meals. Denies chest pain, no shortness of breath.\nObjective: Stable vitals\nAssessment: Gastroesophageal reflux\nPlan: Dietary changes and routine follow-up\n***SOAP***',
+        expectedSpecialty: DoctorSpecialtiesEnum.GASTROENTEROLOGY,
+        expectedTriage: TriageLevelEnum.SEE_DOCTOR,
+      },
+      {
+        label:
+          'Persian negative symptom list (علائم منفی) does not trigger ENT/GASTRO or EMERGENCY',
+        text: '***SOAP***\nS - Subjective\nشکایت اصلی: تب و سردرد\nتب: تا ۳۹°C\nتنگی نفس: ندارد\nعلائم منفی: عدم وجود سرفه، گلودرد، آبریزش بینی، تهوع، استفراغ\nO - Objective\nهوشیار\nA - Assessment\nسندرم تب‌دار ویروسی\nP - Plan\nمراجعه فوری جهت معاینه\n***SOAP***',
+        expectedSpecialty: DoctorSpecialtiesEnum.GENERAL,
+        expectedTriage: TriageLevelEnum.URGENT,
+      },
+      {
+        label:
+          'Mild acute viral cold does not falsely trigger URGENT from standalone word acute',
+        text: '***SOAP***\nSubjective: Runny nose for 1 day\nObjective: Afebrile\nAssessment: Mild acute viral upper respiratory cold, self-limiting\nPlan: Rest and hydration at home\n***SOAP***',
+        expectedSpecialty: DoctorSpecialtiesEnum.GENERAL,
+        expectedTriage: TriageLevelEnum.SELF_CARE,
+      },
     ])(
       'extracts specialty and triage for $label',
       async ({ text, expectedSpecialty, expectedTriage }) => {

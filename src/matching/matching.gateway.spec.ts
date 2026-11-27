@@ -1241,9 +1241,89 @@ describe('MatchingGateway', () => {
           },
         );
         expect(matchingService.matchDoctor).toHaveBeenCalledWith(mrId, 20);
+        expect((gateway.server as any)._toEmit).toHaveBeenCalledWith(
+          'match:offered',
+          {
+            matchRequestId: mrId,
+            doctorId: 20,
+          },
+        );
       } finally {
         jest.useRealTimers();
       }
+    });
+
+    it('falls back to the next candidate if offering to the first cascade candidate fails', async () => {
+      jest.useFakeTimers();
+      try {
+        const mrId = randomUUID();
+        const doc1 = {
+          doctorId: 10,
+          userId: 'doc-user-10',
+          firstname: 'A',
+          lastname: 'One',
+        };
+        const doc2 = {
+          doctorId: 20,
+          userId: 'doc-user-20',
+          firstname: 'B',
+          lastname: 'Two',
+        };
+        const doc3 = {
+          doctorId: 30,
+          userId: 'doc-user-30',
+          firstname: 'C',
+          lastname: 'Three',
+        };
+        matchingService.matchDoctor
+          .mockResolvedValueOnce({
+            id: mrId,
+            patientId: mockPatient.id,
+            matchedDoctorId: 10,
+          })
+          .mockRejectedValueOnce(new Error('doc 20 deactivated'))
+          .mockResolvedValueOnce({
+            id: mrId,
+            patientId: mockPatient.id,
+            matchedDoctorId: 30,
+          });
+        matchingService.cascadeTimedOutOffer.mockResolvedValue({
+          matchRequest: { id: mrId, patientId: mockPatient.id },
+          nextDoctors: [doc2, doc3],
+        });
+
+        await gateway.dispatchMatchRequest(
+          { id: mrId, patientId: mockPatient.id } as any,
+          [doc1, doc2, doc3],
+        );
+
+        await jest.advanceTimersByTimeAsync(45_000);
+
+        expect(matchingService.matchDoctor).toHaveBeenCalledWith(mrId, 20);
+        expect(matchingService.matchDoctor).toHaveBeenCalledWith(mrId, 30);
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
+    it('does not emit match:timeout if request was already cancelled when candidates are exhausted', async () => {
+      const client = createMockSocket(mockDoctor);
+      matchingService.rejectMatch.mockResolvedValue({
+        matchRequest: { id: 'mr-race', patientId: 'patient-1' },
+        nextDoctors: [],
+      });
+      matchingService.timeoutRequest.mockResolvedValue({
+        id: 'mr-race',
+        status: MatchStatusEnum.CANCELLED,
+      });
+
+      await gateway.handleReject(client as any, { matchRequestId: 'mr-race' });
+
+      expect(matchingService.timeoutRequest).toHaveBeenCalledWith('mr-race');
+      expect((gateway.server as any)._toEmit).not.toHaveBeenCalledWith(
+        'match:timeout',
+        expect.anything(),
+      );
     });
   });
 });

@@ -145,6 +145,8 @@ export class SoapService {
       aliases: ['gastroenterology', 'gastroenterologist', 'گوارش'],
       keywords: [
         'abdominal pain',
+        'heartburn',
+        'acid reflux',
         'nausea',
         'vomiting',
         'diarrhea',
@@ -157,6 +159,8 @@ export class SoapService {
         'ulcer',
         'شکم درد',
         'دل درد',
+        'سوزش معده',
+        'ترش کردن',
         'تهوع',
         'استفراغ',
         'اسهال',
@@ -345,11 +349,14 @@ export class SoapService {
       aliases: ['urgent', 'فوری'],
       keywords: [
         'urgent care',
+        'urgent evaluation',
+        'seek immediate',
         'within 24 hours',
         'high fever',
         'persistent vomiting',
         'severe pain',
-        'acute',
+        'acute severe',
+        'acute abdomen',
         'تب بالا',
         'تب شدید',
         'استفراغ مداوم',
@@ -398,6 +405,36 @@ export class SoapService {
       .replace(/ك/g, 'ک');
   }
 
+  /**
+   * Removes negated symptom lines and clauses (EN/FA) so "denies chest pain"
+   * or "علائم منفی: عدم وجود گلودرد" never trigger false specialty or emergency matches.
+   */
+  private static stripNegatedSegments(text: string): string {
+    return SoapService.normalizeClinicalText(text)
+      .replace(
+        /^[ \t]*(?:[-*•]\s*)?(?:negative symptoms|pertinent negatives|علائم منفی|نکات منفی)\s*[:\-–][^\r\n]*/gm,
+        ' ',
+      )
+      .replace(
+        /\b(?:no|denies|denied|without|negative for|absence of|not having|rules? out)\s+[^.;,\r\n]{1,80}/g,
+        ' ',
+      )
+      .replace(/(?:عدم وجود|فاقد|بدون)\s+[^.،؛\r\n]{1,80}/g, ' ')
+      .replace(
+        /[^.،؛:\r\n]{1,45}[:\s]+(?:ندارد|نداشت|نیست)(?=[.،؛\s\r\n]|$)/g,
+        ' ',
+      );
+  }
+
+  private static containsTerm(text: string, term: string): boolean {
+    if (!term) return false;
+    if (/^[a-z0-9 _/-]+$/.test(term)) {
+      const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      return new RegExp(`\\b${escaped}\\b`, 'i').test(text);
+    }
+    return text.includes(term);
+  }
+
   private inferSuggestedSpecialty(parsed: {
     subjective: string;
     objective: string;
@@ -409,23 +446,28 @@ export class SoapService {
       /^[ \t]*(?:\*\*)?(?:Suggested\s*Specialty|Specialty|تخصص\s*پیشنهادی|تخصص)(?:\*\*)?\s*[:\-–]\s*([^\r\n]+)/im,
     );
     if (explicitMatch) {
-      const value = SoapService.normalizeClinicalText(explicitMatch[1]);
-      for (const enumVal of Object.values(DoctorSpecialtiesEnum)) {
-        if (value.includes(enumVal.toLowerCase())) {
+      const value = SoapService.normalizeClinicalText(explicitMatch[1]).trim();
+      const sortedEnums = [...Object.values(DoctorSpecialtiesEnum)].sort(
+        (a, b) => b.length - a.length,
+      );
+      for (const enumVal of sortedEnums) {
+        if (SoapService.containsTerm(value, enumVal.toLowerCase())) {
           return enumVal;
         }
       }
       for (const rule of SoapService.SPECIALTY_RULES) {
-        if (rule.aliases.some((alias) => value.includes(alias))) {
+        if (
+          rule.aliases.some((alias) => SoapService.containsTerm(value, alias))
+        ) {
           return rule.specialty;
         }
       }
     }
 
-    const primaryText = SoapService.normalizeClinicalText(
+    const primaryText = SoapService.stripNegatedSegments(
       `${parsed.assessment}\n${parsed.plan}`,
     );
-    const secondaryText = SoapService.normalizeClinicalText(
+    const secondaryText = SoapService.stripNegatedSegments(
       `${parsed.subjective}\n${parsed.objective}`,
     );
 
@@ -435,8 +477,8 @@ export class SoapService {
     for (const rule of SoapService.SPECIALTY_RULES) {
       let score = 0;
       for (const keyword of rule.keywords) {
-        if (primaryText.includes(keyword)) score += 2;
-        else if (secondaryText.includes(keyword)) score += 1;
+        if (SoapService.containsTerm(primaryText, keyword)) score += 2;
+        else if (SoapService.containsTerm(secondaryText, keyword)) score += 1;
       }
       if (score > bestScore) {
         bestScore = score;
@@ -458,32 +500,43 @@ export class SoapService {
       /^[ \t]*(?:\*\*)?(?:Triage\s*Level|Triage|Urgency|سطح\s*تریاژ|تریاژ)(?:\*\*)?\s*[:\-–]\s*([^\r\n]+)/im,
     );
     if (explicitMatch) {
-      const value = SoapService.normalizeClinicalText(explicitMatch[1]);
+      const value = SoapService.normalizeClinicalText(explicitMatch[1]).trim();
       for (const enumVal of Object.values(TriageLevelEnum)) {
-        if (value.includes(enumVal.toLowerCase())) {
+        if (
+          SoapService.containsTerm(
+            value,
+            enumVal.toLowerCase().replace(/_/g, ' '),
+          ) ||
+          value.includes(enumVal.toLowerCase())
+        ) {
           return enumVal;
         }
       }
       for (const rule of SoapService.TRIAGE_LEVEL_RULES) {
-        if (rule.aliases.some((alias) => value.includes(alias))) {
+        if (
+          rule.aliases.some((alias) => SoapService.containsTerm(value, alias))
+        ) {
           return rule.level;
         }
       }
       if (
-        value.includes('see_doctor') ||
-        value.includes('see doctor') ||
+        SoapService.containsTerm(value, 'see doctor') ||
         value.includes('پزشک')
       ) {
         return TriageLevelEnum.SEE_DOCTOR;
       }
     }
 
-    const combined = SoapService.normalizeClinicalText(
+    const combined = SoapService.stripNegatedSegments(
       `${parsed.assessment}\n${parsed.plan}\n${parsed.subjective}\n${parsed.objective}`,
     );
 
     for (const rule of SoapService.TRIAGE_LEVEL_RULES) {
-      if (rule.keywords.some((keyword) => combined.includes(keyword))) {
+      if (
+        rule.keywords.some((keyword) =>
+          SoapService.containsTerm(combined, keyword),
+        )
+      ) {
         return rule.level;
       }
     }

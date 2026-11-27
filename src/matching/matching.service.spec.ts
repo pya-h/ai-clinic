@@ -231,10 +231,10 @@ describe('MatchingService', () => {
       });
 
       expect(result).toHaveLength(1);
-      // Exact specialty match: 55 * 1.0 = 55, rating 0.5 default (null): 20 * 0.5 = 10
-      // availability 0: 0, experience 50/100=0.5: 10*0.5 = 5
-      // total: 55 + 10 + 0 + 5 = 70
-      expect(result[0].score).toBe(70);
+      // Exact specialty match: 55 * 1.0 = 55, rating 0.5 default (null): 18 * 0.5 = 9
+      // availability 0: 0, experience 50/100=0.5: 8*0.5 = 4
+      // total: 55 + 9 + 0 + 4 = 68
+      expect(result[0].score).toBe(68);
     });
 
     it('should give 0.55 specialty score for secondary specialty match', async () => {
@@ -265,11 +265,11 @@ describe('MatchingService', () => {
         specialty: DoctorSpecialtiesEnum.DERMATOLOGY,
       });
 
-      // secondary match: 55 * 0.55 = 30.25, rating null: 20 * 0.5 = 10, avail 0, exp 0
-      expect(result[0].score).toBe(40.25);
+      // secondary match: 55 * 0.55 = 30.25, rating null: 18 * 0.5 = 9, avail 0, exp 0
+      expect(result[0].score).toBe(39.25);
     });
 
-    it('should give 0.25 specialty score for GENERAL doctor when criteria has specific specialty', async () => {
+    it('should give 0.15 specialty score for GENERAL doctor when criteria has specific specialty', async () => {
       const doc = buildMockDoctor({
         id: 1,
         specialty: DoctorSpecialtiesEnum.GENERAL,
@@ -297,8 +297,8 @@ describe('MatchingService', () => {
         specialty: DoctorSpecialtiesEnum.CARDIOLOGY,
       });
 
-      // GENERAL fallback: 55 * 0.25 = 13.75, rating: 10, avail 0, exp 0
-      expect(result[0].score).toBe(23.75);
+      // GENERAL fallback: 55 * 0.15 = 8.25, rating: 9, avail 0, exp 0
+      expect(result[0].score).toBe(17.25);
     });
 
     it('should give 0.5 specialty score when no specialty criteria provided', async () => {
@@ -326,8 +326,8 @@ describe('MatchingService', () => {
 
       const result = await service.scoreDoctors({});
 
-      // no criteria: 55 * 0.5 = 27.5, rating: 10, avail 0, exp 0
-      expect(result[0].score).toBe(37.5);
+      // no criteria: 55 * 0.5 = 27.5, rating: 9, avail 0, exp 0
+      expect(result[0].score).toBe(36.5);
     });
 
     it('should handle review service errors gracefully', async () => {
@@ -425,8 +425,8 @@ describe('MatchingService', () => {
 
       const result = await service.scoreDoctors({});
 
-      // no spec: 27.5, rating null: 10, avail capped 1.0: 15, exp 0
-      expect(result[0].score).toBe(52.5);
+      // no spec: 27.5, rating null: 9, avail capped 1.0: 14, exp 0
+      expect(result[0].score).toBe(50.5);
     });
 
     it('should cap experience score at 1.0', async () => {
@@ -450,8 +450,8 @@ describe('MatchingService', () => {
 
       const result = await service.scoreDoctors({});
 
-      // no spec: 27.5, rating null: 10, avail 0, exp capped 1.0: 10
-      expect(result[0].score).toBe(47.5);
+      // no spec: 27.5, rating null: 9, avail 0, exp capped 1.0: 8
+      expect(result[0].score).toBe(44.5);
     });
 
     it('should include correct fields in scored doctor result', async () => {
@@ -730,6 +730,18 @@ describe('MatchingService', () => {
 
       await expect(service.matchDoctor(randomUUID(), 1)).rejects.toThrow(
         BadRequestException,
+      );
+    });
+
+    it('should throw BadRequestException when request has already expired', async () => {
+      prisma.matchRequest.findUnique.mockResolvedValue({
+        id: randomUUID(),
+        status: MatchStatusEnum.SEARCHING,
+        createdAt: new Date(Date.now() - 6 * 60 * 1000),
+      });
+
+      await expect(service.matchDoctor(randomUUID(), 1)).rejects.toThrow(
+        new BadRequestException('This match request has expired.'),
       );
     });
   });
@@ -1928,17 +1940,85 @@ describe('MatchingService', () => {
       );
 
       service.markDoctorOnline(u1);
+      service.markDoctorOnline(u1); // second browser tab
       const onlineResult = await service.scoreDoctors({
         specialty: DoctorSpecialtiesEnum.GENERAL,
       });
       expect(onlineResult[0].doctorId).toBe(1);
-      expect(onlineResult[0].score - onlineResult[1].score).toBe(4);
+      expect(onlineResult[0].score - onlineResult[1].score).toBe(5);
+
+      // closing one tab keeps doctor online while second tab remains connected
+      service.markDoctorOffline(u1);
+      expect(service.isDoctorOnline(u1)).toBe(true);
 
       service.markDoctorOffline(u1);
+      expect(service.isDoctorOnline(u1)).toBe(false);
       const afterOffline = await service.scoreDoctors({
         specialty: DoctorSpecialtiesEnum.GENERAL,
       });
       expect(afterOffline[0].score).toBe(afterOffline[1].score);
+    });
+
+    it('bounds score strictly within [0, 100] and applies deterministic tie-breakers', async () => {
+      const u1 = randomUUID();
+      const u2 = randomUUID();
+      service.markDoctorOnline(u1);
+      service.markDoctorOnline(u2);
+
+      const maxDoc1 = {
+        id: 20,
+        specialty: DoctorSpecialtiesEnum.CARDIOLOGY,
+        secondarySpecialties: [],
+        verified: true,
+        user: { id: u1, firstname: 'Max', lastname: 'A', avatar: null },
+        _count: { consultations: 500 },
+      };
+      const maxDoc2 = {
+        id: 10,
+        specialty: DoctorSpecialtiesEnum.CARDIOLOGY,
+        secondarySpecialties: [],
+        verified: true,
+        user: { id: u2, firstname: 'Max', lastname: 'B', avatar: null },
+        _count: { consultations: 500 },
+      };
+      prisma.doctorProfile.findMany.mockResolvedValue([maxDoc1, maxDoc2]);
+      reviewService.getAggregateRatingsForDoctors.mockResolvedValue(
+        new Map([
+          [
+            20,
+            {
+              averageRating: 5.0,
+              totalReviews: 100,
+              distribution: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 100 },
+            },
+          ],
+          [
+            10,
+            {
+              averageRating: 5.0,
+              totalReviews: 100,
+              distribution: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 100 },
+            },
+          ],
+        ]),
+      );
+      schedulingService.countAvailableSlotsForDoctors.mockResolvedValue(
+        new Map([
+          [20, 80],
+          [10, 80],
+        ]),
+      );
+
+      const res = await service.scoreDoctors({
+        specialty: DoctorSpecialtiesEnum.CARDIOLOGY,
+      });
+      expect(res[0].score).toBe(100);
+      expect(res[1].score).toBe(100);
+      // deterministic final tie-breaker: lower doctorId first when slots & reviews match
+      expect(res.map((d) => d.doctorId)).toEqual([10, 20]);
+
+      service.markDoctorOffline(u1);
+      service.markDoctorOffline(u2);
     });
 
     it('computes dynamic randomized scores matching the configured formula and descending order', async () => {
@@ -1985,9 +2065,11 @@ describe('MatchingService', () => {
         expect(result[i - 1].score).toBeGreaterThanOrEqual(result[i].score);
       }
       for (const item of result) {
+        expect(item.score).toBeGreaterThanOrEqual(0);
+        expect(item.score).toBeLessThanOrEqual(100);
         const rawDoc = pool.find((d) => d.id === item.doctorId)!;
         const specScore =
-          rawDoc.specialty === DoctorSpecialtiesEnum.ENT ? 1.0 : 0.25;
+          rawDoc.specialty === DoctorSpecialtiesEnum.ENT ? 1.0 : 0.15;
         const ratingScore =
           (ratings.get(item.doctorId)!.averageRating ?? 2.5) / 5;
         const availScore = Math.min((slots.get(item.doctorId) ?? 0) / 30, 1.0);
@@ -1995,10 +2077,10 @@ describe('MatchingService', () => {
         const expected =
           Math.round(
             (55 * specScore +
-              20 * ratingScore +
-              15 * availScore +
-              10 * expScore +
-              (pool.indexOf(rawDoc) % 2 === 0 ? 4 : 0)) *
+              18 * ratingScore +
+              14 * availScore +
+              8 * expScore +
+              (pool.indexOf(rawDoc) % 2 === 0 ? 5 : 0)) *
               100,
           ) / 100;
         expect(item.score).toBe(expected);
