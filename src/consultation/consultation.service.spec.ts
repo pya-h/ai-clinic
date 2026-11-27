@@ -15,8 +15,8 @@ import {
 } from '../../test/helpers/mock-session.helper';
 import {
   ConsultationStatusEnum,
-  ConsultationModeEnum,
   VisitMethodsEnum,
+  VisitTypesEnum,
   UserRolesEnum,
 } from '@prisma/client';
 import {
@@ -276,14 +276,16 @@ describe('ConsultationService', () => {
   describe('doctorDecide', () => {
     const consultationId = 'consult-uuid';
     const decisionDto = {
-      doctorDecision: ConsultationModeEnum.ONLINE,
-      visitMethod: VisitMethodsEnum.VIDEO_CALL,
+      doctorDecision: VisitTypesEnum.CONSULTATION,
+      visitMethod: VisitMethodsEnum.CHAT,
     };
 
-    it('should let the assigned doctor decide', async () => {
+    it('should let the assigned doctor decide with CHAT and send decision details', async () => {
       prisma.consultation.findUnique.mockResolvedValue({
         id: consultationId,
+        patientId: patient.id,
         doctorId: 1,
+        notes: null,
         status: ConsultationStatusEnum.PENDING_DOCTOR_REVIEW,
       });
       prisma.doctorProfile.findUnique.mockResolvedValue({
@@ -293,7 +295,15 @@ describe('ConsultationService', () => {
       const updated = {
         id: consultationId,
         status: ConsultationStatusEnum.DOCTOR_DECIDED,
-        doctorDecision: ConsultationModeEnum.ONLINE,
+        doctorDecision: VisitTypesEnum.CONSULTATION,
+        visitMethod: VisitMethodsEnum.CHAT,
+        diagnosis: null,
+        suggestions: null,
+        notes: null,
+        doctor: {
+          userId: doctor.id,
+          user: { firstname: doctor.firstname, lastname: doctor.lastname },
+        },
       };
       prisma.consultation.updateMany.mockResolvedValue({ count: 1 });
       prisma.consultation.findUniqueOrThrow.mockResolvedValue(updated);
@@ -313,11 +323,141 @@ describe('ConsultationService', () => {
           },
           data: expect.objectContaining({
             status: ConsultationStatusEnum.DOCTOR_DECIDED,
-            doctorDecision: ConsultationModeEnum.ONLINE,
-            visitMethod: VisitMethodsEnum.VIDEO_CALL,
+            doctorDecision: VisitTypesEnum.CONSULTATION,
+            visitMethod: VisitMethodsEnum.CHAT,
           }),
         }),
       );
+      expect(
+        (service as any).notificationService.onDoctorDecision,
+      ).toHaveBeenCalledWith(
+        consultationId,
+        patient.id,
+        true,
+        expect.objectContaining({
+          doctorDecision: VisitTypesEnum.CONSULTATION,
+          visitMethod: VisitMethodsEnum.CHAT,
+        }),
+      );
+    });
+
+    it.each([VisitMethodsEnum.VOICE_CALL, VisitMethodsEnum.VIDEO_CALL])(
+      'should reject unimplemented %s visit method with BadRequestException',
+      async (visitMethod) => {
+        prisma.consultation.findUnique.mockResolvedValue({
+          id: consultationId,
+          doctorId: 1,
+          status: ConsultationStatusEnum.PENDING_DOCTOR_REVIEW,
+        });
+        prisma.doctorProfile.findUnique.mockResolvedValue({
+          id: 1,
+          userId: doctor.id,
+        });
+
+        await expect(
+          service.doctorDecide(consultationId, doctor as any, {
+            doctorDecision: VisitTypesEnum.CONSULTATION,
+            visitMethod,
+          }),
+        ).rejects.toThrow(BadRequestException);
+      },
+    );
+
+    it('should reject missing visitMethod when not DIRECT_DIAGNOSIS', async () => {
+      prisma.consultation.findUnique.mockResolvedValue({
+        id: consultationId,
+        doctorId: 1,
+        status: ConsultationStatusEnum.PENDING_DOCTOR_REVIEW,
+      });
+      prisma.doctorProfile.findUnique.mockResolvedValue({
+        id: 1,
+        userId: doctor.id,
+      });
+
+      await expect(
+        service.doctorDecide(consultationId, doctor as any, {
+          doctorDecision: VisitTypesEnum.EXAMINATION,
+        }),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('should complete consultation immediately for DIRECT_DIAGNOSIS', async () => {
+      prisma.consultation.findUnique.mockResolvedValue({
+        id: consultationId,
+        patientId: patient.id,
+        doctorId: 1,
+        notes: null,
+        status: ConsultationStatusEnum.PENDING_DOCTOR_REVIEW,
+      });
+      prisma.doctorProfile.findUnique.mockResolvedValue({
+        id: 1,
+        userId: doctor.id,
+      });
+      const completed = {
+        id: consultationId,
+        status: ConsultationStatusEnum.COMPLETED,
+        doctorDecision: VisitTypesEnum.DIRECT_DIAGNOSIS,
+        visitMethod: null,
+        diagnosis: 'Seasonal allergic rhinitis',
+        suggestions: 'Antihistamines daily for 7 days',
+        notes: 'Drink plenty of fluids',
+        doctor: {
+          userId: doctor.id,
+          user: { firstname: doctor.firstname, lastname: doctor.lastname },
+        },
+      };
+      prisma.consultation.updateMany.mockResolvedValue({ count: 1 });
+      prisma.consultation.findUniqueOrThrow.mockResolvedValue(completed);
+
+      const result = await service.doctorDecide(consultationId, doctor as any, {
+        doctorDecision: VisitTypesEnum.DIRECT_DIAGNOSIS,
+        diagnosis: '  Seasonal allergic rhinitis ',
+        suggestions: '  Antihistamines daily for 7 days ',
+        notes: 'Drink plenty of fluids',
+        followUpNeeded: false,
+      });
+
+      expect(result).toEqual(completed);
+      expect(prisma.consultation.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            status: ConsultationStatusEnum.COMPLETED,
+            doctorDecision: VisitTypesEnum.DIRECT_DIAGNOSIS,
+            visitMethod: null,
+            diagnosis: 'Seasonal allergic rhinitis',
+            suggestions: 'Antihistamines daily for 7 days',
+            completedAt: expect.any(Date),
+          }),
+        }),
+      );
+    });
+
+    it('should reject DIRECT_DIAGNOSIS without diagnosis and suggestions or with visitMethod', async () => {
+      prisma.consultation.findUnique.mockResolvedValue({
+        id: consultationId,
+        doctorId: 1,
+        status: ConsultationStatusEnum.PENDING_DOCTOR_REVIEW,
+      });
+      prisma.doctorProfile.findUnique.mockResolvedValue({
+        id: 1,
+        userId: doctor.id,
+      });
+
+      await expect(
+        service.doctorDecide(consultationId, doctor as any, {
+          doctorDecision: VisitTypesEnum.DIRECT_DIAGNOSIS,
+          diagnosis: 'Only diagnosis',
+        }),
+      ).rejects.toThrow(BadRequestException);
+
+      await expect(
+        service.doctorDecide(consultationId, doctor as any, {
+          doctorDecision: VisitTypesEnum.DIRECT_DIAGNOSIS,
+          visitMethod: VisitMethodsEnum.CHAT,
+          diagnosis: 'Diagnosis',
+          suggestions: 'Suggestions',
+        }),
+      ).rejects.toThrow(BadRequestException);
     });
 
     it('should reject non-doctor users', async () => {
@@ -675,8 +815,8 @@ describe('ConsultationService', () => {
 
       await expect(
         service.doctorDecide(consultationId, doctor as any, {
-          doctorDecision: ConsultationModeEnum.ONLINE,
-          visitMethod: VisitMethodsEnum.VIDEO_CALL,
+          doctorDecision: VisitTypesEnum.CONSULTATION,
+          visitMethod: VisitMethodsEnum.CHAT,
         }),
       ).rejects.toThrow(ConflictException);
     });

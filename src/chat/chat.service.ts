@@ -8,12 +8,14 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import {
   Chat,
+  ConsultationStatusEnum,
   Message,
   MessageTypeEnum,
   NursePermissionEnum,
   Prisma,
   User,
   UserRolesEnum,
+  VisitMethodsEnum,
 } from '@prisma/client';
 import { CreateChatDto } from './dto/create-chat.dto';
 import { SendMessageDto } from './dto/send-message.dto';
@@ -123,6 +125,7 @@ export class ChatService {
         },
         include: {
           parties: { include: { user: { select: this.userSelect() } } },
+          consultation: { select: this.consultationSelect() },
         },
       });
     } catch (err) {
@@ -147,6 +150,242 @@ export class ChatService {
     };
   }
 
+  /**
+   * Opens (or creates) the shared consultation chat room for a CHAT-based consultation.
+   * Patient, assigned doctor, and nurses with CHAT_WITH_PATIENTS share this room.
+   */
+  async openConsultationChat(
+    userId: string,
+    consultationId: string,
+  ): Promise<any> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+    });
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+    if (!user.isActive) {
+      throw new ForbiddenException('Your account is deactivated');
+    }
+    if (user.isBanned) {
+      throw new ForbiddenException('Your account is banned');
+    }
+
+    const consultation = await this.prisma.consultation.findUnique({
+      where: { id: consultationId },
+      include: {
+        doctor: { include: { user: true } },
+        patient: true,
+        chat: {
+          include: {
+            parties: { include: { user: { select: this.userSelect() } } },
+          },
+        },
+      },
+    });
+    if (!consultation) {
+      throw new NotFoundException('Consultation not found');
+    }
+    if (consultation.visitMethod !== VisitMethodsEnum.CHAT) {
+      throw new BadRequestException(
+        'Chat is only available when the consultation visit method is Chat.',
+      );
+    }
+
+    if (
+      consultation.status === ConsultationStatusEnum.CREATED ||
+      consultation.status === ConsultationStatusEnum.PENDING_DOCTOR_REVIEW
+    ) {
+      throw new BadRequestException('Consultation has not been decided yet.');
+    }
+    if (
+      consultation.status === ConsultationStatusEnum.CANCELLED &&
+      !consultation.chat
+    ) {
+      throw new BadRequestException(
+        'Cannot start a chat for a cancelled consultation.',
+      );
+    }
+    if (
+      consultation.status === ConsultationStatusEnum.COMPLETED &&
+      !consultation.chat
+    ) {
+      throw new BadRequestException(
+        'Consultation was completed without a chat.',
+      );
+    }
+
+    const isPatient = user.id === consultation.patientId;
+    const isDoctor = user.id === consultation.doctor?.userId;
+    if (!isPatient && !isDoctor) {
+      if (user.role === UserRolesEnum.NURSE) {
+        await this.nurseService.assertNursePermission(
+          user.id,
+          consultation.doctorId,
+          NursePermissionEnum.CHAT_WITH_PATIENTS,
+        );
+      } else {
+        throw new ForbiddenException(
+          'You do not have access to this consultation chat',
+        );
+      }
+    }
+
+    if (consultation.chat) {
+      const alreadyParticipant = consultation.chat.parties.some(
+        (p) => p.userId === user.id,
+      );
+      if (!alreadyParticipant) {
+        await this.prisma.chatParticipant.upsert({
+          where: {
+            chatId_userId: { chatId: consultation.chat.id, userId: user.id },
+          },
+          update: {},
+          create: { chatId: consultation.chat.id, userId: user.id },
+        });
+      }
+      return this.getChatById(consultation.chat.id, user.id);
+    }
+
+    const patientUser = consultation.patient;
+    const doctorUser = consultation.doctor?.user;
+    if (
+      !patientUser ||
+      !patientUser.isActive ||
+      patientUser.isBanned ||
+      !doctorUser ||
+      !doctorUser.isActive ||
+      doctorUser.isBanned
+    ) {
+      throw new BadRequestException(
+        'Participant account is deactivated or banned',
+      );
+    }
+
+    const participantIds = Array.from(
+      new Set([consultation.patientId, doctorUser.id, user.id]),
+    );
+    const topic = `Consultation with Dr. ${doctorUser.firstname} ${doctorUser.lastname}`;
+
+    let created;
+    try {
+      created = await this.prisma.chat.create({
+        data: {
+          topic,
+          consultationId,
+          parties: {
+            create: participantIds.map((uid) => ({ userId: uid })),
+          },
+        },
+        include: {
+          parties: { include: { user: { select: this.userSelect() } } },
+          consultation: { select: this.consultationSelect() },
+        },
+      });
+    } catch (err) {
+      if (
+        err instanceof Prisma.PrismaClientKnownRequestError &&
+        err.code === 'P2002'
+      ) {
+        const raced = await this.prisma.chat.findUnique({
+          where: { consultationId },
+          select: { id: true },
+        });
+        if (raced) {
+          await this.prisma.chatParticipant.upsert({
+            where: { chatId_userId: { chatId: raced.id, userId: user.id } },
+            update: {},
+            create: { chatId: raced.id, userId: user.id },
+          });
+          return this.getChatById(raced.id, user.id);
+        }
+      }
+      throw err;
+    }
+
+    const { parties, ...rest } = created;
+    return {
+      ...rest,
+      participants: parties.map((p) => ({
+        ...p.user,
+        joinedAt: p.joinedAt,
+        lastSeenAt: p.lastSeenAt,
+        isOnline: this.isOnline(p.userId),
+      })),
+    };
+  }
+
+  /**
+   * Lists active CHAT-based consultations for doctors where the nurse holds CHAT_WITH_PATIENTS.
+   */
+  async getNurseChatConsultations(user: User) {
+    if (user.role !== UserRolesEnum.NURSE) {
+      throw new ForbiddenException(
+        'Only nurses can access nurse consultation chats',
+      );
+    }
+
+    const doctorIds = await this.nurseService.getDoctorIdsForNurse(
+      user.id,
+      NursePermissionEnum.CHAT_WITH_PATIENTS,
+    );
+    if (doctorIds.length === 0) {
+      return [];
+    }
+
+    return this.prisma.consultation.findMany({
+      where: {
+        doctorId: { in: doctorIds },
+        visitMethod: VisitMethodsEnum.CHAT,
+        status: {
+          in: [
+            ConsultationStatusEnum.DOCTOR_DECIDED,
+            ConsultationStatusEnum.PENDING_PAYMENT,
+            ConsultationStatusEnum.PAYMENT_CONFIRMED,
+            ConsultationStatusEnum.IN_PROGRESS,
+          ],
+        },
+      },
+      orderBy: { updatedAt: 'desc' },
+      select: {
+        id: true,
+        status: true,
+        doctorDecision: true,
+        visitMethod: true,
+        createdAt: true,
+        updatedAt: true,
+        patient: {
+          select: {
+            id: true,
+            firstname: true,
+            lastname: true,
+            avatar: true,
+          },
+        },
+        doctor: {
+          select: {
+            id: true,
+            specialty: true,
+            user: {
+              select: {
+                id: true,
+                firstname: true,
+                lastname: true,
+                avatar: true,
+              },
+            },
+          },
+        },
+        chat: {
+          select: {
+            id: true,
+            closedAt: true,
+          },
+        },
+      },
+    });
+  }
+
   async getUserChats(
     userId: string,
     skip = 0,
@@ -169,6 +408,7 @@ export class ChatService {
           parties: {
             include: { user: { select: this.userSelect() } },
           },
+          consultation: { select: this.consultationSelect() },
           messages: {
             orderBy: { createdAt: 'desc' },
             take: 1,
@@ -182,11 +422,38 @@ export class ChatService {
       this.prisma.chat.count({ where }),
     ]);
 
+    let permittedDoctorIds: Set<number> | null = null;
+    const needsNursePermissionFilter = chats.some((c: any) => {
+      if (!c.consultationId) return false;
+      const me = c.parties?.find((p: any) => p.userId === userId);
+      return me?.user?.role === UserRolesEnum.NURSE;
+    });
+    if (needsNursePermissionFilter) {
+      const ids = await this.nurseService.getDoctorIdsForNurse(
+        userId,
+        NursePermissionEnum.CHAT_WITH_PATIENTS,
+      );
+      permittedDoctorIds = new Set(ids);
+    }
+
+    const visibleChats = chats.filter((chat: any) => {
+      if (!chat.consultationId || !chat.consultation || !permittedDoctorIds) {
+        return true;
+      }
+      if (
+        userId === chat.consultation.patientId ||
+        userId === chat.consultation.doctor?.userId
+      ) {
+        return true;
+      }
+      return permittedDoctorIds.has(chat.consultation.doctorId);
+    });
+
     // Compute unread count for each chat
-    const enrichedChats = chats.map((chat) => {
+    const enrichedChats = visibleChats.map((chat: any) => {
       const lastMessage = chat.messages[0] || null;
-      const otherParties = chat.parties.filter((p) => p.userId !== userId);
-      const myParticipant = chat.parties.find((p) => p.userId === userId);
+      const otherParties = chat.parties.filter((p: any) => p.userId !== userId);
+      const myParticipant = chat.parties.find((p: any) => p.userId === userId);
       const unreadCount = this.computeUnreadIndicator(
         lastMessage,
         myParticipant,
@@ -197,10 +464,11 @@ export class ChatService {
         id: chat.id,
         topic: chat.topic,
         consultationId: chat.consultationId,
+        consultation: chat.consultation ?? null,
         closedAt: chat.closedAt,
         createdAt: chat.createdAt,
         updatedAt: chat.updatedAt,
-        participants: otherParties.map((p) => ({
+        participants: otherParties.map((p: any) => ({
           ...p.user,
           joinedAt: p.joinedAt,
           lastSeenAt: p.lastSeenAt,
@@ -211,7 +479,11 @@ export class ChatService {
       };
     });
 
-    return { chats: enrichedChats, total };
+    const filteredOutCount = chats.length - visibleChats.length;
+    return {
+      chats: enrichedChats,
+      total: Math.max(0, total - filteredOutCount),
+    };
   }
 
   async getChatById(chatId: string, userId: string): Promise<any> {
@@ -221,6 +493,7 @@ export class ChatService {
         parties: {
           include: { user: { select: this.userSelect() } },
         },
+        consultation: { select: this.consultationSelect() },
       },
     });
 
@@ -229,6 +502,7 @@ export class ChatService {
     }
 
     this.assertParticipant(chat, userId);
+    await this.assertConsultationAccessIfNurse(chat, userId);
 
     const { parties, ...rest } = chat;
     return {
@@ -258,11 +532,28 @@ export class ChatService {
           userId,
         },
       },
-      select: { chatId: true },
+      select: {
+        chatId: true,
+        chat: {
+          select: {
+            consultationId: true,
+            consultation: {
+              select: {
+                patientId: true,
+                doctorId: true,
+                doctor: { select: { userId: true } },
+              },
+            },
+          },
+        },
+      },
     });
 
     if (!participant) {
       throw new ForbiddenException('You are not a participant in this chat');
+    }
+    if (participant.chat?.consultationId) {
+      await this.assertConsultationAccessIfNurse(participant.chat, userId);
     }
   }
 
@@ -287,6 +578,7 @@ export class ChatService {
     }
 
     this.assertParticipant(chat, senderId);
+    await this.assertConsultationAccessIfNurse(chat, senderId);
 
     const sender = await this.prisma.user.findUnique({
       where: { id: senderId },
@@ -365,6 +657,7 @@ export class ChatService {
     }
 
     this.assertParticipant(chat, userId);
+    await this.assertConsultationAccessIfNurse(chat, userId);
 
     const where: { chatId: string; deletedAt: null } = {
       chatId,
@@ -413,6 +706,7 @@ export class ChatService {
     }
 
     this.assertParticipant(chat, userId);
+    await this.assertConsultationAccessIfNurse(chat, userId);
 
     await this.prisma.$transaction(async (tx) => {
       const messages = await tx.message.findMany({
@@ -705,6 +999,7 @@ export class ChatService {
     return this.prisma.chat.findFirst({
       where: {
         closedAt: null,
+        consultationId: null,
         AND: [
           { parties: { some: { userId: userId1 } } },
           { parties: { some: { userId: userId2 } } },
@@ -714,6 +1009,79 @@ export class ChatService {
         parties: { include: { user: { select: this.userSelect() } } },
       },
     });
+  }
+
+  private async assertConsultationAccessIfNurse(
+    chat: {
+      consultationId?: string | null;
+      consultation?: {
+        patientId: string;
+        doctorId: number;
+        doctor?: { userId: string } | null;
+      } | null;
+    },
+    userId: string,
+  ): Promise<void> {
+    if (!chat.consultationId) return;
+
+    const consultation =
+      chat.consultation ??
+      (await this.prisma.consultation.findUnique({
+        where: { id: chat.consultationId },
+        select: {
+          patientId: true,
+          doctorId: true,
+          doctor: { select: { userId: true } },
+        },
+      }));
+    if (!consultation) return;
+
+    if (
+      userId === consultation.patientId ||
+      userId === consultation.doctor?.userId
+    ) {
+      return;
+    }
+
+    await this.nurseService.assertNursePermission(
+      userId,
+      consultation.doctorId,
+      NursePermissionEnum.CHAT_WITH_PATIENTS,
+    );
+  }
+
+  private consultationSelect() {
+    return {
+      id: true,
+      status: true,
+      doctorDecision: true,
+      visitMethod: true,
+      patientId: true,
+      doctorId: true,
+      patient: {
+        select: {
+          id: true,
+          firstname: true,
+          lastname: true,
+          avatar: true,
+        },
+      },
+      doctor: {
+        select: {
+          id: true,
+          userId: true,
+          specialty: true,
+          user: {
+            select: {
+              id: true,
+              firstname: true,
+              lastname: true,
+              avatar: true,
+            },
+          },
+        },
+      },
+    };
   }
 
   private assertParticipant(

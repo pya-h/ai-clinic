@@ -57,6 +57,7 @@ export type MockPrismaService = {
     findMany: jest.Mock;
     create: jest.Mock;
     update: jest.Mock;
+    upsert: jest.Mock;
     delete: jest.Mock;
   };
   message: {
@@ -229,7 +230,7 @@ export function createMockPrismaService(): MockPrismaService {
     patientProfile: createModelMock() as any,
     doctorReview: createModelMock(['aggregate', 'groupBy', 'count']) as any,
     chat: createModelMock(['count']) as any,
-    chatParticipant: createModelMock() as any,
+    chatParticipant: createModelMock(['upsert']) as any,
     message: createModelMock(['count']) as any,
     aiConversation: createModelMock(['count']) as any,
     patientSOAP: createModelMock(['upsert', 'count']) as any,

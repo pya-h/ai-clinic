@@ -29,7 +29,14 @@ import {
 import { ChatService } from './chat.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { NurseService } from '../nurse/nurse.service';
-import { MessageTypeEnum, Prisma, UserRolesEnum } from '@prisma/client';
+import {
+  MessageTypeEnum,
+  NursePermissionEnum,
+  Prisma,
+  UserRolesEnum,
+  VisitMethodsEnum,
+  VisitTypesEnum,
+} from '@prisma/client';
 import {
   createMockPrismaService,
   MockPrismaService,
@@ -44,7 +51,10 @@ import { randomUUID } from 'crypto';
 describe('ChatService', () => {
   let service: ChatService;
   let prisma: MockPrismaService;
-  let nurseService: { getDoctorIdsForNurse: jest.Mock };
+  let nurseService: {
+    getDoctorIdsForNurse: jest.Mock;
+    assertNursePermission: jest.Mock;
+  };
 
   // ── Random test data factories ─────────────────────────────
   const uuid = () => randomUUID();
@@ -134,6 +144,7 @@ describe('ChatService', () => {
     prisma = createMockPrismaService();
     nurseService = {
       getDoctorIdsForNurse: jest.fn().mockResolvedValue([]),
+      assertNursePermission: jest.fn().mockResolvedValue(undefined),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -1159,6 +1170,152 @@ describe('ChatService', () => {
       const serialized = service.serializeMessage(mockMessage);
       expect(serialized.repliedTo).toBeNull();
       expect(serialized.repliedToId).toBeNull();
+    });
+  });
+
+  describe('openConsultationChat', () => {
+    const consultId = uuid();
+    const nurseId = uuid();
+
+    it('should create shared consultation chat for doctor and let nurse join same room', async () => {
+      prisma.user.findUnique.mockResolvedValue(mockDoctor);
+      prisma.consultation.findUnique.mockResolvedValue({
+        id: consultId,
+        patientId,
+        doctorId: 10,
+        status: 'DOCTOR_DECIDED',
+        visitMethod: VisitMethodsEnum.CHAT,
+        patient: mockPatient,
+        doctor: { id: 10, userId: doctorId, user: mockDoctor },
+        chat: null,
+      });
+      prisma.chat.create.mockResolvedValue({
+        ...mockChat,
+        consultationId: consultId,
+      });
+
+      const created = await service.openConsultationChat(doctorId, consultId);
+      expect(created.id).toBe(chatId);
+      expect(prisma.chat.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            consultationId: consultId,
+          }),
+        }),
+      );
+
+      // Now nurse with CHAT_WITH_PATIENTS opens the same consultation chat
+      const nurseUser = createMockUser({
+        id: nurseId,
+        role: UserRolesEnum.NURSE,
+      });
+      prisma.user.findUnique.mockResolvedValue(nurseUser);
+      prisma.consultation.findUnique.mockResolvedValue({
+        id: consultId,
+        patientId,
+        doctorId: 10,
+        status: 'DOCTOR_DECIDED',
+        visitMethod: VisitMethodsEnum.CHAT,
+        patient: mockPatient,
+        doctor: { id: 10, userId: doctorId, user: mockDoctor },
+        chat: {
+          ...mockChat,
+          consultationId: consultId,
+        },
+      });
+      prisma.chatParticipant.upsert.mockResolvedValue({});
+      prisma.chat.findUnique.mockResolvedValue({
+        ...mockChat,
+        consultationId: consultId,
+        parties: [
+          ...mockChat.parties,
+          {
+            userId: nurseId,
+            chatId,
+            joinedAt: new Date(),
+            lastSeenAt: null,
+            user: nurseUser,
+          },
+        ],
+        consultation: {
+          id: consultId,
+          status: 'DOCTOR_DECIDED',
+          doctorDecision: VisitTypesEnum.CONSULTATION,
+          visitMethod: VisitMethodsEnum.CHAT,
+          patientId,
+          doctorId: 10,
+        },
+      });
+
+      const joined = await service.openConsultationChat(nurseId, consultId);
+      expect(nurseService.assertNursePermission).toHaveBeenCalledWith(
+        nurseId,
+        10,
+        NursePermissionEnum.CHAT_WITH_PATIENTS,
+      );
+      expect(prisma.chatParticipant.upsert).toHaveBeenCalled();
+      expect(joined.id).toBe(chatId);
+    });
+
+    it('should reject non-CHAT consultations and unauthorized nurses', async () => {
+      prisma.user.findUnique.mockResolvedValue(mockDoctor);
+      prisma.consultation.findUnique.mockResolvedValue({
+        id: consultId,
+        patientId,
+        doctorId: 10,
+        status: 'DOCTOR_DECIDED',
+        visitMethod: VisitMethodsEnum.ON_SITE,
+        patient: mockPatient,
+        doctor: { id: 10, userId: doctorId, user: mockDoctor },
+        chat: null,
+      });
+
+      await expect(
+        service.openConsultationChat(doctorId, consultId),
+      ).rejects.toThrow(BadRequestException);
+
+      const nurseUser = createMockUser({
+        id: nurseId,
+        role: UserRolesEnum.NURSE,
+      });
+      prisma.user.findUnique.mockResolvedValue(nurseUser);
+      prisma.consultation.findUnique.mockResolvedValue({
+        id: consultId,
+        patientId,
+        doctorId: 10,
+        status: 'DOCTOR_DECIDED',
+        visitMethod: VisitMethodsEnum.CHAT,
+        patient: mockPatient,
+        doctor: { id: 10, userId: doctorId, user: mockDoctor },
+        chat: null,
+      });
+      nurseService.assertNursePermission.mockRejectedValueOnce(
+        new ForbiddenException('No permission'),
+      );
+
+      await expect(
+        service.openConsultationChat(nurseId, consultId),
+      ).rejects.toThrow(ForbiddenException);
+    });
+  });
+
+  describe('getNurseChatConsultations', () => {
+    it('returns CHAT consultations for permitted doctors', async () => {
+      const nurseUser = createMockUser({
+        id: uuid(),
+        role: UserRolesEnum.NURSE,
+      });
+      nurseService.getDoctorIdsForNurse.mockResolvedValue([10]);
+      prisma.consultation.findMany.mockResolvedValue([
+        { id: uuid(), visitMethod: VisitMethodsEnum.CHAT },
+      ]);
+
+      const rows = await service.getNurseChatConsultations(nurseUser as any);
+      expect(rows).toHaveLength(1);
+      expect(nurseService.getDoctorIdsForNurse).toHaveBeenCalledWith(
+        nurseUser.id,
+        NursePermissionEnum.CHAT_WITH_PATIENTS,
+      );
     });
   });
 });

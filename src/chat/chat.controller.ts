@@ -12,8 +12,10 @@ import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { ChatService } from './chat.service';
 import { ChatGateway } from './chat.gateway';
 import { CookieAuthGuard } from '../auth/guards/cookie-auth.guard';
+import { RolesGuard } from '../auth/guards/roles.guard';
+import { Roles } from '../common/decorators/roles.decorator';
 import { CurrentUser } from '../user/decorators/current-user.decorator';
-import { User } from '@prisma/client';
+import { User, UserRolesEnum } from '@prisma/client';
 import { CreateChatDto } from './dto/create-chat.dto';
 import { SendMessageDto } from './dto/send-message.dto';
 import { PaginationOptionsDto } from '../common/dtos/pagination-options.dto';
@@ -50,6 +52,35 @@ export class ChatController {
       pagination.skip,
       pagination.take,
     );
+  }
+
+  @Get('nurse-consultations')
+  @UseGuards(RolesGuard)
+  @Roles(UserRolesEnum.NURSE)
+  @ApiOperation({
+    summary:
+      'List CHAT consultations for assigned doctors with CHAT_WITH_PATIENTS permission',
+  })
+  async getNurseChatConsultations(@CurrentUser() user: User) {
+    return this.chatService.getNurseChatConsultations(user);
+  }
+
+  @Post('consultation/:consultationId')
+  @ApiOperation({
+    summary: 'Open or create the shared chat room for a CHAT consultation',
+  })
+  async openConsultationChat(
+    @CurrentUser() user: User,
+    @Param('consultationId', ParseUUIDPipe) consultationId: string,
+  ) {
+    const chat = await this.chatService.openConsultationChat(
+      user.id,
+      consultationId,
+    );
+    for (const participant of chat.participants) {
+      this.chatGateway.addUserToRoom(participant.id, chat.id);
+    }
+    return chat;
   }
 
   @Get(':id')

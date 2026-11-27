@@ -43,7 +43,13 @@ import {
 } from './helpers/mock-session.helper';
 import { randomUuid } from './helpers/test-data.factory';
 import { flushPromises } from './helpers/ws-handshake.helper';
-import { UserRolesEnum, MessageTypeEnum } from '@prisma/client';
+import {
+  UserRolesEnum,
+  MessageTypeEnum,
+  VisitMethodsEnum,
+  VisitTypesEnum,
+  NursePermissionEnum,
+} from '@prisma/client';
 import authConfigs from '../src/configs/auth';
 import generalConfigs from '../src/configs/general';
 
@@ -968,6 +974,141 @@ describe('Chat (e2e)', () => {
       });
 
       expect(res.statusCode).toBe(HttpStatus.NOT_FOUND);
+    });
+  });
+
+  // ─── POST /chat/consultation/:id & GET /chat/nurse-consultations ─
+
+  describe('Shared consultation chat & nurse access', () => {
+    it('POST /chat/consultation/:id should create shared room for doctor and add nurse with permission', async () => {
+      const consultId = randomUuid();
+      const chatId = randomUuid();
+      const nurseUser = createMockNurseUser();
+      const sharedChat = {
+        ...buildChatData({ id: chatId, consultationId: consultId }),
+        consultation: {
+          id: consultId,
+          status: 'DOCTOR_DECIDED',
+          doctorDecision: VisitTypesEnum.CONSULTATION,
+          visitMethod: VisitMethodsEnum.CHAT,
+          patientId: patientUser.id,
+          doctorId: 10,
+          patient: {
+            id: patientUser.id,
+            firstname: patientUser.firstname,
+            lastname: patientUser.lastname,
+            avatar: null,
+          },
+          doctor: {
+            id: 10,
+            userId: doctorUser.id,
+            specialty: 'GENERAL',
+            user: {
+              id: doctorUser.id,
+              firstname: doctorUser.firstname,
+              lastname: doctorUser.lastname,
+              avatar: null,
+            },
+          },
+        },
+      };
+
+      sessionUser = doctorUser;
+      prisma.user.findUnique.mockResolvedValue({ ...doctorUser });
+      prisma.consultation.findUnique.mockResolvedValue({
+        id: consultId,
+        patientId: patientUser.id,
+        doctorId: 10,
+        status: 'DOCTOR_DECIDED',
+        visitMethod: VisitMethodsEnum.CHAT,
+        patient: { ...patientUser },
+        doctor: { id: 10, userId: doctorUser.id, user: { ...doctorUser } },
+        chat: null,
+      });
+      prisma.chat.create.mockResolvedValue(sharedChat);
+
+      const doctorRes = await app.inject({
+        method: 'POST',
+        url: `/chat/consultation/${consultId}`,
+      });
+      expect(doctorRes.statusCode).toBe(HttpStatus.CREATED);
+      expect(JSON.parse(doctorRes.body).contents.id).toBe(chatId);
+
+      sessionUser = nurseUser;
+      prisma.user.findUnique.mockResolvedValue({ ...nurseUser });
+      prisma.consultation.findUnique.mockResolvedValue({
+        id: consultId,
+        patientId: patientUser.id,
+        doctorId: 10,
+        status: 'DOCTOR_DECIDED',
+        visitMethod: VisitMethodsEnum.CHAT,
+        patient: { ...patientUser },
+        doctor: { id: 10, userId: doctorUser.id, user: { ...doctorUser } },
+        chat: sharedChat,
+      });
+      prisma.doctorNurseAssignment.findFirst.mockResolvedValue({
+        id: 1,
+        nurseId: nurseUser.id,
+        doctorId: 10,
+        isActive: true,
+        permissions: [NursePermissionEnum.CHAT_WITH_PATIENTS],
+      });
+      prisma.chatParticipant.upsert.mockResolvedValue({});
+      prisma.chat.findUnique.mockResolvedValue({
+        ...sharedChat,
+        parties: [
+          ...sharedChat.parties,
+          {
+            userId: nurseUser.id,
+            joinedAt: new Date(),
+            lastSeenAt: null,
+            user: {
+              id: nurseUser.id,
+              firstname: nurseUser.firstname,
+              lastname: nurseUser.lastname,
+              avatar: null,
+              role: UserRolesEnum.NURSE,
+              isAdmin: false,
+              isSuperAdmin: false,
+            },
+          },
+        ],
+      });
+
+      const nurseRes = await app.inject({
+        method: 'POST',
+        url: `/chat/consultation/${consultId}`,
+      });
+      expect(nurseRes.statusCode).toBe(HttpStatus.CREATED);
+      expect(JSON.parse(nurseRes.body).contents.id).toBe(chatId);
+    });
+
+    it('GET /chat/nurse-consultations should reject non-nurse and return active CHAT consultations for nurse', async () => {
+      sessionUser = patientUser;
+      const forbiddenRes = await app.inject({
+        method: 'GET',
+        url: '/chat/nurse-consultations',
+      });
+      expect(forbiddenRes.statusCode).toBe(HttpStatus.FORBIDDEN);
+
+      const nurseUser = createMockNurseUser();
+      sessionUser = nurseUser;
+      prisma.doctorNurseAssignment.findMany.mockResolvedValue([
+        {
+          doctorId: 10,
+          permissions: [NursePermissionEnum.CHAT_WITH_PATIENTS],
+        },
+      ]);
+      prisma.consultation.findMany.mockResolvedValue([
+        { id: randomUuid(), visitMethod: VisitMethodsEnum.CHAT },
+      ]);
+
+      const okRes = await app.inject({
+        method: 'GET',
+        url: '/chat/nurse-consultations',
+      });
+      expect(okRes.statusCode).toBe(HttpStatus.OK);
+      expect(JSON.parse(okRes.body).contents).toHaveLength(1);
     });
   });
 });

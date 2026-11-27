@@ -35,7 +35,11 @@ import {
   createMockPrismaService,
   MockPrismaService,
 } from './helpers/mock-prisma.helper';
-import { ConsultationStatusEnum, ConsultationModeEnum } from '@prisma/client';
+import {
+  ConsultationStatusEnum,
+  VisitMethodsEnum,
+  VisitTypesEnum,
+} from '@prisma/client';
 import authConfigs from '../src/configs/auth';
 import generalConfigs from '../src/configs/general';
 import {
@@ -422,7 +426,12 @@ describe('Consultation (e2e)', () => {
       // atomic CAS update
       const updated = buildConsultation({
         status: ConsultationStatusEnum.DOCTOR_DECIDED,
-        doctorDecision: ConsultationModeEnum.ONLINE,
+        doctorDecision: VisitTypesEnum.CONSULTATION,
+        visitMethod: VisitMethodsEnum.CHAT,
+        doctor: {
+          ...buildConsultation().doctor,
+          user: { firstname: doctorUser.firstname, lastname: doctorUser.lastname },
+        },
       });
       prisma.consultation.updateMany.mockResolvedValue({ count: 1 });
       prisma.consultation.findUniqueOrThrow.mockResolvedValue(updated);
@@ -430,14 +439,74 @@ describe('Consultation (e2e)', () => {
       const res = await app.inject({
         method: 'PATCH',
         url: `/consultation/${consultationId}/decide`,
-        payload: { doctorDecision: ConsultationModeEnum.ONLINE },
+        payload: {
+          doctorDecision: VisitTypesEnum.CONSULTATION,
+          visitMethod: VisitMethodsEnum.CHAT,
+        },
       });
 
       expect(res.statusCode).toBe(HttpStatus.OK);
       const body = JSON.parse(res.body);
       expect(body.contents).toBeDefined();
       expect(body.contents.status).toBe(ConsultationStatusEnum.DOCTOR_DECIDED);
-      expect(body.contents.doctorDecision).toBe(ConsultationModeEnum.ONLINE);
+      expect(body.contents.doctorDecision).toBe(VisitTypesEnum.CONSULTATION);
+      expect(body.contents.visitMethod).toBe(VisitMethodsEnum.CHAT);
+    });
+
+    it('should reject VIDEO_CALL decision with 400', async () => {
+      sessionUser = doctorUser;
+
+      const consultation = buildConsultation({
+        status: ConsultationStatusEnum.PENDING_DOCTOR_REVIEW,
+      });
+      prisma.consultation.findUnique.mockResolvedValueOnce(consultation);
+      prisma.doctorProfile.findUnique.mockResolvedValue(doctorProfile);
+
+      const res = await app.inject({
+        method: 'PATCH',
+        url: `/consultation/${consultationId}/decide`,
+        payload: {
+          doctorDecision: VisitTypesEnum.CONSULTATION,
+          visitMethod: VisitMethodsEnum.VIDEO_CALL,
+        },
+      });
+
+      expect(res.statusCode).toBe(HttpStatus.BAD_REQUEST);
+    });
+
+    it('should complete consultation immediately for DIRECT_DIAGNOSIS', async () => {
+      sessionUser = doctorUser;
+
+      const consultation = buildConsultation({
+        status: ConsultationStatusEnum.PENDING_DOCTOR_REVIEW,
+      });
+      prisma.consultation.findUnique.mockResolvedValueOnce(consultation);
+      prisma.doctorProfile.findUnique.mockResolvedValue(doctorProfile);
+      const completed = buildConsultation({
+        status: ConsultationStatusEnum.COMPLETED,
+        doctorDecision: VisitTypesEnum.DIRECT_DIAGNOSIS,
+        visitMethod: null,
+        diagnosis: 'Mild tension headache',
+        suggestions: 'Hydration and rest',
+      });
+      prisma.consultation.updateMany.mockResolvedValue({ count: 1 });
+      prisma.consultation.findUniqueOrThrow.mockResolvedValue(completed);
+
+      const res = await app.inject({
+        method: 'PATCH',
+        url: `/consultation/${consultationId}/decide`,
+        payload: {
+          doctorDecision: VisitTypesEnum.DIRECT_DIAGNOSIS,
+          diagnosis: 'Mild tension headache',
+          suggestions: 'Hydration and rest',
+        },
+      });
+
+      expect(res.statusCode).toBe(HttpStatus.OK);
+      const body = JSON.parse(res.body);
+      expect(body.contents.status).toBe(ConsultationStatusEnum.COMPLETED);
+      expect(body.contents.doctorDecision).toBe(VisitTypesEnum.DIRECT_DIAGNOSIS);
+      expect(body.contents.diagnosis).toBe('Mild tension headache');
     });
 
     it('should reject non-doctor user', async () => {
@@ -446,7 +515,10 @@ describe('Consultation (e2e)', () => {
       const res = await app.inject({
         method: 'PATCH',
         url: `/consultation/${consultationId}/decide`,
-        payload: { doctorDecision: ConsultationModeEnum.ONLINE },
+        payload: {
+          doctorDecision: VisitTypesEnum.CONSULTATION,
+          visitMethod: VisitMethodsEnum.CHAT,
+        },
       });
 
       expect(res.statusCode).toBe(HttpStatus.FORBIDDEN);
@@ -472,7 +544,10 @@ describe('Consultation (e2e)', () => {
       const res = await app.inject({
         method: 'PATCH',
         url: `/consultation/${consultationId}/decide`,
-        payload: { doctorDecision: ConsultationModeEnum.ONLINE },
+        payload: {
+          doctorDecision: VisitTypesEnum.CONSULTATION,
+          visitMethod: VisitMethodsEnum.CHAT,
+        },
       });
 
       expect(res.statusCode).toBe(HttpStatus.FORBIDDEN);
@@ -487,13 +562,13 @@ describe('Consultation (e2e)', () => {
 
       const consultation = buildConsultation({
         status: ConsultationStatusEnum.DOCTOR_DECIDED,
-        doctorDecision: ConsultationModeEnum.ONLINE,
+        doctorDecision: VisitTypesEnum.CONSULTATION,
       });
       prisma.consultation.findUnique.mockResolvedValueOnce(consultation);
 
       const updated = buildConsultation({
         status: ConsultationStatusEnum.PENDING_PAYMENT,
-        doctorDecision: ConsultationModeEnum.ONLINE,
+        doctorDecision: VisitTypesEnum.CONSULTATION,
       });
       prisma.consultation.updateMany.mockResolvedValue({ count: 1 });
       prisma.consultation.findUniqueOrThrow.mockResolvedValue(updated);
@@ -508,7 +583,7 @@ describe('Consultation (e2e)', () => {
       expect(body.contents).toBeDefined();
       expect(body.contents.id).toBe(consultationId);
       expect(body.contents.status).toBe(ConsultationStatusEnum.PENDING_PAYMENT);
-      expect(body.contents.doctorDecision).toBe(ConsultationModeEnum.ONLINE);
+      expect(body.contents.doctorDecision).toBe(VisitTypesEnum.CONSULTATION);
     });
 
     it('should advance DOCTOR_DECIDED to PENDING_PAYMENT (doctor)', async () => {

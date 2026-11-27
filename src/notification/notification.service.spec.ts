@@ -28,7 +28,11 @@ import { NotificationService } from './notification.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { EmailChannel } from './channels/email.channel';
 import { WebPushChannel } from './channels/web-push.channel';
-import { NotificationChannelEnum, NotificationTypeEnum } from '@prisma/client';
+import {
+  NotificationChannelEnum,
+  NotificationTypeEnum,
+  VisitTypesEnum,
+} from '@prisma/client';
 import {
   createMockPrismaService,
   MockPrismaService,
@@ -522,6 +526,39 @@ describe('NotificationService', () => {
             title: 'Consultation Update',
             body: 'Your doctor has responded to your consultation request. Please check the details.',
             data: { consultationId, accepted: false },
+          }),
+        }),
+      );
+    });
+
+    it('should include rich decision details when details are provided', async () => {
+      const patientUserId = randomUUID();
+      const created = buildNotification({ userId: patientUserId });
+      prisma.notification.create.mockResolvedValue(created);
+      prisma.notification.update.mockResolvedValue({
+        ...created,
+        sentAt: new Date(),
+      });
+
+      await service.onDoctorDecision(consultationId, patientUserId, true, {
+        doctorName: 'Jane Doe',
+        doctorDecision: VisitTypesEnum.DIRECT_DIAGNOSIS,
+        diagnosis: 'Tension headache',
+        suggestions: 'Rest and hydrate',
+      });
+
+      expect(prisma.notification.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            title: 'Consultation Diagnosis Ready',
+            data: expect.objectContaining({
+              consultationId,
+              isConsultationDecision: true,
+              doctorName: 'Jane Doe',
+              doctorDecision: VisitTypesEnum.DIRECT_DIAGNOSIS,
+              diagnosis: 'Tension headache',
+              suggestions: 'Rest and hydrate',
+            }),
           }),
         }),
       );

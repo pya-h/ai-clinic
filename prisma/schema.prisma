@@ -41,12 +41,6 @@ enum ConsultationStatusEnum {
   CANCELLED
 }
 
-enum ConsultationModeEnum {
-  ASYNC
-  ONLINE
-  IN_PERSON
-}
-
 enum AppointmentStatusEnum {
   PENDING
   CONFIRMED
@@ -324,6 +318,7 @@ enum VisitTypesEnum {
   DENTISTRY
   THERAPY
   NUTRITION
+  DIRECT_DIAGNOSIS
   OTHER
 }
 
@@ -448,9 +443,11 @@ model Consultation {
   soap   PatientSOAP? @relation(fields: [soapId], references: [id], onDelete: SetNull)
 
   status         ConsultationStatusEnum @default(CREATED)
-  doctorDecision ConsultationModeEnum?  @map("doctor_decision")
+  doctorDecision VisitTypesEnum?        @map("doctor_decision")
   visitMethod    VisitMethodsEnum?      @map("visit_method")
 
+  diagnosis      String?
+  suggestions    String?
   notes          String?
   summary        String?
   followUpNeeded Boolean   @default(false) @map("follow_up_needed")

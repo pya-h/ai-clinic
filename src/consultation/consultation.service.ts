@@ -16,6 +16,8 @@ import {
   Prisma,
   User,
   UserRolesEnum,
+  VisitMethodsEnum,
+  VisitTypesEnum,
 } from '@prisma/client';
 import { CreateConsultationDto } from './dto/create-consultation.dto';
 import { DoctorDecisionDto } from './dto/doctor-decision.dto';
@@ -23,6 +25,12 @@ import { CompleteConsultationDto } from './dto/complete-consultation.dto';
 import { ConsultationFilterDto } from './dto/consultation-filter.dto';
 import { NotificationService } from '../notification/notification.service';
 import { NurseService } from '../nurse/nurse.service';
+
+/** Real-time calling (Phase 19) is not yet available. */
+const UNIMPLEMENTED_VISIT_METHODS: ReadonlySet<VisitMethodsEnum> = new Set([
+  VisitMethodsEnum.VOICE_CALL,
+  VisitMethodsEnum.VIDEO_CALL,
+]);
 
 /**
  * Allowed state transitions for the consultation state machine.
@@ -171,8 +179,8 @@ export class ConsultationService {
   // ──────────────── Doctor Decision ────────────────
 
   /**
-   * Doctor decides on a consultation (mode + visit method).
-   * Transitions PENDING_DOCTOR_REVIEW → DOCTOR_DECIDED.
+   * Doctor decides on a consultation (visit type + method, or direct diagnosis).
+   * Transitions PENDING_DOCTOR_REVIEW → DOCTOR_DECIDED (or COMPLETED for DIRECT_DIAGNOSIS).
    */
   async doctorDecide(
     consultationId: string,
@@ -187,13 +195,57 @@ export class ConsultationService {
       ConsultationStatusEnum.DOCTOR_DECIDED,
     );
 
-    const result = await this.prisma.consultation.updateMany({
-      where: { id: consultationId, status: consultation.status },
-      data: {
+    const trimmedNotes = dto.notes?.trim();
+    let updateData: Prisma.ConsultationUpdateManyMutationInput;
+
+    if (dto.doctorDecision === VisitTypesEnum.DIRECT_DIAGNOSIS) {
+      if (dto.visitMethod !== undefined && dto.visitMethod !== null) {
+        throw new BadRequestException(
+          'Visit method cannot be set for a direct diagnosis.',
+        );
+      }
+
+      const trimmedDiagnosis = dto.diagnosis?.trim();
+      const trimmedSuggestions = dto.suggestions?.trim();
+      if (!trimmedDiagnosis || !trimmedSuggestions) {
+        throw new BadRequestException(
+          'Diagnosis and suggestions are required for a direct diagnosis.',
+        );
+      }
+
+      updateData = {
+        status: ConsultationStatusEnum.COMPLETED,
+        doctorDecision: VisitTypesEnum.DIRECT_DIAGNOSIS,
+        visitMethod: null,
+        diagnosis: trimmedDiagnosis,
+        suggestions: trimmedSuggestions,
+        notes: trimmedNotes || consultation.notes,
+        followUpNeeded: dto.followUpNeeded ?? false,
+        completedAt: new Date(),
+      };
+    } else {
+      if (!dto.visitMethod) {
+        throw new BadRequestException(
+          'Visit method is required unless providing a direct diagnosis.',
+        );
+      }
+      if (UNIMPLEMENTED_VISIT_METHODS.has(dto.visitMethod)) {
+        throw new BadRequestException(
+          'Voice Call and Video Call are coming soon and not yet available.',
+        );
+      }
+
+      updateData = {
         status: ConsultationStatusEnum.DOCTOR_DECIDED,
         doctorDecision: dto.doctorDecision,
-        visitMethod: dto.visitMethod ?? null,
-      },
+        visitMethod: dto.visitMethod,
+        notes: trimmedNotes || consultation.notes,
+      };
+    }
+
+    const result = await this.prisma.consultation.updateMany({
+      where: { id: consultationId, status: consultation.status },
+      data: updateData,
     });
     if (result.count === 0) {
       throw new ConflictException(
@@ -209,8 +261,20 @@ export class ConsultationService {
       `Doctor decided on consultation ${consultationId}: ${dto.doctorDecision}`,
     );
 
+    const doctorName = updated.doctor?.user
+      ? `${updated.doctor.user.firstname} ${updated.doctor.user.lastname}`.trim()
+      : undefined;
+
     this.notificationService
-      .onDoctorDecision(consultationId, consultation.patientId, true)
+      .onDoctorDecision(consultationId, consultation.patientId, true, {
+        doctorName,
+        doctorUserId: updated.doctor?.userId,
+        doctorDecision: updated.doctorDecision ?? dto.doctorDecision,
+        visitMethod: updated.visitMethod,
+        diagnosis: updated.diagnosis,
+        suggestions: updated.suggestions,
+        notes: updated.notes,
+      })
       .catch((e) => this.logger.error(`Notification failed: ${e.message}`));
 
     return updated;
@@ -637,6 +701,25 @@ export class ConsultationService {
       },
       soap: true,
       appointment: true,
+      chat: {
+        select: {
+          id: true,
+          topic: true,
+          closedAt: true,
+          updatedAt: true,
+        },
+      },
+      payment: {
+        select: {
+          id: true,
+          amount: true,
+          currency: true,
+          status: true,
+          method: true,
+          paidAt: true,
+          createdAt: true,
+        },
+      },
     };
   }
 }
