@@ -231,13 +231,13 @@ describe('MatchingService', () => {
       });
 
       expect(result).toHaveLength(1);
-      // Exact specialty match: 40 * 1.0 = 40, rating 0.5 default (null): 25 * 0.5 = 12.5
-      // availability 0: 0, experience 50/200=0.25: 15*0.25 = 3.75
-      // total: 40 + 12.5 + 0 + 3.75 = 56.25
-      expect(result[0].score).toBe(56.25);
+      // Exact specialty match: 55 * 1.0 = 55, rating 0.5 default (null): 20 * 0.5 = 10
+      // availability 0: 0, experience 50/100=0.5: 10*0.5 = 5
+      // total: 55 + 10 + 0 + 5 = 70
+      expect(result[0].score).toBe(70);
     });
 
-    it('should give 0.6 specialty score for secondary specialty match', async () => {
+    it('should give 0.55 specialty score for secondary specialty match', async () => {
       const doc = buildMockDoctor({
         id: 1,
         specialty: DoctorSpecialtiesEnum.GENERAL,
@@ -265,11 +265,11 @@ describe('MatchingService', () => {
         specialty: DoctorSpecialtiesEnum.DERMATOLOGY,
       });
 
-      // secondary match: 40 * 0.6 = 24, rating null: 25 * 0.5 = 12.5, avail 0, exp 0
-      expect(result[0].score).toBe(36.5);
+      // secondary match: 55 * 0.55 = 30.25, rating null: 20 * 0.5 = 10, avail 0, exp 0
+      expect(result[0].score).toBe(40.25);
     });
 
-    it('should give 0.3 specialty score for GENERAL doctor when criteria has specific specialty', async () => {
+    it('should give 0.25 specialty score for GENERAL doctor when criteria has specific specialty', async () => {
       const doc = buildMockDoctor({
         id: 1,
         specialty: DoctorSpecialtiesEnum.GENERAL,
@@ -297,8 +297,8 @@ describe('MatchingService', () => {
         specialty: DoctorSpecialtiesEnum.CARDIOLOGY,
       });
 
-      // GENERAL fallback: 40 * 0.3 = 12, rating: 12.5, avail 0, exp 0
-      expect(result[0].score).toBe(24.5);
+      // GENERAL fallback: 55 * 0.25 = 13.75, rating: 10, avail 0, exp 0
+      expect(result[0].score).toBe(23.75);
     });
 
     it('should give 0.5 specialty score when no specialty criteria provided', async () => {
@@ -326,8 +326,8 @@ describe('MatchingService', () => {
 
       const result = await service.scoreDoctors({});
 
-      // no criteria: 40 * 0.5 = 20, rating: 12.5, avail 0, exp 0
-      expect(result[0].score).toBe(32.5);
+      // no criteria: 55 * 0.5 = 27.5, rating: 10, avail 0, exp 0
+      expect(result[0].score).toBe(37.5);
     });
 
     it('should handle review service errors gracefully', async () => {
@@ -425,7 +425,7 @@ describe('MatchingService', () => {
 
       const result = await service.scoreDoctors({});
 
-      // no spec: 20, rating null: 12.5, avail capped 1.0: 20, exp 0
+      // no spec: 27.5, rating null: 10, avail capped 1.0: 15, exp 0
       expect(result[0].score).toBe(52.5);
     });
 
@@ -450,7 +450,7 @@ describe('MatchingService', () => {
 
       const result = await service.scoreDoctors({});
 
-      // no spec: 20, rating null: 12.5, avail 0, exp capped 1.0: 15
+      // no spec: 27.5, rating null: 10, avail 0, exp capped 1.0: 10
       expect(result[0].score).toBe(47.5);
     });
 
@@ -1741,6 +1741,310 @@ describe('MatchingService', () => {
       const result = await service.getDoctorUserId(999);
 
       expect(result).toBeNull();
+    });
+  });
+
+  // ──────────────── Enhanced Matching Accuracy & Dynamic Properties ────────────────
+
+  describe('enhanced scoring, filtering, online boost & cascade', () => {
+    it('excludes unrelated specialists when specialty is specified and ranks exact > GENERAL regardless of ratings', async () => {
+      const exactDoc = {
+        id: 1,
+        specialty: DoctorSpecialtiesEnum.CARDIOLOGY,
+        secondarySpecialties: [],
+        verified: true,
+        user: {
+          id: randomUUID(),
+          firstname: 'Exact',
+          lastname: 'Cardio',
+          avatar: null,
+        },
+        _count: { consultations: 0 },
+      };
+      const generalDoc = {
+        id: 2,
+        specialty: DoctorSpecialtiesEnum.GENERAL,
+        secondarySpecialties: [],
+        verified: true,
+        user: {
+          id: randomUUID(),
+          firstname: 'General',
+          lastname: 'Doc',
+          avatar: null,
+        },
+        _count: { consultations: 200 },
+      };
+      const unrelatedDoc = {
+        id: 3,
+        specialty: DoctorSpecialtiesEnum.DERMATOLOGY,
+        secondarySpecialties: [],
+        verified: true,
+        user: {
+          id: randomUUID(),
+          firstname: 'Skin',
+          lastname: 'Doc',
+          avatar: null,
+        },
+        _count: { consultations: 500 },
+      };
+
+      prisma.doctorProfile.findMany.mockResolvedValue([
+        unrelatedDoc,
+        generalDoc,
+        exactDoc,
+      ]);
+      reviewService.getAggregateRatingsForDoctors.mockResolvedValue(
+        new Map([
+          [
+            1,
+            {
+              averageRating: 2.0,
+              totalReviews: 1,
+              distribution: { 1: 0, 2: 1, 3: 0, 4: 0, 5: 0 },
+            },
+          ],
+          [
+            2,
+            {
+              averageRating: 5.0,
+              totalReviews: 50,
+              distribution: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 50 },
+            },
+          ],
+          [
+            3,
+            {
+              averageRating: 5.0,
+              totalReviews: 50,
+              distribution: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 50 },
+            },
+          ],
+        ]),
+      );
+      schedulingService.countAvailableSlotsForDoctors.mockResolvedValue(
+        new Map([
+          [1, 0],
+          [2, 30],
+          [3, 50],
+        ]),
+      );
+
+      const result = await service.scoreDoctors({
+        specialty: DoctorSpecialtiesEnum.CARDIOLOGY,
+      });
+
+      expect(result.map((r) => r.doctorId)).toEqual([1, 2]);
+      expect(result[0].score).toBeGreaterThan(result[1].score);
+    });
+
+    it('requests non-CANCELLED consultations in experience count and queries 48h window for URGENT triage', async () => {
+      const docA = {
+        id: 1,
+        specialty: DoctorSpecialtiesEnum.NEUROLOGY,
+        secondarySpecialties: [],
+        verified: true,
+        user: {
+          id: randomUUID(),
+          firstname: 'Soon',
+          lastname: 'Doc',
+          avatar: null,
+        },
+        _count: { consultations: 10 },
+      };
+      const docB = {
+        id: 2,
+        specialty: DoctorSpecialtiesEnum.NEUROLOGY,
+        secondarySpecialties: [],
+        verified: true,
+        user: {
+          id: randomUUID(),
+          firstname: 'Later',
+          lastname: 'Doc',
+          avatar: null,
+        },
+        _count: { consultations: 10 },
+      };
+      prisma.doctorProfile.findMany.mockResolvedValue([docB, docA]);
+      reviewService.getAggregateRatingsForDoctors.mockResolvedValue(new Map());
+      schedulingService.countAvailableSlotsForDoctors
+        .mockResolvedValueOnce(
+          new Map([
+            [1, 20],
+            [2, 20],
+          ]),
+        )
+        .mockResolvedValueOnce(
+          new Map([
+            [1, 6],
+            [2, 0],
+          ]),
+        );
+
+      const result = await service.scoreDoctors({
+        specialty: DoctorSpecialtiesEnum.NEUROLOGY,
+        triageLevel: TriageLevelEnum.URGENT,
+      });
+
+      expect(prisma.doctorProfile.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          include: expect.objectContaining({
+            _count: {
+              select: {
+                consultations: { where: { status: { not: 'CANCELLED' } } },
+              },
+            },
+          }),
+        }),
+      );
+      expect(
+        schedulingService.countAvailableSlotsForDoctors,
+      ).toHaveBeenCalledTimes(2);
+      expect(result[0].doctorId).toBe(1);
+    });
+
+    it('prioritizes online doctors and clears boost on disconnect', async () => {
+      const u1 = randomUUID();
+      const u2 = randomUUID();
+      const d1 = {
+        id: 1,
+        specialty: DoctorSpecialtiesEnum.GENERAL,
+        secondarySpecialties: [],
+        verified: true,
+        user: { id: u1, firstname: 'Online', lastname: 'One', avatar: null },
+        _count: { consultations: 10 },
+      };
+      const d2 = {
+        id: 2,
+        specialty: DoctorSpecialtiesEnum.GENERAL,
+        secondarySpecialties: [],
+        verified: true,
+        user: { id: u2, firstname: 'Offline', lastname: 'Two', avatar: null },
+        _count: { consultations: 10 },
+      };
+      prisma.doctorProfile.findMany.mockResolvedValue([d2, d1]);
+      reviewService.getAggregateRatingsForDoctors.mockResolvedValue(new Map());
+      schedulingService.countAvailableSlotsForDoctors.mockResolvedValue(
+        new Map(),
+      );
+
+      service.markDoctorOnline(u1);
+      const onlineResult = await service.scoreDoctors({
+        specialty: DoctorSpecialtiesEnum.GENERAL,
+      });
+      expect(onlineResult[0].doctorId).toBe(1);
+      expect(onlineResult[0].score - onlineResult[1].score).toBe(4);
+
+      service.markDoctorOffline(u1);
+      const afterOffline = await service.scoreDoctors({
+        specialty: DoctorSpecialtiesEnum.GENERAL,
+      });
+      expect(afterOffline[0].score).toBe(afterOffline[1].score);
+    });
+
+    it('computes dynamic randomized scores matching the configured formula and descending order', async () => {
+      const pool = Array.from({ length: 8 }, (_, idx) => {
+        const userId = randomUUID();
+        if (idx % 2 === 0) service.markDoctorOnline(userId);
+        return {
+          id: idx + 1,
+          specialty:
+            idx < 4 ? DoctorSpecialtiesEnum.ENT : DoctorSpecialtiesEnum.GENERAL,
+          secondarySpecialties: [],
+          verified: true,
+          user: {
+            id: userId,
+            firstname: `D${idx}`,
+            lastname: 'Rand',
+            avatar: null,
+          },
+          _count: { consultations: randomInt(0, 150) },
+        };
+      });
+
+      const ratings = new Map(
+        pool.map((d) => [
+          d.id,
+          {
+            averageRating: 2 + randomInt(0, 30) / 10,
+            totalReviews: randomInt(1, 30),
+            distribution: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 },
+          },
+        ]),
+      );
+      const slots = new Map(pool.map((d) => [d.id, randomInt(0, 45)]));
+
+      prisma.doctorProfile.findMany.mockResolvedValue(pool);
+      reviewService.getAggregateRatingsForDoctors.mockResolvedValue(ratings);
+      schedulingService.countAvailableSlotsForDoctors.mockResolvedValue(slots);
+
+      const result = await service.scoreDoctors({
+        specialty: DoctorSpecialtiesEnum.ENT,
+      });
+
+      for (let i = 1; i < result.length; i++) {
+        expect(result[i - 1].score).toBeGreaterThanOrEqual(result[i].score);
+      }
+      for (const item of result) {
+        const rawDoc = pool.find((d) => d.id === item.doctorId)!;
+        const specScore =
+          rawDoc.specialty === DoctorSpecialtiesEnum.ENT ? 1.0 : 0.25;
+        const ratingScore =
+          (ratings.get(item.doctorId)!.averageRating ?? 2.5) / 5;
+        const availScore = Math.min((slots.get(item.doctorId) ?? 0) / 30, 1.0);
+        const expScore = Math.min(rawDoc._count.consultations / 100, 1.0);
+        const expected =
+          Math.round(
+            (55 * specScore +
+              20 * ratingScore +
+              15 * availScore +
+              10 * expScore +
+              (pool.indexOf(rawDoc) % 2 === 0 ? 4 : 0)) *
+              100,
+          ) / 100;
+        expect(item.score).toBe(expected);
+        service.markDoctorOffline(rawDoc.user.id);
+      }
+    });
+
+    it('cascadeTimedOutOffer moves MATCHED request to SEARCHING, records rejection, and returns remaining candidates', async () => {
+      const mrId = randomUUID();
+      const timedOutDoctorId = randomInt(1, 50);
+      const activeReq = {
+        id: mrId,
+        patientId: randomUUID(),
+        specialty: DoctorSpecialtiesEnum.CARDIOLOGY,
+        triageLevel: TriageLevelEnum.SEE_DOCTOR,
+        status: MatchStatusEnum.MATCHED,
+        matchedDoctorId: timedOutDoctorId,
+        createdAt: new Date(),
+      };
+      prisma.$transaction.mockImplementation(async (fn: any) => fn(prisma));
+      prisma.matchRequest.findUnique.mockResolvedValue(activeReq);
+      (prisma as any).matchRejection.create.mockResolvedValue({});
+      prisma.matchRequest.update.mockResolvedValue({
+        ...activeReq,
+        status: MatchStatusEnum.SEARCHING,
+        matchedDoctorId: null,
+      });
+      (prisma as any).matchRejection.findMany.mockResolvedValue([
+        { doctorId: timedOutDoctorId },
+      ]);
+      prisma.doctorProfile.findMany.mockResolvedValue([]);
+
+      const cascaded = await service.cascadeTimedOutOffer(
+        mrId,
+        timedOutDoctorId,
+      );
+      expect(cascaded?.matchRequest.status).toBe(MatchStatusEnum.SEARCHING);
+      expect(cascaded?.nextDoctors).toEqual([]);
+
+      prisma.matchRequest.findUnique.mockResolvedValue({
+        ...activeReq,
+        status: MatchStatusEnum.ACCEPTED,
+      });
+      expect(
+        await service.cascadeTimedOutOffer(mrId, timedOutDoctorId),
+      ).toBeNull();
     });
   });
 });

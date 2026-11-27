@@ -4,7 +4,12 @@ import { PrismaService } from '../prisma/prisma.service';
 import { NotificationService } from '../notification/notification.service';
 import { NurseService } from '../nurse/nurse.service';
 import { NotFoundException, ForbiddenException } from '@nestjs/common';
-import { NursePermissionEnum, UserRolesEnum } from '@prisma/client';
+import {
+  DoctorSpecialtiesEnum,
+  NursePermissionEnum,
+  TriageLevelEnum,
+  UserRolesEnum,
+} from '@prisma/client';
 import { randomInt } from 'crypto';
 import { randomUuid } from '../../test/helpers/test-data.factory';
 
@@ -803,5 +808,74 @@ P - Plan
         ),
       ).rejects.toThrow(ForbiddenException);
     });
+  });
+
+  // ─── EN & FA suggestedSpecialty / triageLevel Extraction ───
+
+  describe('specialty and triage extraction in detectAndUpsert', () => {
+    it.each([
+      {
+        label: 'English explicit Cardiology + Emergency chest pain',
+        text: '***SOAP***\nSubjective: Severe chest pain radiating to left arm and shortness of breath\nObjective: BP 150/95\nAssessment: Acute coronary syndrome\nPlan: Call 911 immediately\nSuggested Specialty: Cardiology\nTriage Level: EMERGENCY\n***SOAP***',
+        expectedSpecialty: DoctorSpecialtiesEnum.CARDIOLOGY,
+        expectedTriage: TriageLevelEnum.EMERGENCY,
+      },
+      {
+        label: 'English Neurology migraine keyword inference + Urgent',
+        text: '***SOAP***\nSubjective: Severe headache with aura and numbness\nObjective: Alert and oriented\nAssessment: Suspected acute migraine attack\nPlan: Urgent care evaluation within 24 hours\n***SOAP***',
+        expectedSpecialty: DoctorSpecialtiesEnum.NEUROLOGY,
+        expectedTriage: TriageLevelEnum.URGENT,
+      },
+      {
+        label: 'English Dermatology self-care',
+        text: '***SOAP***\nSubjective: Mild itchy skin rash on forearm\nObjective: Localized mild dermatitis\nAssessment: Mild contact dermatitis, self-limiting\nPlan: Rest and monitor at home with over-the-counter moisturizer\n***SOAP***',
+        expectedSpecialty: DoctorSpecialtiesEnum.DERMATOLOGY,
+        expectedTriage: TriageLevelEnum.SELF_CARE,
+      },
+      {
+        label: 'Persian SOAP Gastroenterology + Urgent high fever',
+        text: '***SOAP***\nS - Subjective\nبیمار با شکم‌درد و استفراغ مداوم و تب بالا (۳۹ درجه) مراجعه کرده است.\nO - Objective\nتب ۳۹°C\nA - Assessment\nاحتمال التهاب حاد معده و گوارش\nP - Plan\nمراجعه فوری به پزشک گوارش\n***SOAP***',
+        expectedSpecialty: DoctorSpecialtiesEnum.GASTROENTEROLOGY,
+        expectedTriage: TriageLevelEnum.URGENT,
+      },
+      {
+        label: 'Persian explicit Orthopedics + SEE_DOCTOR default',
+        text: '***SOAP***\nSubjective: کمردرد مزمن هنگام راه رفتن\nObjective: محدودیت حرکتی خفیف\nAssessment: درد عضلانی اسکلتی کمر\nPlan: ویزیت سرپایی و فیزیوتراپی\nتخصص پیشنهادی: ارتوپدی\n***SOAP***',
+        expectedSpecialty: DoctorSpecialtiesEnum.ORTHOPEDICS,
+        expectedTriage: TriageLevelEnum.SEE_DOCTOR,
+      },
+      {
+        label: 'Unmatched general symptoms fallback to GENERAL + SEE_DOCTOR',
+        text: '***SOAP***\nSubjective: Fatigue for 2 days\nObjective: Vitals stable\nAssessment: Nonspecific malaise\nPlan: Follow up at clinic\n***SOAP***',
+        expectedSpecialty: DoctorSpecialtiesEnum.GENERAL,
+        expectedTriage: TriageLevelEnum.SEE_DOCTOR,
+      },
+    ])(
+      'extracts specialty and triage for $label',
+      async ({ text, expectedSpecialty, expectedTriage }) => {
+        prisma.patientSOAP.upsert.mockResolvedValue({
+          ...mockSoap,
+          suggestedSpecialty: expectedSpecialty,
+          triageLevel: expectedTriage,
+        });
+        prisma.aiConversation.findUnique.mockResolvedValue({
+          topic: 'existing',
+        });
+
+        const result = await service.detectAndUpsert(
+          mockUserId,
+          mockConversationId,
+          text,
+        );
+
+        expect(result?.suggestedSpecialty).toBe(expectedSpecialty);
+        expect(result?.triageLevel).toBe(expectedTriage);
+        const call = prisma.patientSOAP.upsert.mock.calls[0][0];
+        expect(call.create.suggestedSpecialty).toBe(expectedSpecialty);
+        expect(call.create.triageLevel).toBe(expectedTriage);
+        expect(call.update.suggestedSpecialty).toBe(expectedSpecialty);
+        expect(call.update.triageLevel).toBe(expectedTriage);
+      },
+    );
   });
 });

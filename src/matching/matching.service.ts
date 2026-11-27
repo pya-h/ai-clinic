@@ -23,11 +23,13 @@ import {
 // ────────────── Scoring Weights ──────────────
 
 const WEIGHTS = {
-  specialtyMatch: 40,
-  rating: 25,
-  availability: 20,
-  experience: 15,
+  specialtyMatch: 55,
+  rating: 20,
+  availability: 15,
+  experience: 10,
 };
+
+const ONLINE_DOCTOR_BONUS = 4;
 
 // ────────────── State Machine ──────────────
 
@@ -70,12 +72,21 @@ export class MatchingService {
   private readonly logger = new Logger(MatchingService.name);
   private readonly MATCH_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
   private readonly TOP_N = 10;
+  private readonly onlineDoctorUserIds = new Set<string>();
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly reviewService: ReviewService,
     private readonly schedulingService: SchedulingService,
   ) {}
+
+  markDoctorOnline(userId: string): void {
+    this.onlineDoctorUserIds.add(userId);
+  }
+
+  markDoctorOffline(userId: string): void {
+    this.onlineDoctorUserIds.delete(userId);
+  }
 
   // ────────────── State Machine ──────────────
 
@@ -101,6 +112,15 @@ export class MatchingService {
         ...(criteria.excludeDoctorIds?.length
           ? { id: { notIn: criteria.excludeDoctorIds } }
           : {}),
+        ...(criteria.specialty
+          ? {
+              OR: [
+                { specialty: criteria.specialty },
+                { secondarySpecialties: { has: criteria.specialty } },
+                { specialty: DoctorSpecialtiesEnum.GENERAL },
+              ],
+            }
+          : {}),
       },
       include: {
         user: {
@@ -111,23 +131,47 @@ export class MatchingService {
             avatar: true,
           },
         },
-        _count: { select: { consultations: true } },
+        _count: {
+          select: {
+            consultations: {
+              where: { status: { not: ConsultationStatusEnum.CANCELLED } },
+            },
+          },
+        },
       },
     });
 
-    if (doctors.length === 0) return [];
+    const eligibleDoctors = criteria.specialty
+      ? doctors.filter(
+          (doctor) =>
+            doctor.specialty === criteria.specialty ||
+            doctor.secondarySpecialties.includes(criteria.specialty!) ||
+            doctor.specialty === DoctorSpecialtiesEnum.GENERAL,
+        )
+      : doctors;
+
+    if (eligibleDoctors.length === 0) return [];
 
     const now = new Date();
     const weekFromNow = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
-    const doctorIds = doctors.map((d) => d.id);
+    const twoDaysFromNow = new Date(now.getTime() + 48 * 60 * 60 * 1000);
+    const isHighUrgency =
+      criteria.triageLevel === TriageLevelEnum.URGENT ||
+      criteria.triageLevel === TriageLevelEnum.EMERGENCY;
+    const doctorIds = eligibleDoctors.map((d) => d.id);
 
-    const [ratingsMap, slotsMap] = await Promise.all([
+    const [ratingsMap, slotsMap, urgentSlotsMap] = await Promise.all([
       this.reviewService
         .getAggregateRatingsForDoctors(doctorIds)
         .catch(() => new Map<number, AggregateRating>()),
       this.schedulingService
         .countAvailableSlotsForDoctors(doctorIds, now, weekFromNow)
         .catch(() => new Map<number, number>()),
+      isHighUrgency
+        ? this.schedulingService
+            .countAvailableSlotsForDoctors(doctorIds, now, twoDaysFromNow)
+            .catch(() => new Map<number, number>())
+        : Promise.resolve(null),
     ]);
 
     const defaultRating: AggregateRating = {
@@ -136,15 +180,15 @@ export class MatchingService {
       distribution: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 },
     };
 
-    const scored = doctors.map((doctor) => {
+    const scored = eligibleDoctors.map((doctor) => {
       let specialtyScore = 0;
       if (criteria.specialty) {
         if (doctor.specialty === criteria.specialty) {
           specialtyScore = 1.0;
         } else if (doctor.secondarySpecialties.includes(criteria.specialty)) {
-          specialtyScore = 0.6;
+          specialtyScore = 0.55;
         } else if (doctor.specialty === DoctorSpecialtiesEnum.GENERAL) {
-          specialtyScore = 0.3;
+          specialtyScore = 0.25;
         }
       } else {
         specialtyScore = 0.5;
@@ -156,18 +200,25 @@ export class MatchingService {
         : 0.5;
 
       const availableSlotCount = slotsMap.get(doctor.id) ?? 0;
-      const maxSlots = 50;
-      const availabilityScore = Math.min(availableSlotCount / maxSlots, 1.0);
+      const weekAvail = Math.min(availableSlotCount / 30, 1.0);
+      const availabilityScore = urgentSlotsMap
+        ? Math.min((urgentSlotsMap.get(doctor.id) ?? 0) / 6, 1.0) * 0.7 +
+          weekAvail * 0.3
+        : weekAvail;
 
       const consultationCount = doctor._count.consultations;
-      const maxExperience = 200;
-      const experienceScore = Math.min(consultationCount / maxExperience, 1.0);
+      const experienceScore = Math.min(consultationCount / 100, 1.0);
+
+      const onlineBonus = this.onlineDoctorUserIds.has(doctor.user.id)
+        ? ONLINE_DOCTOR_BONUS
+        : 0;
 
       const totalScore =
         WEIGHTS.specialtyMatch * specialtyScore +
         WEIGHTS.rating * ratingScore +
         WEIGHTS.availability * availabilityScore +
-        WEIGHTS.experience * experienceScore;
+        WEIGHTS.experience * experienceScore +
+        onlineBonus;
 
       return {
         doctorId: doctor.id,
@@ -451,6 +502,60 @@ export class MatchingService {
     this.logger.log(
       `Match ${matchRequestId} rejected by doctor ${doctorProfile.id}, re-queued with ${nextDoctors.length} candidates`,
     );
+
+    return { matchRequest: updated, nextDoctors };
+  }
+
+  /**
+   * Release a timed-out doctor offer so the request can cascade to the next candidate.
+   * Returns null if the match was already answered, cancelled, or expired.
+   */
+  async cascadeTimedOutOffer(
+    matchRequestId: string,
+    timedOutDoctorId: number,
+  ): Promise<{
+    matchRequest: MatchRequest;
+    nextDoctors: ScoredDoctor[];
+  } | null> {
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const fresh = await tx.matchRequest.findUnique({
+        where: { id: matchRequestId },
+      });
+      if (
+        !fresh ||
+        fresh.status !== MatchStatusEnum.MATCHED ||
+        fresh.matchedDoctorId !== timedOutDoctorId ||
+        this.isExpired(fresh)
+      ) {
+        return null;
+      }
+
+      try {
+        await tx.matchRejection.create({
+          data: { matchRequestId, doctorId: timedOutDoctorId },
+        });
+      } catch (err: any) {
+        if (err?.code !== 'P2002') throw err;
+      }
+
+      return tx.matchRequest.update({
+        where: { id: matchRequestId },
+        data: { status: MatchStatusEnum.SEARCHING, matchedDoctorId: null },
+      });
+    });
+
+    if (!updated) return null;
+
+    const previouslyExcluded = await this.getRejectedDoctorIds(
+      matchRequestId,
+      timedOutDoctorId,
+    );
+
+    const nextDoctors = await this.scoreDoctors({
+      specialty: updated.specialty ?? undefined,
+      triageLevel: updated.triageLevel ?? undefined,
+      excludeDoctorIds: previouslyExcluded,
+    });
 
     return { matchRequest: updated, nextDoctors };
   }

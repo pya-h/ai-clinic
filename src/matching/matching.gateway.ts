@@ -25,6 +25,7 @@ import {
   DoctorSpecialtiesEnum,
   MatchRequest,
   MatchStatusEnum,
+  UserRolesEnum,
 } from '@prisma/client';
 import { NotificationService } from '../notification/notification.service';
 import { WsRateLimiter } from '../common/tools/ws-rate-limiter';
@@ -33,6 +34,7 @@ import { UserStatusCache, accountBlockReason } from '../auth/user-status';
 import { sessionUserFromCookieHeader } from '../auth/socket-session';
 
 const EXPIRY_SWEEP_INTERVAL_MS = 60_000;
+const OFFER_TIMEOUT_MS = 45_000;
 
 @WebSocketGateway({
   namespace: '/matching',
@@ -56,6 +58,7 @@ export class MatchingGateway
 
   private readonly logger = new Logger(MatchingGateway.name);
   private readonly patientTimers = new Map<string, NodeJS.Timeout>();
+  private readonly offerTimers = new Map<string, NodeJS.Timeout>();
   private readonly rateLimit = new WsRateLimiter(5, 10_000);
   private stopWatchingUserStatus?: () => void;
   private expirySweep?: NodeJS.Timeout;
@@ -85,6 +88,10 @@ export class MatchingGateway
       clearTimeout(timer);
     }
     this.patientTimers.clear();
+    for (const [, timer] of this.offerTimers) {
+      clearTimeout(timer);
+    }
+    this.offerTimers.clear();
     this.rateLimit.destroy();
     this.stopWatchingUserStatus?.();
   }
@@ -123,12 +130,18 @@ export class MatchingGateway
       return;
     }
     client.join(`user:${user.id}`);
+    if (user.role === UserRolesEnum.DOCTOR) {
+      this.matchingService.markDoctorOnline?.(user.id);
+    }
   }
 
   handleDisconnect(client: Socket): void {
     const user = client.data.user;
     if (!user) return;
     client.leave(`user:${user.id}`);
+    if (user.role === UserRolesEnum.DOCTOR) {
+      this.matchingService.markDoctorOffline?.(user.id);
+    }
   }
 
   // ─────────────── Patient: Request a Match ───────────────
@@ -241,6 +254,7 @@ export class MatchingGateway
       throw new WsException('matchRequestId is required');
 
     try {
+      this.clearOfferTimeout(payload.matchRequestId);
       const { matchRequest, nextDoctors } =
         await this.matchingService.rejectMatch(payload.matchRequestId, user);
 
@@ -400,7 +414,63 @@ export class MatchingGateway
       .onMatchFound(topDoctor.userId, matchRequestId)
       .catch((e) => this.logger.error(`Notification failed: ${e.message}`));
 
+    this.startOfferTimeout(
+      matchRequestId,
+      topDoctor.doctorId,
+      topDoctor.userId,
+    );
+
     return matchRequest;
+  }
+
+  private startOfferTimeout(
+    matchRequestId: string,
+    offeredDoctorId: number,
+    offeredDoctorUserId: string,
+  ): void {
+    this.clearOfferTimeout(matchRequestId);
+
+    const timer = setTimeout(async () => {
+      this.offerTimers.delete(matchRequestId);
+      try {
+        const result = await this.matchingService.cascadeTimedOutOffer?.(
+          matchRequestId,
+          offeredDoctorId,
+        );
+        if (!result) return;
+
+        this.server
+          .to(`user:${offeredDoctorUserId}`)
+          .emit('match:offer_expired', { matchRequestId });
+
+        if (result.nextDoctors.length > 0) {
+          await this.offerToTopDoctor(matchRequestId, result.nextDoctors);
+        } else {
+          await this.matchingService.timeoutRequestIfActive(matchRequestId);
+          this.clearTimeout(matchRequestId);
+          await this.announceTimeout({
+            id: matchRequestId,
+            patientId: result.matchRequest.patientId,
+            matchedDoctorId: null,
+          });
+        }
+      } catch (err) {
+        this.logger.error(
+          `Offer cascade error for ${matchRequestId}: ${err instanceof Error ? err.message : 'Unknown error'}`,
+        );
+      }
+    }, OFFER_TIMEOUT_MS);
+    timer.unref();
+
+    this.offerTimers.set(matchRequestId, timer);
+  }
+
+  private clearOfferTimeout(matchRequestId: string): void {
+    const timer = this.offerTimers.get(matchRequestId);
+    if (timer) {
+      clearTimeout(timer);
+      this.offerTimers.delete(matchRequestId);
+    }
   }
 
   private startTimeout(matchRequestId: string, patientId: string): void {
@@ -452,6 +522,7 @@ export class MatchingGateway
   }
 
   private clearTimeout(matchRequestId: string): void {
+    this.clearOfferTimeout(matchRequestId);
     const timer = this.patientTimers.get(matchRequestId);
     if (timer) {
       clearTimeout(timer);

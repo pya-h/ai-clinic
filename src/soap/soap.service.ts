@@ -8,8 +8,10 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import {
+  DoctorSpecialtiesEnum,
   NursePermissionEnum,
   PatientSOAP,
+  TriageLevelEnum,
   UserRolesEnum,
 } from '@prisma/client';
 import { PaginationOptionsDto } from '../common/dtos/pagination-options.dto';
@@ -67,6 +69,426 @@ export class SoapService {
     return SoapService.SECTION_PATTERNS.every(({ testRe }) =>
       testRe.test(text),
     );
+  }
+
+  private static readonly SPECIALTY_RULES: ReadonlyArray<{
+    specialty: DoctorSpecialtiesEnum;
+    aliases: readonly string[];
+    keywords: readonly string[];
+  }> = [
+    {
+      specialty: DoctorSpecialtiesEnum.CARDIOLOGY,
+      aliases: ['cardiology', 'cardiologist', 'قلب', 'قلب و عروق'],
+      keywords: [
+        'chest pain',
+        'palpitation',
+        'arrhythmia',
+        'tachycardia',
+        'bradycardia',
+        'hypertension',
+        'angina',
+        'cardiac',
+        'heart',
+        'ecg',
+        'درد قفسه سینه',
+        'تپش قلب',
+        'فشار خون',
+        'قلب',
+        'آریتمی',
+      ],
+    },
+    {
+      specialty: DoctorSpecialtiesEnum.DERMATOLOGY,
+      aliases: ['dermatology', 'dermatologist', 'پوست', 'پوست و مو'],
+      keywords: [
+        'rash',
+        'eczema',
+        'acne',
+        'dermatitis',
+        'psoriasis',
+        'pruritus',
+        'hives',
+        'urticaria',
+        'skin lesion',
+        'itchy skin',
+        'بثورات',
+        'خارش پوست',
+        'اگزما',
+        'جوش',
+        'ضایعه پوستی',
+        'پوست',
+      ],
+    },
+    {
+      specialty: DoctorSpecialtiesEnum.ENT,
+      aliases: ['ent', 'otolaryngology', 'گوش و حلق و بینی', 'گوش حلق بینی'],
+      keywords: [
+        'ear pain',
+        'otitis',
+        'tinnitus',
+        'sinusitis',
+        'sore throat',
+        'tonsillitis',
+        'nasal congestion',
+        'hoarseness',
+        'گوش درد',
+        'گلودرد',
+        'گلو درد',
+        'سینوزیت',
+        'گرفتگی بینی',
+        'لوزه',
+        'وزوز گوش',
+      ],
+    },
+    {
+      specialty: DoctorSpecialtiesEnum.GASTROENTEROLOGY,
+      aliases: ['gastroenterology', 'gastroenterologist', 'گوارش'],
+      keywords: [
+        'abdominal pain',
+        'nausea',
+        'vomiting',
+        'diarrhea',
+        'reflux',
+        'gerd',
+        'gastritis',
+        'constipation',
+        'bloating',
+        'jaundice',
+        'ulcer',
+        'شکم درد',
+        'دل درد',
+        'تهوع',
+        'استفراغ',
+        'اسهال',
+        'ریفلاکس',
+        'معده',
+        'یبوست',
+        'زردی',
+      ],
+    },
+    {
+      specialty: DoctorSpecialtiesEnum.GYNECOLOGY,
+      aliases: [
+        'gynecology',
+        'gynecologist',
+        'ob/gyn',
+        'زنان',
+        'زنان و زایمان',
+      ],
+      keywords: [
+        'pregnancy',
+        'pregnant',
+        'menstrual',
+        'dysmenorrhea',
+        'vaginal',
+        'pelvic pain',
+        'ovarian',
+        'prenatal',
+        'بارداری',
+        'قاعدگی',
+        'پریود',
+        'رحم',
+        'تخمدان',
+        'واژینال',
+      ],
+    },
+    {
+      specialty: DoctorSpecialtiesEnum.NEUROLOGY,
+      aliases: ['neurology', 'neurologist', 'مغز و اعصاب', 'اعصاب'],
+      keywords: [
+        'migraine',
+        'seizure',
+        'numbness',
+        'tingling',
+        'stroke',
+        'tremor',
+        'neuropathy',
+        'vertigo',
+        'dizziness',
+        'severe headache',
+        'میگرن',
+        'تشنج',
+        'بی حسی',
+        'گزگز',
+        'سکته مغزی',
+        'لرزش',
+        'سرگیجه',
+        'سردرد شدید',
+      ],
+    },
+    {
+      specialty: DoctorSpecialtiesEnum.ONCOLOGY,
+      aliases: ['oncology', 'oncologist', 'انکولوژی', 'سرطان'],
+      keywords: [
+        'tumor',
+        'malignancy',
+        'carcinoma',
+        'chemotherapy',
+        'cancer',
+        'biopsy',
+        'تومور',
+        'بدخیمی',
+        'سرطان',
+        'شیمی درمانی',
+      ],
+    },
+    {
+      specialty: DoctorSpecialtiesEnum.ORTHOPEDICS,
+      aliases: ['orthopedics', 'orthopedic', 'ارتوپدی'],
+      keywords: [
+        'fracture',
+        'sprain',
+        'joint pain',
+        'back pain',
+        'sciatica',
+        'arthritis',
+        'knee pain',
+        'dislocation',
+        'شکستگی',
+        'رگ به رگ',
+        'درد مفاصل',
+        'کمر درد',
+        'کمردرد',
+        'سیاتیک',
+        'آرتروز',
+        'زانو درد',
+      ],
+    },
+    {
+      specialty: DoctorSpecialtiesEnum.PEDIATRICS,
+      aliases: ['pediatrics', 'pediatrician', 'اطفال', 'کودکان'],
+      keywords: [
+        'pediatric',
+        'infant',
+        'toddler',
+        'newborn',
+        'child fever',
+        'نوزاد',
+        'کودک',
+        'اطفال',
+        'شیرخوار',
+      ],
+    },
+    {
+      specialty: DoctorSpecialtiesEnum.PSYCHIATRY,
+      aliases: ['psychiatry', 'psychiatrist', 'روانپزشکی', 'روان پزشکی'],
+      keywords: [
+        'depression',
+        'anxiety',
+        'panic attack',
+        'insomnia',
+        'suicidal',
+        'bipolar',
+        'hallucination',
+        'افسردگی',
+        'اضطراب',
+        'پانیک',
+        'بی خوابی',
+        'خودکشی',
+        'توهم',
+      ],
+    },
+    {
+      specialty: DoctorSpecialtiesEnum.UROLOGY,
+      aliases: ['urology', 'urologist', 'اورولوژی', 'کلیه و مجاری ادراری'],
+      keywords: [
+        'dysuria',
+        'hematuria',
+        'kidney stone',
+        'urinary tract',
+        'prostate',
+        'flank pain',
+        'سوزش ادرار',
+        'سنگ کلیه',
+        'ادرار خونی',
+        'پروستات',
+        'عفونت ادراری',
+      ],
+    },
+  ];
+
+  private static readonly TRIAGE_LEVEL_RULES: ReadonlyArray<{
+    level: TriageLevelEnum;
+    aliases: readonly string[];
+    keywords: readonly string[];
+  }> = [
+    {
+      level: TriageLevelEnum.EMERGENCY,
+      aliases: ['emergency', 'emergent', 'اورژانس', 'اورژانسی'],
+      keywords: [
+        'call 911',
+        'emergency department',
+        'emergency room',
+        'chest pain radiating',
+        'shortness of breath',
+        'difficulty breathing',
+        'loss of consciousness',
+        'fainting',
+        'severe bleeding',
+        'anaphylaxis',
+        'suicidal',
+        'paralysis',
+        'تنگی نفس شدید',
+        'از دست دادن هوشیاری',
+        'بیهوشی',
+        'بی هوشی',
+        'خونریزی شدید',
+        'درد شدید قفسه سینه',
+        'اورژانس',
+        'اورژانسی',
+        'فلج',
+        'خودکشی',
+      ],
+    },
+    {
+      level: TriageLevelEnum.URGENT,
+      aliases: ['urgent', 'فوری'],
+      keywords: [
+        'urgent care',
+        'within 24 hours',
+        'high fever',
+        'persistent vomiting',
+        'severe pain',
+        'acute',
+        'تب بالا',
+        'تب شدید',
+        'استفراغ مداوم',
+        'درد شدید',
+        'مراجعه فوری',
+        'فوری',
+        '39°c',
+        '39.5°c',
+        '40°c',
+        '۳۹',
+        '۴۰',
+      ],
+    },
+    {
+      level: TriageLevelEnum.SELF_CARE,
+      aliases: [
+        'self_care',
+        'self care',
+        'self-care',
+        'خودمراقبتی',
+        'خود مراقبتی',
+      ],
+      keywords: [
+        'self care',
+        'self-care',
+        'self limiting',
+        'self-limiting',
+        'rest and hydration',
+        'rest, hydration',
+        'monitor at home',
+        'over-the-counter',
+        'mild symptoms',
+        'استراحت در منزل',
+        'خود مراقبتی',
+        'خودمراقبتی',
+        'علائم خفیف',
+      ],
+    },
+  ];
+
+  private static normalizeClinicalText(text: string): string {
+    return text
+      .toLowerCase()
+      .replace(/[\u200c\u200b]/g, ' ')
+      .replace(/ي/g, 'ی')
+      .replace(/ك/g, 'ک');
+  }
+
+  private inferSuggestedSpecialty(parsed: {
+    subjective: string;
+    objective: string;
+    assessment: string;
+    plan: string;
+    rawNote: string;
+  }): DoctorSpecialtiesEnum {
+    const explicitMatch = parsed.rawNote.match(
+      /^[ \t]*(?:\*\*)?(?:Suggested\s*Specialty|Specialty|تخصص\s*پیشنهادی|تخصص)(?:\*\*)?\s*[:\-–]\s*([^\r\n]+)/im,
+    );
+    if (explicitMatch) {
+      const value = SoapService.normalizeClinicalText(explicitMatch[1]);
+      for (const enumVal of Object.values(DoctorSpecialtiesEnum)) {
+        if (value.includes(enumVal.toLowerCase())) {
+          return enumVal;
+        }
+      }
+      for (const rule of SoapService.SPECIALTY_RULES) {
+        if (rule.aliases.some((alias) => value.includes(alias))) {
+          return rule.specialty;
+        }
+      }
+    }
+
+    const primaryText = SoapService.normalizeClinicalText(
+      `${parsed.assessment}\n${parsed.plan}`,
+    );
+    const secondaryText = SoapService.normalizeClinicalText(
+      `${parsed.subjective}\n${parsed.objective}`,
+    );
+
+    let bestSpecialty: DoctorSpecialtiesEnum = DoctorSpecialtiesEnum.GENERAL;
+    let bestScore = 0;
+
+    for (const rule of SoapService.SPECIALTY_RULES) {
+      let score = 0;
+      for (const keyword of rule.keywords) {
+        if (primaryText.includes(keyword)) score += 2;
+        else if (secondaryText.includes(keyword)) score += 1;
+      }
+      if (score > bestScore) {
+        bestScore = score;
+        bestSpecialty = rule.specialty;
+      }
+    }
+
+    return bestSpecialty;
+  }
+
+  private inferTriageLevel(parsed: {
+    subjective: string;
+    objective: string;
+    assessment: string;
+    plan: string;
+    rawNote: string;
+  }): TriageLevelEnum {
+    const explicitMatch = parsed.rawNote.match(
+      /^[ \t]*(?:\*\*)?(?:Triage\s*Level|Triage|Urgency|سطح\s*تریاژ|تریاژ)(?:\*\*)?\s*[:\-–]\s*([^\r\n]+)/im,
+    );
+    if (explicitMatch) {
+      const value = SoapService.normalizeClinicalText(explicitMatch[1]);
+      for (const enumVal of Object.values(TriageLevelEnum)) {
+        if (value.includes(enumVal.toLowerCase())) {
+          return enumVal;
+        }
+      }
+      for (const rule of SoapService.TRIAGE_LEVEL_RULES) {
+        if (rule.aliases.some((alias) => value.includes(alias))) {
+          return rule.level;
+        }
+      }
+      if (
+        value.includes('see_doctor') ||
+        value.includes('see doctor') ||
+        value.includes('پزشک')
+      ) {
+        return TriageLevelEnum.SEE_DOCTOR;
+      }
+    }
+
+    const combined = SoapService.normalizeClinicalText(
+      `${parsed.assessment}\n${parsed.plan}\n${parsed.subjective}\n${parsed.objective}`,
+    );
+
+    for (const rule of SoapService.TRIAGE_LEVEL_RULES) {
+      if (rule.keywords.some((keyword) => combined.includes(keyword))) {
+        return rule.level;
+      }
+    }
+
+    return TriageLevelEnum.SEE_DOCTOR;
   }
 
   private deriveTitleFromSoap(parsed: {
@@ -174,9 +596,11 @@ export class SoapService {
     if (!rawContent) return null;
 
     const parsed = this.parseSoapSections(rawContent);
+    const suggestedSpecialty = this.inferSuggestedSpecialty(parsed);
+    const triageLevel = this.inferTriageLevel(parsed);
 
     this.logger.log(
-      `SOAP detected for conversation ${conversationId}, upserting...`,
+      `SOAP detected for conversation ${conversationId} (${suggestedSpecialty}, ${triageLevel}), upserting...`,
     );
 
     const existing = await this.prisma.patientSOAP.findUnique({
@@ -194,6 +618,8 @@ export class SoapService {
         assessment: parsed.assessment || null,
         plan: parsed.plan || null,
         rawNote: parsed.rawNote,
+        suggestedSpecialty,
+        triageLevel,
       },
       update: {
         subjective: parsed.subjective || null,
@@ -201,6 +627,8 @@ export class SoapService {
         assessment: parsed.assessment || null,
         plan: parsed.plan || null,
         rawNote: parsed.rawNote,
+        suggestedSpecialty,
+        triageLevel,
       },
     });
 
