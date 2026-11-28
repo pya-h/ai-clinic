@@ -14,6 +14,7 @@ export class WsRateLimiter {
     private readonly windowMs: number = 10_000,
   ) {
     this.cleanupTimer = setInterval(() => this.cleanup(), windowMs * 2);
+    this.cleanupTimer.unref();
   }
 
   check(userId: string, event: string): void {

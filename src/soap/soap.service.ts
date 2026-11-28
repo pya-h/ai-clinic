@@ -645,6 +645,35 @@ export class SoapService {
     conversationId: string,
     messageText: string,
   ): Promise<PatientSOAP | null> {
+    // Serialize per conversation so concurrent poll + history calls don't race
+    // on the initial existence check and emit duplicate SOAP-ready notifications.
+    const previous =
+      this.pendingUpserts.get(conversationId) ?? Promise.resolve();
+    const next = previous
+      .catch(() => undefined)
+      .then(() =>
+        this.performDetectAndUpsert(userId, conversationId, messageText),
+      );
+    this.pendingUpserts.set(conversationId, next);
+    try {
+      return await next;
+    } finally {
+      if (this.pendingUpserts.get(conversationId) === next) {
+        this.pendingUpserts.delete(conversationId);
+      }
+    }
+  }
+
+  private readonly pendingUpserts = new Map<
+    string,
+    Promise<PatientSOAP | null>
+  >();
+
+  private async performDetectAndUpsert(
+    userId: string,
+    conversationId: string,
+    messageText: string,
+  ): Promise<PatientSOAP | null> {
     const rawContent = this.extractSoapContent(messageText);
     if (!rawContent) return null;
 

@@ -28,6 +28,16 @@ export const REINVITE_COOLDOWN_MS = 7 * 24 * 60 * 60 * 1000;
 @Injectable()
 export class NurseService {
   private readonly logger = new Logger(NurseService.name);
+  private static readonly chatAccessRevokedListeners = new Set<
+    (nurseUserId: string, doctorId: number) => void
+  >();
+
+  static onChatAccessRevoked(
+    listener: (nurseUserId: string, doctorId: number) => void,
+  ): () => void {
+    NurseService.chatAccessRevokedListeners.add(listener);
+    return () => NurseService.chatAccessRevokedListeners.delete(listener);
+  }
 
   constructor(
     private readonly prisma: PrismaService,
@@ -275,11 +285,20 @@ export class NurseService {
       );
     }
 
-    return this.prisma.doctorNurseAssignment.update({
+    const updated = await this.prisma.doctorNurseAssignment.update({
       where: { id: assignmentId },
       data: { permissions: dto.permissions },
       include: this.assignmentInclude(),
     });
+
+    if (!dto.permissions.includes(NursePermissionEnum.CHAT_WITH_PATIENTS)) {
+      await this.revokeConsultationChatAccess(
+        assignment.nurseId,
+        doctorProfile.id,
+      );
+    }
+
+    return updated;
   }
 
   async removeAssignment(
@@ -308,11 +327,18 @@ export class NurseService {
       if (count === 1) return assignment;
     }
 
-    return this.prisma.doctorNurseAssignment.update({
+    const updated = await this.prisma.doctorNurseAssignment.update({
       where: { id: assignmentId },
       data: { isActive: false },
       include: this.assignmentInclude(),
     });
+
+    await this.revokeConsultationChatAccess(
+      assignment.nurseId,
+      doctorProfile.id,
+    );
+
+    return updated;
   }
 
   async getMyAssignments(user: User): Promise<DoctorNurseAssignment[]> {
@@ -495,7 +521,7 @@ export class NurseService {
       select: { doctorId: true, permissions: true },
     });
 
-    return assignments
+    return (assignments ?? [])
       .filter((a) => a.permissions.includes(permission))
       .map((a) => a.doctorId);
   }
@@ -552,6 +578,27 @@ export class NurseService {
         accepted,
       )
       .catch((e) => this.logger.error(`Notification failed: ${e.message}`));
+  }
+
+  private async revokeConsultationChatAccess(
+    nurseUserId: string,
+    doctorId: number,
+  ): Promise<void> {
+    await this.prisma.chatParticipant.deleteMany?.({
+      where: {
+        userId: nurseUserId,
+        chat: { consultation: { doctorId } },
+      },
+    });
+    for (const listener of NurseService.chatAccessRevokedListeners) {
+      try {
+        listener(nurseUserId, doctorId);
+      } catch (err) {
+        this.logger.error(
+          `Chat access revocation listener failed for ${nurseUserId}: ${err instanceof Error ? err.message : 'Unknown error'}`,
+        );
+      }
+    }
   }
 
   private async getDoctorProfile(userId: string) {

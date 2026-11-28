@@ -36,12 +36,18 @@ import { sessionUserFromCookieHeader } from '../auth/socket-session';
 const EXPIRY_SWEEP_INTERVAL_MS = 60_000;
 const OFFER_TIMEOUT_MS = 45_000;
 
+const rawWsCorsOrigin = (
+  process.env.CORS_ORIGIN || 'http://localhost:5173'
+).trim();
+const wsCorsOrigin =
+  rawWsCorsOrigin === '*'
+    ? true
+    : rawWsCorsOrigin.split(',').map((o) => o.trim());
+
 @WebSocketGateway({
   namespace: '/matching',
   cors: {
-    origin: (process.env.CORS_ORIGIN || 'http://localhost:5173')
-      .split(',')
-      .map((o) => o.trim()),
+    origin: wsCorsOrigin,
     credentials: true,
   },
 })
@@ -100,7 +106,7 @@ export class MatchingGateway
     server.use(async (socket: Socket, next) => {
       try {
         const sessionUser = this.extractUserFromSocket(socket);
-        if (!sessionUser)
+        if (typeof sessionUser?.id !== 'string' || !sessionUser.id)
           return next(new Error('Unauthorized: No valid session'));
         const status = await UserStatusCache.get(this.prisma, sessionUser.id);
         if (!status) return next(new Error('Unauthorized: No valid session'));
@@ -199,7 +205,12 @@ export class MatchingGateway
     if (!client.data.user) throw new WsException('Unauthorized');
     this.rateLimit.check(client.data.user.id, 'match:accept');
     const user = await this.currentUser(client);
-    if (!payload || typeof payload !== 'object' || !payload.matchRequestId)
+    if (
+      !payload ||
+      typeof payload !== 'object' ||
+      typeof payload.matchRequestId !== 'string' ||
+      !payload.matchRequestId
+    )
       throw new WsException('matchRequestId is required');
 
     try {
@@ -250,13 +261,18 @@ export class MatchingGateway
     if (!client.data.user) throw new WsException('Unauthorized');
     this.rateLimit.check(client.data.user.id, 'match:reject');
     const user = await this.currentUser(client);
-    if (!payload || typeof payload !== 'object' || !payload.matchRequestId)
+    if (
+      !payload ||
+      typeof payload !== 'object' ||
+      typeof payload.matchRequestId !== 'string' ||
+      !payload.matchRequestId
+    )
       throw new WsException('matchRequestId is required');
 
     try {
-      this.clearOfferTimeout(payload.matchRequestId);
       const { matchRequest, nextDoctors } =
         await this.matchingService.rejectMatch(payload.matchRequestId, user);
+      this.clearOfferTimeout(payload.matchRequestId);
 
       client.emit('match:rejected', {
         matchRequestId: matchRequest.id,
@@ -294,7 +310,12 @@ export class MatchingGateway
     if (!client.data.user) throw new WsException('Unauthorized');
     this.rateLimit.check(client.data.user.id, 'match:cancel');
     const user = await this.currentUser(client);
-    if (!payload || typeof payload !== 'object' || !payload.matchRequestId)
+    if (
+      !payload ||
+      typeof payload !== 'object' ||
+      typeof payload.matchRequestId !== 'string' ||
+      !payload.matchRequestId
+    )
       throw new WsException('matchRequestId is required');
 
     try {

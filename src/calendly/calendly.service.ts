@@ -293,14 +293,12 @@ export class CalendlyService {
     event: CalendlyWebhookEvent,
   ): Promise<void> {
     const { payload } = event;
-    const eventUri = payload.event;
-
-    const appointment = await this.prisma.appointment.findFirst({
-      where: { calendlyEventUri: eventUri },
-    });
+    const appointment = await this.findAppointmentFromWebhook(payload);
 
     if (!appointment) {
-      this.logger.warn(`No appointment found for Calendly event: ${eventUri}`);
+      this.logger.warn(
+        `No appointment found for Calendly event: ${payload.event}`,
+      );
       return;
     }
 
@@ -341,6 +339,9 @@ export class CalendlyService {
     }
 
     // Fallback: match by Calendly event URI (for events updated after invitee.created)
+    if (typeof payload.event !== 'string' || !payload.event) {
+      return null;
+    }
     return this.prisma.appointment.findFirst({
       where: { calendlyEventUri: payload.event },
     });

@@ -70,11 +70,10 @@ export class ChatService {
       throw new BadRequestException('Participant account is banned');
     }
 
-    // Check if chat already exists between these two users
-    const existingChat = await this.findExistingChat(
-      initiatorId,
-      participantId,
-    );
+    // Check if direct (non-consultation) chat already exists between these two users
+    const existingChat = consultationId
+      ? null
+      : await this.findExistingChat(initiatorId, participantId);
     if (existingChat) {
       const { parties, ...rest } = existingChat;
       return {
@@ -108,6 +107,26 @@ export class ChatService {
       ) {
         throw new ForbiddenException(
           'A chat can only be linked to a consultation between its two participants',
+        );
+      }
+      if (
+        consultation.visitMethod !== undefined &&
+        consultation.visitMethod !== VisitMethodsEnum.CHAT
+      ) {
+        throw new BadRequestException(
+          'Chat is only available when the consultation visit method is Chat.',
+        );
+      }
+      if (
+        consultation.status !== undefined &&
+        (consultation.status === ConsultationStatusEnum.CREATED ||
+          consultation.status === ConsultationStatusEnum.PENDING_DOCTOR_REVIEW)
+      ) {
+        throw new BadRequestException('Consultation has not been decided yet.');
+      }
+      if (consultation.status === ConsultationStatusEnum.CANCELLED) {
+        throw new BadRequestException(
+          'Cannot start a chat for a cancelled consultation.',
         );
       }
     }
@@ -394,8 +413,24 @@ export class ChatService {
     chats: any[];
     total: number;
   }> {
-    const where = {
+    const nurseDoctorIds = await this.nurseService.getDoctorIdsForNurse(
+      userId,
+      NursePermissionEnum.CHAT_WITH_PATIENTS,
+    );
+    const consultationVisibilityOr: Prisma.ChatWhereInput[] = [
+      { consultationId: null },
+      { consultation: { patientId: userId } },
+      { consultation: { doctor: { userId } } },
+    ];
+    if (nurseDoctorIds.length > 0) {
+      consultationVisibilityOr.push({
+        consultation: { doctorId: { in: nurseDoctorIds } },
+      });
+    }
+
+    const where: Prisma.ChatWhereInput = {
       parties: { some: { userId } },
+      OR: consultationVisibilityOr,
     };
 
     const [chats, total] = await Promise.all([
@@ -422,22 +457,9 @@ export class ChatService {
       this.prisma.chat.count({ where }),
     ]);
 
-    let permittedDoctorIds: Set<number> | null = null;
-    const needsNursePermissionFilter = chats.some((c: any) => {
-      if (!c.consultationId) return false;
-      const me = c.parties?.find((p: any) => p.userId === userId);
-      return me?.user?.role === UserRolesEnum.NURSE;
-    });
-    if (needsNursePermissionFilter) {
-      const ids = await this.nurseService.getDoctorIdsForNurse(
-        userId,
-        NursePermissionEnum.CHAT_WITH_PATIENTS,
-      );
-      permittedDoctorIds = new Set(ids);
-    }
-
+    const permittedDoctorIds = new Set(nurseDoctorIds);
     const visibleChats = chats.filter((chat: any) => {
-      if (!chat.consultationId || !chat.consultation || !permittedDoctorIds) {
+      if (!chat.consultationId || !chat.consultation) {
         return true;
       }
       if (
@@ -505,9 +527,17 @@ export class ChatService {
     await this.assertConsultationAccessIfNurse(chat, userId);
 
     const { parties, ...rest } = chat;
+    const allowedThirdPartyIds = await this.getPermittedNurseIdsForChat(
+      chat,
+      parties.map((p) => p.userId),
+    );
+    const activeParties = allowedThirdPartyIds
+      ? parties.filter((p) => allowedThirdPartyIds.has(p.userId))
+      : parties;
+
     return {
       ...rest,
-      participants: parties.map((p) => ({
+      participants: activeParties.map((p) => ({
         ...p.user,
         joinedAt: p.joinedAt,
         lastSeenAt: p.lastSeenAt,
@@ -519,9 +549,62 @@ export class ChatService {
   async getUserChatIds(userId: string): Promise<string[]> {
     const participants = await this.prisma.chatParticipant.findMany({
       where: { userId },
-      select: { chatId: true },
+      select: {
+        chatId: true,
+        chat: {
+          select: {
+            consultationId: true,
+            consultation: {
+              select: {
+                patientId: true,
+                doctorId: true,
+                doctor: { select: { userId: true } },
+              },
+            },
+          },
+        },
+      },
     });
-    return participants.map((p) => p.chatId);
+    const needsPermissionCheck = participants.some((p: any) => {
+      const consultation = p.chat?.consultation;
+      if (!p.chat?.consultationId || !consultation) return false;
+      return (
+        userId !== consultation.patientId &&
+        userId !== consultation.doctor?.userId
+      );
+    });
+    const permittedDoctorIds = needsPermissionCheck
+      ? new Set(
+          await this.nurseService.getDoctorIdsForNurse(
+            userId,
+            NursePermissionEnum.CHAT_WITH_PATIENTS,
+          ),
+        )
+      : null;
+
+    return participants
+      .filter((p: any) => {
+        const consultation = p.chat?.consultation;
+        if (!p.chat?.consultationId || !consultation || !permittedDoctorIds) {
+          return true;
+        }
+        if (
+          userId === consultation.patientId ||
+          userId === consultation.doctor?.userId
+        ) {
+          return true;
+        }
+        return permittedDoctorIds.has(consultation.doctorId);
+      })
+      .map((p) => p.chatId);
+  }
+
+  async getConsultationChatIdsForDoctor(doctorId: number): Promise<string[]> {
+    const chats = await this.prisma.chat.findMany({
+      where: { consultation: { doctorId } },
+      select: { id: true },
+    });
+    return chats.map((c) => c.id);
   }
 
   async assertChatParticipant(chatId: string, userId: string): Promise<void> {
@@ -1129,9 +1212,73 @@ export class ChatService {
   async getChatParticipantUserIds(chatId: string): Promise<string[]> {
     const participants = await this.prisma.chatParticipant.findMany({
       where: { chatId },
-      select: { userId: true },
+      select: {
+        userId: true,
+        chat: {
+          select: {
+            consultationId: true,
+            consultation: {
+              select: {
+                patientId: true,
+                doctorId: true,
+                doctor: { select: { userId: true } },
+              },
+            },
+          },
+        },
+      },
     });
-    return participants.map((p) => p.userId);
+    const chatMeta = (participants[0] as any)?.chat;
+    const allowed = chatMeta
+      ? await this.getPermittedNurseIdsForChat(
+          chatMeta,
+          participants.map((p) => p.userId),
+        )
+      : null;
+    const userIds = participants.map((p) => p.userId);
+    return allowed ? userIds.filter((id) => allowed.has(id)) : userIds;
+  }
+
+  /**
+   * Returns null when no third-party permission filtering is needed, or the Set
+   * of user IDs currently permitted to participate in a consultation chat.
+   */
+  private async getPermittedNurseIdsForChat(
+    chat: {
+      consultationId?: string | null;
+      consultation?: {
+        patientId: string;
+        doctorId: number;
+        doctor?: { userId: string } | null;
+      } | null;
+    },
+    participantIds: string[],
+  ): Promise<Set<string> | null> {
+    const consultation = chat.consultation;
+    if (!chat.consultationId || !consultation) return null;
+
+    const coreIds = new Set<string>([consultation.patientId]);
+    if (consultation.doctor?.userId) {
+      coreIds.add(consultation.doctor.userId);
+    }
+    const thirdPartyIds = participantIds.filter((id) => !coreIds.has(id));
+    if (thirdPartyIds.length === 0) return null;
+
+    const activeAssignments = await this.prisma.doctorNurseAssignment.findMany({
+      where: {
+        doctorId: consultation.doctorId,
+        nurseId: { in: thirdPartyIds },
+        isActive: true,
+        permissions: { has: NursePermissionEnum.CHAT_WITH_PATIENTS },
+      },
+      select: { nurseId: true },
+    });
+    if (!Array.isArray(activeAssignments)) return null;
+    const allowed = new Set<string>(coreIds);
+    for (const assignment of activeAssignments) {
+      allowed.add(assignment.nurseId);
+    }
+    return allowed;
   }
 
   private userSelect() {

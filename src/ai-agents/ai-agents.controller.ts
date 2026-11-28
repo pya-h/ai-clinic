@@ -444,8 +444,8 @@ export class AiAgentsController {
         }
         try {
           reply.raw.write(`: heartbeat ${Date.now()}\n\n`);
-          // Keep the Botpress client cache alive for the duration of this stream
-          this.aiService.getConversation(user, true).catch(() => {});
+          // Keep the Botpress client cache alive without mutating ctx.conversationId
+          this.aiService.touchClient(user).catch(() => {});
         } catch (error) {
           this.logger.warn('Failed to send heartbeat:', error);
           clearInterval(heartbeatInterval);

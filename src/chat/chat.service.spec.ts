@@ -1318,4 +1318,76 @@ describe('ChatService', () => {
       );
     });
   });
+
+  describe('nurse permission revocation guards', () => {
+    it('excludes revoked nurse consultation chats from getUserChatIds and getChatParticipantUserIds', async () => {
+      const nurseId = uuid();
+      const consultChatId = uuid();
+      const directChatId = uuid();
+      const docProfileId = 42;
+
+      nurseService.getDoctorIdsForNurse.mockResolvedValue([]);
+      prisma.chatParticipant.findMany.mockResolvedValueOnce([
+        {
+          chatId: directChatId,
+          chat: { consultationId: null, consultation: null },
+        },
+        {
+          chatId: consultChatId,
+          chat: {
+            consultationId: uuid(),
+            consultation: {
+              patientId,
+              doctorId: docProfileId,
+              doctor: { userId: doctorId },
+            },
+          },
+        },
+      ]);
+
+      const chatIds = await service.getUserChatIds(nurseId);
+      expect(chatIds).toEqual([directChatId]);
+
+      prisma.chatParticipant.findMany.mockResolvedValueOnce([
+        {
+          userId: patientId,
+          chat: {
+            consultationId: uuid(),
+            consultation: {
+              patientId,
+              doctorId: docProfileId,
+              doctor: { userId: doctorId },
+            },
+          },
+        },
+        {
+          userId: doctorId,
+          chat: {
+            consultationId: uuid(),
+            consultation: {
+              patientId,
+              doctorId: docProfileId,
+              doctor: { userId: doctorId },
+            },
+          },
+        },
+        {
+          userId: nurseId,
+          chat: {
+            consultationId: uuid(),
+            consultation: {
+              patientId,
+              doctorId: docProfileId,
+              doctor: { userId: doctorId },
+            },
+          },
+        },
+      ]);
+      prisma.doctorNurseAssignment.findMany.mockResolvedValueOnce([]);
+
+      const recipients = await service.getChatParticipantUserIds(consultChatId);
+      expect(recipients).toEqual([patientId, doctorId]);
+      expect(recipients).not.toContain(nurseId);
+    });
+  });
 });

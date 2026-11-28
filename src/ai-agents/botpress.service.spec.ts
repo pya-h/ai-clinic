@@ -787,6 +787,32 @@ describe('BotpressService', () => {
       await service.releaseListener(userId, orphanListener as any);
       expect(orphanListener.disconnect).toHaveBeenCalled();
     });
+
+    it('should reference-count shared listeners across tabs until the last tab releases', async () => {
+      const user = buildUser();
+      const convoId = randomUuid();
+      const sharedListener = {
+        status: 'connected',
+        on: jest.fn(),
+        disconnect: jest.fn().mockResolvedValue(undefined),
+      };
+      bpClient.listenConversation = jest.fn().mockResolvedValue(sharedListener);
+      const ctx: any = { client: bpClient };
+      cache.get.mockResolvedValue(ctx);
+
+      await service.listen(user as any, convoId);
+      await service.listen(user as any, convoId);
+
+      // Tab 1 closes -> listener stays open for Tab 2
+      await service.releaseListener(user.id, sharedListener as any);
+      expect(sharedListener.disconnect).not.toHaveBeenCalled();
+      expect(ctx.listener).toBe(sharedListener);
+
+      // Tab 2 closes -> now disconnects
+      await service.releaseListener(user.id, sharedListener as any);
+      expect(sharedListener.disconnect).toHaveBeenCalledTimes(1);
+      expect(ctx.listener).toBeUndefined();
+    });
   });
 
   describe('getClient (via start)', () => {

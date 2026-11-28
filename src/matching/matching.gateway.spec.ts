@@ -1325,5 +1325,48 @@ describe('MatchingGateway', () => {
         expect.anything(),
       );
     });
+
+    it('keeps the 45s offer timer intact when an unauthorized user emits match:reject', async () => {
+      jest.useFakeTimers();
+      try {
+        const mrId = randomUUID();
+        const intruder = createMockSocket(mockPatient);
+        const doc1 = {
+          doctorId: 11,
+          userId: randomUUID(),
+          firstname: 'D1',
+          lastname: 'L1',
+        };
+        const doc2 = {
+          doctorId: 12,
+          userId: randomUUID(),
+          firstname: 'D2',
+          lastname: 'L2',
+        };
+        matchingService.rejectMatch.mockRejectedValueOnce(
+          new Error('Forbidden'),
+        );
+        matchingService.cascadeTimedOutOffer.mockResolvedValue({
+          matchRequest: { id: mrId, patientId: mockPatient.id },
+          nextDoctors: [doc2],
+        });
+
+        await gateway.dispatchMatchRequest(
+          { id: mrId, patientId: mockPatient.id } as any,
+          [doc1, doc2],
+        );
+
+        await gateway.handleReject(intruder as any, { matchRequestId: mrId });
+        expect(intruder.emit).toHaveBeenCalledWith(
+          'match:error',
+          expect.objectContaining({ message: 'Forbidden' }),
+        );
+
+        await jest.advanceTimersByTimeAsync(45_000);
+        expect(matchingService.matchDoctor).toHaveBeenCalledWith(mrId, 12);
+      } finally {
+        jest.useRealTimers();
+      }
+    });
   });
 });

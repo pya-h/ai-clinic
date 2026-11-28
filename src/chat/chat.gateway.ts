@@ -24,6 +24,15 @@ import { sessionUserFromCookieHeader } from '../auth/socket-session';
 import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
 import { SendMessageDto, USER_MESSAGE_TYPES } from './dto/send-message.dto';
+import { NurseService } from '../nurse/nurse.service';
+
+const rawWsCorsOrigin = (
+  process.env.CORS_ORIGIN || 'http://localhost:5173'
+).trim();
+const wsCorsOrigin =
+  rawWsCorsOrigin === '*'
+    ? true
+    : rawWsCorsOrigin.split(',').map((o) => o.trim());
 
 /**
  * Sockets with a chat open (between chat:join and chat:leave). Every socket is in
@@ -43,9 +52,7 @@ const viewingRoom = (chatId: string) => `chat-open:${chatId}`;
 @WebSocketGateway({
   namespace: '/chat',
   cors: {
-    origin: (process.env.CORS_ORIGIN || 'http://localhost:5173')
-      .split(',')
-      .map((o) => o.trim()),
+    origin: wsCorsOrigin,
     credentials: true,
   },
 })
@@ -63,6 +70,7 @@ export class ChatGateway
   private readonly msgRateLimit = new WsRateLimiter(20, 10_000);
   private readonly typingRateLimit = new WsRateLimiter(30, 10_000);
   private stopWatchingUserStatus?: () => void;
+  private stopWatchingNurseAccess?: () => void;
 
   constructor(
     private readonly chatService: ChatService,
@@ -77,6 +85,7 @@ export class ChatGateway
     this.msgRateLimit.destroy();
     this.typingRateLimit.destroy();
     this.stopWatchingUserStatus?.();
+    this.stopWatchingNurseAccess?.();
   }
 
   /**
@@ -87,7 +96,7 @@ export class ChatGateway
     server.use(async (socket: Socket, next) => {
       try {
         const sessionUser = this.extractUserFromSocket(socket);
-        if (!sessionUser) {
+        if (typeof sessionUser?.id !== 'string' || !sessionUser.id) {
           return next(new Error('Unauthorized: No valid session'));
         }
         const status = await UserStatusCache.get(this.prisma, sessionUser.id);
@@ -113,6 +122,11 @@ export class ChatGateway
     this.stopWatchingUserStatus = UserStatusCache.onInvalidate((userId) => {
       void this.disconnectIfBlocked(userId);
     });
+    this.stopWatchingNurseAccess = NurseService.onChatAccessRevoked(
+      (nurseUserId, doctorId) => {
+        void this.evictNurseFromDoctorChats(nurseUserId, doctorId);
+      },
+    );
 
     this.logger.log('ChatGateway initialized with auth middleware');
   }
@@ -207,7 +221,9 @@ export class ChatGateway
     if (
       !payload ||
       typeof payload !== 'object' ||
+      typeof payload.chatId !== 'string' ||
       !payload.chatId ||
+      typeof payload.content !== 'string' ||
       !payload.content
     ) {
       throw new WsException('chatId and content are required');
@@ -263,7 +279,12 @@ export class ChatGateway
     if (!user) throw new WsException('Unauthorized');
     this.typingRateLimit.check(user.id, 'chat:typing');
 
-    if (!payload || typeof payload !== 'object' || !payload.chatId) {
+    if (
+      !payload ||
+      typeof payload !== 'object' ||
+      typeof payload.chatId !== 'string' ||
+      !payload.chatId
+    ) {
       throw new WsException('chatId is required');
     }
 
@@ -295,7 +316,9 @@ export class ChatGateway
     if (
       !payload ||
       typeof payload !== 'object' ||
+      typeof payload.chatId !== 'string' ||
       !payload.chatId ||
+      typeof payload.messageId !== 'string' ||
       !payload.messageId
     ) {
       throw new WsException('chatId and messageId are required');
@@ -336,6 +359,7 @@ export class ChatGateway
     if (
       !payload ||
       typeof payload !== 'object' ||
+      typeof payload.messageId !== 'string' ||
       !payload.messageId ||
       typeof payload.content !== 'string' ||
       !payload.content
@@ -380,7 +404,12 @@ export class ChatGateway
     if (!user) throw new WsException('Unauthorized');
     this.msgRateLimit.check(user.id, 'chat:delete');
 
-    if (!payload || typeof payload !== 'object' || !payload.messageId) {
+    if (
+      !payload ||
+      typeof payload !== 'object' ||
+      typeof payload.messageId !== 'string' ||
+      !payload.messageId
+    ) {
       throw new WsException('messageId is required');
     }
 
@@ -417,7 +446,12 @@ export class ChatGateway
     if (!user) throw new WsException('Unauthorized');
     this.msgRateLimit.check(user.id, 'chat:join');
 
-    if (!payload || typeof payload !== 'object' || !payload.chatId) {
+    if (
+      !payload ||
+      typeof payload !== 'object' ||
+      typeof payload.chatId !== 'string' ||
+      !payload.chatId
+    ) {
       throw new WsException('chatId is required');
     }
 
@@ -457,7 +491,12 @@ export class ChatGateway
     if (!user) throw new WsException('Unauthorized');
     this.msgRateLimit.check(user.id, 'chat:leave');
 
-    if (!payload || typeof payload !== 'object' || !payload.chatId) {
+    if (
+      !payload ||
+      typeof payload !== 'object' ||
+      typeof payload.chatId !== 'string' ||
+      !payload.chatId
+    ) {
       throw new WsException('chatId is required');
     }
 
@@ -496,6 +535,40 @@ export class ChatGateway
     const socketIds = this.chatService.getSocketIds(userId);
     for (const socketId of socketIds) {
       this.server.in(socketId).socketsJoin(`chat:${chatId}`);
+    }
+  }
+
+  private async evictNurseFromDoctorChats(
+    nurseUserId: string,
+    doctorId: number,
+  ): Promise<void> {
+    try {
+      const socketIds = this.chatService.getSocketIds?.(nurseUserId) ?? [];
+      if (socketIds.length === 0) return;
+
+      const chatIds =
+        await this.chatService.getConsultationChatIdsForDoctor(doctorId);
+      if (chatIds.length === 0) return;
+
+      const sockets = await this.server
+        .in(`user:${nurseUserId}`)
+        .fetchSockets();
+      const roomsToLeave = chatIds.flatMap((id) => [
+        `chat:${id}`,
+        viewingRoom(id),
+      ]);
+      for (const socket of sockets) {
+        for (const id of chatIds) {
+          socket.data.openChats?.delete(id);
+        }
+        for (const room of roomsToLeave) {
+          socket.leave(room);
+        }
+      }
+    } catch (err) {
+      this.logger.error(
+        `Nurse room eviction failed for ${nurseUserId}: ${err instanceof Error ? err.message : 'Unknown error'}`,
+      );
     }
   }
 

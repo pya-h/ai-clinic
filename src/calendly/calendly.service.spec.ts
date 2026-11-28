@@ -610,6 +610,24 @@ describe('CalendlyService', () => {
 
         expect(prisma.appointment.update).not.toHaveBeenCalled();
       });
+
+      it('should never query Prisma findFirst when payload.event is missing or empty', async () => {
+        await service.handleWebhookEvent({
+          event: 'invitee.canceled',
+          created_at: '2026-06-01T00:00:00Z',
+          created_by: 'calendly',
+          payload: {
+            uri: 'inv-uri',
+            email: 'x@x.com',
+            name: 'X',
+            status: 'canceled',
+            event: '',
+          } as any,
+        });
+
+        expect(prisma.appointment.findFirst).not.toHaveBeenCalled();
+        expect(prisma.appointment.update).not.toHaveBeenCalled();
+      });
     });
 
     describe('invitee.canceled', () => {

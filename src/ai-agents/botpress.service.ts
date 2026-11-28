@@ -40,6 +40,8 @@ export class BotpressService {
   private readonly renewedConversations = new Map<string, string>();
   // tracks live listeners outside cache-manager so TTL expiry still disconnects after store eviction
   private readonly activeListeners = new Map<string, TConversationListener>();
+  // reference-counts listeners across multiple open tabs for the same conversation
+  private readonly listenerRefs = new Map<TConversationListener, number>();
 
   constructor(
     readonly configService: ConfigService,
@@ -405,6 +407,11 @@ export class BotpressService {
     guestCtx.expiresAt = Date.now() + this.guestTtlMs;
   }
 
+  async touchClient(user: User): Promise<void> {
+    if (!this.webhookId) return;
+    await this.getClient(user, true).catch(() => {});
+  }
+
   async listen(
     user: User,
     conversationId: string,
@@ -431,16 +438,29 @@ export class BotpressService {
       boundConversationId &&
       boundConversationId !== conversationId
     ) {
+      this.listenerRefs.delete(ctx.listener);
       await this.releaseListener(user.id, ctx.listener);
     }
 
     if (ctx.listener && ctx.listener.status === 'connected') {
+      this.activeListeners.set(user.id, ctx.listener);
+      this.listenerRefs.set(
+        ctx.listener,
+        (this.listenerRefs.get(ctx.listener) ?? 0) + 1,
+      );
       return { client: ctx.client, listener: ctx.listener };
     }
 
     try {
       if (ctx.listener && ctx.listener.status !== 'connected') {
         await ctx.listener.connect();
+        ctx.listenerConversationId = conversationId;
+        ctx.conversationId = conversationId;
+        this.activeListeners.set(user.id, ctx.listener);
+        this.listenerRefs.set(
+          ctx.listener,
+          (this.listenerRefs.get(ctx.listener) ?? 0) + 1,
+        );
         return { client: ctx.client, listener: ctx.listener };
       }
 
@@ -452,12 +472,14 @@ export class BotpressService {
       ctx.listenerConversationId = conversationId;
       ctx.conversationId = conversationId;
       this.activeListeners.set(user.id, listener);
+      this.listenerRefs.set(listener, 1);
 
       listener.on('error', (error) => {
         this.logger.error(
           `Listener error for conversation ${conversationId}:`,
           error,
         );
+        this.listenerRefs.delete(listener);
         if (ctx.listener === listener) {
           ctx.listener = undefined;
           ctx.listenerConversationId = undefined;
@@ -478,6 +500,14 @@ export class BotpressService {
   }
 
   async releaseListener(userId: string, listener?: TConversationListener) {
+    if (listener && this.listenerRefs.has(listener)) {
+      const remaining = (this.listenerRefs.get(listener) ?? 1) - 1;
+      if (remaining > 0) {
+        this.listenerRefs.set(listener, remaining);
+        return;
+      }
+      this.listenerRefs.delete(listener);
+    }
     const ctx = await this.cacheService.get<IUserContext>(
       this.cachingOptions.group,
       userId,
@@ -534,6 +564,9 @@ export class BotpressService {
     );
     const listener = ctx?.listener ?? this.activeListeners.get(userId);
     this.activeListeners.delete(userId);
+    if (listener) {
+      this.listenerRefs.delete(listener);
+    }
     if (ctx) {
       ctx.listener = undefined;
       ctx.listenerConversationId = undefined;

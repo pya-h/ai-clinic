@@ -44,6 +44,10 @@ export class ExceptionTemplateFilter implements ExceptionFilter {
       status = HttpStatus.PAYLOAD_TOO_LARGE;
       message = 'File too large.';
       this.logger.warn(message);
+    } else if (exception?.code === 'FST_INVALID_MULTIPART_CONTENT_TYPE') {
+      status = HttpStatus.BAD_REQUEST;
+      message = 'Multipart form-data content type is required.';
+      this.logger.warn(message);
     } else {
       status = HttpStatus.INTERNAL_SERVER_ERROR;
       message = 'Internal Server Error';

@@ -35,6 +35,9 @@ export class UserStatusCache {
     prisma: PrismaService,
     userId: string,
   ): Promise<UserStatus | null> {
+    if (typeof userId !== 'string' || !userId) {
+      return null;
+    }
     const now = Date.now();
     const cached = UserStatusCache.entries.get(userId);
     if (cached && now - cached.checkedAt < UserStatusCache.TTL) {

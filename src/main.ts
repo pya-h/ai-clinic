@@ -109,12 +109,18 @@ async function bootstrap() {
   );
 
   // WebSocket adapter for Fastify + Socket.IO
+  const rawWsCorsOrigin = corsOrigin.trim();
+  const wsCorsOrigin =
+    rawWsCorsOrigin === '*'
+      ? true
+      : rawWsCorsOrigin.split(',').map((o) => o.trim());
+
   class FastifyIoAdapter extends IoAdapter {
     createIOServer(port: number, options?: any) {
       return super.createIOServer(port, {
         ...options,
         cors: {
-          origin: corsOrigin.split(',').map((o) => o.trim()),
+          origin: wsCorsOrigin,
           credentials: true,
         },
         transports: ['websocket', 'polling'],
